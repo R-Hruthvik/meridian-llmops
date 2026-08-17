@@ -9,22 +9,27 @@ export default {
       colors: {
         meridian: {
           primary: "#6367FF",      // Vibrant Iris
+          primaryHover: "#5054EE",
           secondary: "#8494FF",    // Soft Periwinkle
           lavender: "#C9BEFF",     // Lavender Glow
+          lavenderLight: "#F0EBFF",
           blossom: "#FFDBFD",      // Pastel Blossom
-          bg: "#090B14",           // Deep canvas
-          card: "#111425",         // Surface card
-          cardHover: "#181C33",    // Interactive card
-          border: "#1F2544",       // Subtle border
-          borderGlow: "rgba(201, 190, 255, 0.25)",
-          text: "#F1F3FD",
-          muted: "#8F96B3",
+          blossomLight: "#FFF5FE",
+          bg: "#FAF8FF",           // Soft light lilac canvas
+          canvas: "#F3EFFF",       // Secondary surface
+          card: "#FFFFFF",         // Clean white card surface
+          cardHover: "#F7F5FF",    // Interactive card hover
+          border: "#D6CEFF",       // Subtle lavender border
+          borderLight: "#ECE7FF",
+          text: "#1E2050",         // Deep Indigo text (readable, non-black)
+          textMuted: "#5F6594",    // Muted purple-slate
         }
       },
       boxShadow: {
-        glow: "0 0 20px -5px rgba(99, 103, 255, 0.35)",
-        glowLavender: "0 0 20px -5px rgba(201, 190, 255, 0.25)",
-        glass: "0 8px 32px 0 rgba(0, 0, 0, 0.37)",
+        glow: "0 4px 20px -2px rgba(99, 103, 255, 0.35)",
+        card: "0 4px 25px -4px rgba(99, 103, 255, 0.08)",
+        cardHover: "0 8px 30px -4px rgba(99, 103, 255, 0.16)",
+        blossom: "0 4px 20px -2px rgba(255, 219, 253, 0.6)",
       }
     },
   },

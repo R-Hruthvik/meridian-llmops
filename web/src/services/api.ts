@@ -4,6 +4,8 @@ import type {
   HealthStatus,
   IngestRequest,
   IngestResponse,
+  LLMSettings,
+  LLMTestResponse,
   QueryRequest,
   QueryResponse,
   TenantMetrics,
@@ -103,6 +105,49 @@ class MeridianApiClient {
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(errorData.detail || `Metrics fetch failed: ${res.statusText}`);
+    }
+
+    return res.json();
+  }
+
+  async getLLMSettings(): Promise<LLMSettings> {
+    const res = await fetch(`${this.baseUrl}/v1/settings/llm`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errorData.detail || `LLM Settings fetch failed: ${res.statusText}`);
+    }
+
+    return res.json();
+  }
+
+  async updateLLMSettings(settings: Partial<LLMSettings>): Promise<LLMSettings> {
+    const res = await fetch(`${this.baseUrl}/v1/settings/llm`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(settings),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errorData.detail || `LLM Settings update failed: ${res.statusText}`);
+    }
+
+    return res.json();
+  }
+
+  async testLLMConnection(): Promise<LLMTestResponse> {
+    const res = await fetch(`${this.baseUrl}/v1/settings/llm/test`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errorData.detail || `LLM Connection test failed: ${res.statusText}`);
     }
 
     return res.json();

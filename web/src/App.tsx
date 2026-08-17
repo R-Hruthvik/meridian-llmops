@@ -34,7 +34,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-meridian-bg text-meridian-text flex flex-col selection:bg-meridian-primary/30 selection:text-meridian-lavender">
+    <div className="min-h-screen bg-meridian-bg text-meridian-text flex flex-col selection:bg-meridian-blossom selection:text-meridian-primary">
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -52,10 +52,12 @@ export const App: React.FC = () => {
         {activeTab === 'metrics' && <MetricsDashboard tenantId={tenantId} />}
       </main>
 
-      <footer className="border-t border-meridian-border/60 py-4 px-6 text-center text-[11px] text-meridian-muted">
+      <footer className="border-t border-meridian-border bg-white/60 backdrop-blur-sm py-4 px-6 text-center text-xs font-semibold text-meridian-textMuted">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <span>Meridian Enterprise LLMOps Platform</span>
-          <span className="text-meridian-lavender">Self-Healing Agentic RAG • AI Gateway • Continuous Eval</span>
+          <span className="text-meridian-text font-bold">Meridian Enterprise LLMOps Platform</span>
+          <span className="text-meridian-primary font-bold">
+            Self-Healing Agentic RAG • AI Gateway • Continuous Eval
+          </span>
         </div>
       </footer>
     </div>

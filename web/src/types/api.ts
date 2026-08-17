@@ -68,3 +68,18 @@ export interface HealthStatus {
   status: string;
   service: string;
 }
+
+export interface LLMSettings {
+  openai_api_key?: string;
+  anthropic_api_key?: string;
+  groq_api_key?: string;
+  default_model: string;
+  litellm_base_url: string;
+  active_provider: string;
+}
+
+export interface LLMTestResponse {
+  status: string;
+  message: string;
+  latency_ms: number;
+}
