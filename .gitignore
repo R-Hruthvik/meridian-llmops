@@ -8,5 +8,7 @@ __pycache__/
 dist/
 build/
 .env
+.meridian_settings.json
+web-articles/
 web/node_modules/
 web/dist/

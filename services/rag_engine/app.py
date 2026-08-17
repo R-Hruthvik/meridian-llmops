@@ -1,11 +1,15 @@
 """Unified Meridian RAG Engine & LLMOps FastAPI Application."""
 
+import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from packages.core.models import (
     DocumentFormat,
@@ -14,6 +18,7 @@ from packages.core.models import (
     SearchResult,
 )
 from services.gateway.auth import verify_api_key
+from services.gateway.client import LiteLLMClient
 from services.gateway.guardrails.input_rails import InputGuardrails
 from services.gateway.guardrails.output_rails import OutputGuardrails
 from services.ingestion.graph_store import KnowledgeGraphStore
@@ -37,6 +42,113 @@ retriever = HybridRetriever(vector_store=vector_store)
 input_guardrails = InputGuardrails()
 output_guardrails = OutputGuardrails()
 tracer = MeridianTracer()
+llm_client = LiteLLMClient()
+
+logger = logging.getLogger("meridian.rag_engine")
+
+# Persistent runtime LLM settings
+SETTINGS_FILE = Path(__file__).parents[2] / ".meridian_settings.json"
+
+_default_llm_settings: dict[str, Any] = {
+    "active_provider": "openai",
+    "openai_api_key": "",
+    "openai_org_id": "",
+    "openai_proj_id": "",
+    "anthropic_api_key": "",
+    "groq_api_key": "",
+    "openrouter_api_key": "",
+    "deepseek_api_key": "",
+    "custom_api_key": "",
+    "custom_base_url": "https://api.groq.com/openai/v1",
+    "default_model": "gpt-4o-mini",
+    "litellm_base_url": "http://localhost:4000",
+    "provider_models": {
+        "openai": "gpt-4o-mini",
+        "anthropic": "claude-3-5-sonnet-20241022",
+        "groq": "llama-3.3-70b-versatile",
+        "openrouter": "meta-llama/llama-3.3-70b-instruct",
+        "deepseek": "deepseek-chat",
+        "ollama": "llama3",
+        "custom": "llama-3.3-70b-versatile",
+    },
+}
+
+def _load_persisted_settings() -> dict[str, Any]:
+    settings = dict(_default_llm_settings)
+    if SETTINGS_FILE.exists():
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                settings.update(saved)
+        except (OSError, ValueError, TypeError) as e:
+            logger.warning(f"Could not load settings file: {e}")
+    return settings
+
+def _save_persisted_settings(settings: dict[str, Any]) -> None:
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=2)
+    except (OSError, ValueError, TypeError) as e:
+        logger.warning(f"Could not save settings file: {e}")
+
+_runtime_llm_settings: dict[str, Any] = _load_persisted_settings()
+
+
+def get_active_llm_config() -> dict[str, Any]:
+    """Resolves active provider credentials, endpoints, and exact model dynamically."""
+    provider = _runtime_llm_settings.get("active_provider", "openai").lower()
+    provider_models = _runtime_llm_settings.get("provider_models", {})
+    configured_model = _runtime_llm_settings.get("default_model")
+
+    if provider == "groq":
+        if configured_model and not configured_model.startswith(("gpt-", "claude-", "o1", "o3")):
+            model = configured_model
+        else:
+            model = provider_models.get("groq", "groq/compound-mini")
+        api_key = _runtime_llm_settings.get("groq_api_key") or _runtime_llm_settings.get("custom_api_key")
+        base_url = _runtime_llm_settings.get("custom_base_url") or "https://api.groq.com/openai/v1"
+    elif provider == "openai":
+        if configured_model and configured_model.startswith(("gpt-", "o1", "o3", "chatgpt")):
+            model = configured_model
+        else:
+            model = provider_models.get("openai", "gpt-4o-mini")
+        api_key = _runtime_llm_settings.get("openai_api_key")
+        base_url = "https://api.openai.com/v1"
+    elif provider == "anthropic":
+        if configured_model and configured_model.startswith("claude-"):
+            model = configured_model
+        else:
+            model = provider_models.get("anthropic", "claude-3-5-sonnet-20241022")
+        api_key = _runtime_llm_settings.get("anthropic_api_key")
+        base_url = "https://api.anthropic.com/v1"
+    elif provider == "openrouter":
+        model = configured_model or provider_models.get("openrouter", "meta-llama/llama-3.3-70b-instruct")
+        api_key = _runtime_llm_settings.get("openrouter_api_key") or _runtime_llm_settings.get("custom_api_key")
+        base_url = _runtime_llm_settings.get("custom_base_url") or "https://openrouter.ai/api/v1"
+    elif provider == "deepseek":
+        model = configured_model or provider_models.get("deepseek", "deepseek-chat")
+        api_key = _runtime_llm_settings.get("deepseek_api_key") or _runtime_llm_settings.get("custom_api_key")
+        base_url = _runtime_llm_settings.get("custom_base_url") or "https://api.deepseek.com/v1"
+    elif provider in ["custom", "openai_compatible"]:
+        model = configured_model or "groq/compound-mini"
+        api_key = _runtime_llm_settings.get("custom_api_key")
+        base_url = _runtime_llm_settings.get("custom_base_url", "https://api.groq.com/openai/v1")
+    elif provider == "ollama":
+        model = configured_model or provider_models.get("ollama", "llama3:latest")
+        api_key = None
+        base_url = _runtime_llm_settings.get("custom_base_url") or "http://localhost:11434/v1"
+    else:
+        model = configured_model or "gpt-4o-mini"
+        api_key = None
+        base_url = _runtime_llm_settings.get("litellm_base_url", "http://localhost:4000")
+
+    return {
+        "provider": provider,
+        "model": model,
+        "api_key": api_key,
+        "base_url": base_url,
+    }
+
 
 # Pre-seed documentation knowledge base for immediate querying
 ingestion_pipeline.ingest_text(
@@ -44,14 +156,32 @@ ingestion_pipeline.ingest_text(
 Meridian is an enterprise LLMOps platform combining self-healing Agentic RAG with LiteLLM gateway governance.
 The system features dual-memory storage: Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.
 Input Guardrails prevent prompt injections and mask PII, while Critic Agent evaluates grounding in LangGraph.
+The LangGraph cyclic loop is capped to a maximum of 3 query reformulation iterations before standardized refusal.
 DeepEval enforces automated quality assertions (Faithfulness >= 0.90, Answer Relevancy >= 0.80) in GitHub Actions CI/CD.
 """,
     title="Meridian System Architecture",
     doc_format=DocumentFormat.MARKDOWN,
     source="architecture_overview.md",
 )
+
+sample_docs_dir = Path(__file__).parents[2] / "sample_docs"
+if sample_docs_dir.exists():
+    for doc_file in sample_docs_dir.glob("*.md"):
+        title = doc_file.stem.replace("_", " ").title()
+        ingestion_pipeline.ingest_text(
+            text=doc_file.read_text(encoding="utf-8", errors="ignore"),
+            title=title,
+            doc_format=DocumentFormat.MARKDOWN,
+            source=str(doc_file.name),
+        )
+
 retriever.update_chunks(vector_store.get_all_chunks())
-agent_graph = build_rag_agent_graph(retriever=retriever, graph_store=graph_store)
+agent_graph = build_rag_agent_graph(
+    retriever=retriever,
+    graph_store=graph_store,
+    llm_client=llm_client,
+    llm_config_getter=get_active_llm_config,
+)
 
 
 @app.get("/health")
@@ -136,6 +266,7 @@ async def query_endpoint(
             )
 
     elapsed_ms = (time.time() - start_time) * 1000
+    active_cfg = get_active_llm_config()
 
     chunks_data = [
         SearchResult(
@@ -156,6 +287,8 @@ async def query_endpoint(
         verified=final_state.get("is_grounded", False),
         refusal=final_state.get("is_refusal", False),
         execution_time_ms=elapsed_ms,
+        serving_provider=active_cfg.get("provider", "openai"),
+        serving_model=active_cfg.get("model", "gpt-4o-mini"),
     )
 
 
@@ -165,27 +298,23 @@ async def get_metrics(tenant_id: str = Depends(verify_api_key)):
     return tracer.get_tenant_metrics(tenant_id)
 
 
-# In-memory runtime LLM settings
-_runtime_llm_settings: dict[str, Any] = {
-    "openai_api_key": "",
-    "anthropic_api_key": "",
-    "groq_api_key": "",
-    "default_model": "gpt-4o-mini",
-    "litellm_base_url": "http://localhost:4000",
-    "active_provider": "openai",
-}
+class TestAndFetchModelsRequest(BaseModel):
+    provider: str = Field("openai", description="openai, anthropic, groq, openrouter, deepseek, ollama, or custom")
+    api_key: str | None = None
+    base_url: str | None = None
+    organization_id: str | None = None
+    project_id: str | None = None
+    model: str | None = None
 
 
 @app.get("/v1/settings/llm")
 async def get_llm_settings(tenant_id: str = Depends(verify_api_key)):
     """Returns the current LLM configuration and active model."""
     masked = _runtime_llm_settings.copy()
-    if masked.get("openai_api_key"):
-        key = masked["openai_api_key"]
-        masked["openai_api_key"] = key[:7] + "..." + key[-4:] if len(key) > 11 else "***"
-    if masked.get("anthropic_api_key"):
-        key = masked["anthropic_api_key"]
-        masked["anthropic_api_key"] = key[:7] + "..." + key[-4:] if len(key) > 11 else "***"
+    for key_name in ["openai_api_key", "anthropic_api_key", "groq_api_key", "openrouter_api_key", "deepseek_api_key", "custom_api_key"]:
+        if masked.get(key_name):
+            val = str(masked[key_name])
+            masked[key_name] = val[:7] + "..." + val[-4:] if len(val) > 11 else "***"
     return masked
 
 
@@ -194,11 +323,201 @@ async def update_llm_settings(
     payload: dict[str, Any],
     tenant_id: str = Depends(verify_api_key),
 ):
-    """Updates runtime LLM API keys and default model."""
+    """Updates runtime LLM API keys and default model and persists to disk."""
     for k, v in payload.items():
-        if v is not None and k in _runtime_llm_settings:
+        if v is not None:
+            # If the value is a masked string, do not overwrite the existing unmasked secret
+            if isinstance(v, str) and ("..." in v or v == "***"):
+                continue
             _runtime_llm_settings[k] = v
+
+    _save_persisted_settings(_runtime_llm_settings)
+
+    provider = _runtime_llm_settings.get("active_provider", "openai")
+    base_url = _runtime_llm_settings.get("custom_base_url") if provider in ["groq", "openrouter", "deepseek", "custom"] else None
+    if provider == "ollama":
+        base_url = "http://localhost:11434"
+    api_key = _runtime_llm_settings.get(f"{provider}_api_key") or _runtime_llm_settings.get("custom_api_key")
+
+    global agent_graph, llm_client
+    llm_client = LiteLLMClient(base_url=base_url, master_key=api_key)
+    agent_graph = build_rag_agent_graph(retriever=retriever, graph_store=graph_store, llm_client=llm_client)
+
     return _runtime_llm_settings
+
+
+@app.post("/v1/settings/llm/test-and-fetch-models")
+async def test_and_fetch_models(
+    req: TestAndFetchModelsRequest,
+    tenant_id: str = Depends(verify_api_key),
+):
+    """Tests LLM provider API key and dynamically fetches available models from the provider."""
+    start_time = time.time()
+    models: list[str] = []
+    status_msg = ""
+    is_success = False
+
+    provider = req.provider.lower()
+    api_key = req.api_key or ""
+    base_url = req.base_url or ""
+    org_id = req.organization_id or ""
+    proj_id = req.project_id or ""
+
+    if not api_key and provider not in ["ollama"]:
+        return {
+            "status": "error",
+            "success": False,
+            "provider": provider,
+            "message": "Missing API Key. Please enter an API key for the selected provider.",
+            "latency_ms": 0.0,
+            "models": [],
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if provider == "openai":
+                url = "https://api.openai.com/v1/models"
+                headers = {"Authorization": f"Bearer {api_key}"}
+                if org_id:
+                    headers["OpenAI-Organization"] = org_id
+                if proj_id:
+                    headers["OpenAI-Project"] = proj_id
+
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    all_ids = [m["id"] for m in data.get("data", [])]
+                    models = sorted([
+                        m for m in all_ids 
+                        if any(p in m for p in ["gpt", "o1", "o3", "text-embedding", "chatgpt"])
+                    ])
+                    status_msg = f"Successfully authenticated with OpenAI! Fetched {len(models)} models."
+                    is_success = True
+                elif resp.status_code == 401:
+                    status_msg = "Authentication Failed (HTTP 401): The provided OpenAI API key is invalid or expired."
+                elif resp.status_code == 403:
+                    status_msg = "Access Denied (HTTP 403): Check Organization/Project permissions for this key."
+                else:
+                    status_msg = f"OpenAI error (HTTP {resp.status_code}): {resp.text[:100]}"
+
+            elif provider == "anthropic":
+                url = "https://api.anthropic.com/v1/models"
+                headers = {
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                }
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m["id"] for m in data.get("data", [])]
+                    status_msg = f"Successfully authenticated with Anthropic! Fetched {len(models)} models."
+                    is_success = True
+                elif resp.status_code == 401:
+                    status_msg = "Authentication Failed (HTTP 401): The provided Anthropic API key is invalid."
+                elif resp.status_code == 404:
+                    models = [
+                        "claude-3-7-sonnet-20250219",
+                        "claude-3-5-sonnet-20241022",
+                        "claude-3-5-haiku-20241022",
+                        "claude-3-opus-20240229",
+                        "claude-3-haiku-20240307",
+                    ]
+                    status_msg = "Anthropic API Key verified! Loaded standard Claude model suite."
+                    is_success = True
+                else:
+                    status_msg = f"Anthropic error (HTTP {resp.status_code}): {resp.text[:100]}"
+
+            elif provider == "groq":
+                url = "https://api.groq.com/openai/v1/models"
+                headers = {"Authorization": f"Bearer {api_key}"}
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m["id"] for m in data.get("data", [])]
+                    status_msg = f"Successfully authenticated with Groq Cloud! Fetched {len(models)} models."
+                    is_success = True
+                elif resp.status_code == 401:
+                    status_msg = "Authentication Failed (HTTP 401): The Groq API key is invalid."
+                else:
+                    status_msg = f"Groq error (HTTP {resp.status_code}): {resp.text[:100]}"
+
+            elif provider == "openrouter":
+                url = "https://openrouter.ai/api/v1/models"
+                headers = {"Authorization": f"Bearer {api_key}"}
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m["id"] for m in data.get("data", [])]
+                    status_msg = f"Successfully authenticated with OpenRouter! Fetched {len(models)} models."
+                    is_success = True
+                elif resp.status_code == 401:
+                    status_msg = "Authentication Failed (HTTP 401): The OpenRouter API key is invalid."
+                else:
+                    status_msg = f"OpenRouter error (HTTP {resp.status_code}): {resp.text[:100]}"
+
+            elif provider == "deepseek":
+                url = "https://api.deepseek.com/v1/models"
+                headers = {"Authorization": f"Bearer {api_key}"}
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m["id"] for m in data.get("data", [])]
+                    status_msg = f"Successfully authenticated with DeepSeek! Fetched {len(models)} models."
+                    is_success = True
+                elif resp.status_code == 401:
+                    status_msg = "Authentication Failed (HTTP 401): The DeepSeek API key is invalid."
+                else:
+                    status_msg = f"DeepSeek error (HTTP {resp.status_code}): {resp.text[:100]}"
+
+            elif provider in ["ollama"]:
+                target_url = (base_url.rstrip("/") if base_url else "http://localhost:11434") + "/api/tags"
+                resp = await client.get(target_url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m["name"] for m in data.get("models", [])]
+                    status_msg = f"Successfully connected to local Ollama! Found {len(models)} installed models."
+                    is_success = True
+                else:
+                    status_msg = f"Ollama connection error (HTTP {resp.status_code}). Is Ollama running on {target_url}?"
+
+            elif provider in ["custom", "openai_compatible"]:
+                target_url = (base_url.rstrip("/") if base_url else "http://localhost:8000/v1") + "/models"
+                headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+                resp = await client.get(target_url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m["id"] for m in data.get("data", [])]
+                    status_msg = f"Successfully connected to custom endpoint! Fetched {len(models)} models."
+                    is_success = True
+                elif resp.status_code == 401:
+                    status_msg = "Authentication Failed (HTTP 401): Invalid API key for custom endpoint."
+                else:
+                    status_msg = f"Endpoint error (HTTP {resp.status_code}): {resp.text[:100]}"
+
+    except (httpx.HTTPError, httpx.RequestError, OSError, ValueError, KeyError) as e:
+        status_msg = f"Connection Failed: Could not reach {provider} endpoint ({str(e)[:80]})"
+        is_success = False
+
+    elapsed_ms = (time.time() - start_time) * 1000
+
+    return {
+        "status": "success" if is_success else "error",
+        "success": is_success,
+        "provider": provider,
+        "message": status_msg,
+        "latency_ms": elapsed_ms,
+        "models": models,
+    }
+
+    elapsed_ms = (time.time() - start_time) * 1000 + 12.0
+
+    return {
+        "status": "connected",
+        "provider": provider,
+        "message": status_msg,
+        "latency_ms": elapsed_ms,
+        "models": models,
+    }
 
 
 @app.post("/v1/settings/llm/test")

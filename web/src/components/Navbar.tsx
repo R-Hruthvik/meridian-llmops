@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Bot,
   Database,
@@ -6,8 +6,11 @@ import {
   LineChart,
   Settings,
   ShieldAlert,
+  Zap,
 } from 'lucide-react';
 import { SettingsModal } from './SettingsModal';
+import { api } from '../services/api';
+import type { LLMSettings } from '../types/api';
 
 interface NavbarProps {
   activeTab: string;
@@ -29,6 +32,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   setApiKey,
 }) => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
+
+  const fetchSettings = () => {
+    api.getLLMSettings()
+      .then((s) => setLlmSettings(s))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, [showSettingsModal]);
 
   const tabs = [
     { id: 'rag', label: 'Agentic RAG', icon: Bot },
@@ -79,7 +93,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           })}
         </nav>
 
-        {/* Tenant, Settings Modal Trigger & Health */}
+        {/* Tenant, Active Engine Badge & Health */}
         <div className="flex items-center space-x-3">
           {/* Tenant Selector */}
           <div className="flex items-center space-x-1.5 bg-meridian-lavenderLight/60 px-3 py-1.5 rounded-xl border border-meridian-border text-xs">
@@ -93,14 +107,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             />
           </div>
 
-          {/* Settings & LLM API Key Button */}
+          {/* Active Provider & Model Pill */}
           <button
             onClick={() => setShowSettingsModal(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-meridian-lavenderLight hover:bg-meridian-blossom border border-meridian-border text-meridian-text hover:text-meridian-primary transition-all text-xs font-semibold"
-            title="Configure LLM API Keys & Models"
+            className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white hover:bg-meridian-blossom border border-meridian-border text-meridian-text transition-all text-xs font-semibold shadow-sm group"
+            title="Active LLM Engine - Click to Configure"
           >
-            <Settings className="w-3.5 h-3.5 text-meridian-primary" />
-            <span>LLM Keys</span>
+            <div className="w-2 h-2 rounded-full bg-meridian-primary group-hover:animate-ping" />
+            <Zap className="w-3.5 h-3.5 text-meridian-primary" />
+            <span className="capitalize">{llmSettings?.active_provider || 'OpenAI'}</span>
+            <span className="text-meridian-textMuted">•</span>
+            <span className="font-mono text-meridian-primary font-bold text-[11px]">
+              {llmSettings?.default_model || 'gpt-4o-mini'}
+            </span>
+            <Settings className="w-3 h-3 text-meridian-textMuted group-hover:text-meridian-primary ml-0.5" />
           </button>
 
           {/* Health Status Indicator */}
@@ -124,7 +144,10 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Full Settings & LLM Key Modal */}
       <SettingsModal
         isOpen={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
+        onClose={() => {
+          setShowSettingsModal(false);
+          fetchSettings();
+        }}
         platformApiKey={apiKey}
         onSavePlatformApiKey={setApiKey}
       />

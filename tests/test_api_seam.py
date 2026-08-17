@@ -91,4 +91,5 @@ def test_api_document_ingestion_and_subsequent_query(client):
         json={"query": "Which post-quantum algorithm does Project Falcon use for satellite communications?"},
     )
     assert query_resp.status_code == 200
-    assert "Kyber-1024" in query_resp.json()["answer"]
+    answer_text = query_resp.json()["answer"]
+    assert "Kyber" in answer_text and "1024" in answer_text

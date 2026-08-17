@@ -2,8 +2,10 @@
 
 from typing import Any
 
+import httpx
 from langgraph.graph import END, StateGraph
 
+from services.gateway.client import LiteLLMClient
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.agent.reformulator import QueryReformulator
@@ -12,11 +14,17 @@ from services.rag_engine.agent.state import RagAgentState
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 
 
-def build_rag_agent_graph(retriever: HybridRetriever, graph_store: KnowledgeGraphStore):
+def build_rag_agent_graph(
+    retriever: HybridRetriever,
+    graph_store: KnowledgeGraphStore,
+    llm_client: LiteLLMClient | None = None,
+    llm_config_getter: Any | None = None,
+):
     """Assembles and compiles the cyclic LangGraph RAG workflow."""
     critic = CriticAgent()
     reformulator = QueryReformulator()
     refusal_gen = SafeRefusalGenerator()
+    client = llm_client or LiteLLMClient()
 
     # --- Node Definitions ---
 
@@ -40,25 +48,76 @@ def build_rag_agent_graph(retriever: HybridRetriever, graph_store: KnowledgeGrap
             "cycle_count": cycle,
         }
 
-    def generate_node(state: RagAgentState) -> dict[str, Any]:
+    async def generate_node(state: RagAgentState) -> dict[str, Any]:
+        query = state["query"].strip()
+        clean_q = query.lower()
+
+        # Handle greetings & general conversational queries
+        greetings = [
+            "hi", "hello", "hey", "greetings", "good morning", "good afternoon",
+            "good evening", "how are you", "who are you", "what can you do", "help"
+        ]
+        if clean_q in greetings or any(clean_q.startswith(g) for g in ["hi ", "hello ", "hey "]):
+            return {
+                "draft_answer": (
+                    "Hello! I am Meridian AI, your enterprise LLMOps and Knowledge Assistant. "
+                    "I can answer questions from your knowledge base, check security guardrails, "
+                    "or ingest documentation into Qdrant & Neo4j. How can I assist you today?"
+                ),
+            }
+
         chunks = state.get("retrieved_chunks", [])
-        valid_chunks = [c for c in chunks if c.get("score", 0) >= 0.15]
+        valid_chunks = [c for c in chunks if c.get("score", 0) >= 0.08]
         if not valid_chunks:
             # No meaningful context retrieved
             return {
                 "draft_answer": "",
             }
 
-        context_text = "\n".join([c.get("text", "") for c in valid_chunks])
-        # Deterministic factual synthesis
-        draft = f"Based on the knowledge base: {context_text.strip()}"
+        context_text = "\n\n".join([f"[{i+1}] {c.get('text', '')}" for i, c in enumerate(valid_chunks)])
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are Meridian AI, an enterprise knowledge assistant. "
+                    "Answer the user's question accurately and concisely using the provided context."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Context:\n{context_text}\n\nQuestion: {query}",
+            },
+        ]
+
+        cfg = llm_config_getter() if llm_config_getter else {}
+        provider = cfg.get("provider", "openai")
+        api_key = cfg.get("api_key")
+        base_url = cfg.get("base_url")
+        model = cfg.get("model", "gpt-4o-mini")
+
+        try:
+            resp = await client.chat_completion(
+                messages=messages,
+                model=model,
+                provider=provider,
+                api_key=api_key,
+                base_url=base_url,
+                temperature=0.0,
+                max_tokens=600,
+            )
+            draft = resp.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not draft:
+                draft = f"Based on the enterprise documentation: {valid_chunks[0].get('text', '')}"
+        except (httpx.HTTPError, httpx.RequestError, OSError, ValueError, KeyError):
+            draft = f"Based on the enterprise documentation: {valid_chunks[0].get('text', '')}"
+
         return {"draft_answer": draft}
 
     def critic_node(state: RagAgentState) -> dict[str, Any]:
         query = state["query"]
         draft = state.get("draft_answer", "")
         chunks = state.get("retrieved_chunks", [])
-        valid_chunks = [c for c in chunks if c.get("score", 0) >= 0.15]
+        valid_chunks = [c for c in chunks if c.get("score", 0) >= 0.08]
         context = "\n".join([c.get("text", "") for c in valid_chunks])
 
         verdict = critic.evaluate(query=query, draft=draft, context=context)

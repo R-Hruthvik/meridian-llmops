@@ -17,6 +17,20 @@ class CriticAgent:
                 reasoning="Empty draft cannot be verified.",
             )
 
+        # 1. Conversational / greeting bypass
+        greetings = {
+            "hi", "hello", "hey", "greetings", "good morning", "good afternoon",
+            "good evening", "how are you", "who are you", "help", "thanks", "thank you"
+        }
+        clean_q = query.strip().lower()
+        if clean_q in greetings or any(clean_q.startswith(g) for g in ["hi ", "hello ", "hey "]):
+            return CriticVerdict(
+                is_grounded=True,
+                confidence_score=1.0,
+                unsupported_claims=[],
+                reasoning="Conversational query verified.",
+            )
+
         if not context.strip():
             return CriticVerdict(
                 is_grounded=False,
@@ -26,39 +40,34 @@ class CriticAgent:
             )
 
         context_lower = context.lower()
-        context_words = set(re.findall(r"\w+", context_lower))
         stopwords = {
             "the", "is", "at", "which", "on", "a", "an", "and", "or", "to", "in", "for",
             "with", "according", "context", "what", "how", "why", "where", "when", "who", "does"
         }
 
-        # 1. Check Query-to-Context Topical Relevance
-        query_words = set(re.findall(r"\w+", query.lower())) - stopwords
-        context_content_words = context_words - stopwords
-
-        if query_words and context_content_words:
-            query_overlap = len(query_words.intersection(context_content_words))
-            query_ratio = query_overlap / len(query_words)
-            if query_ratio < 0.20:
+        # 2. Check Query-to-Context Substring & Word Alignment
+        query_words = [w for w in re.findall(r"\w+", clean_q) if w not in stopwords]
+        if query_words:
+            matched_words = [w for w in query_words if w in context_lower]
+            ratio = len(matched_words) / len(query_words)
+            if ratio < 0.25:
                 return CriticVerdict(
                     is_grounded=False,
                     confidence_score=0.1,
                     unsupported_claims=[draft],
-                    reasoning=f"Retrieved context is irrelevant to the query topics ({', '.join(query_words)}).",
+                    reasoning=f"Retrieved context does not match query topics ({', '.join(query_words)}).",
                 )
 
-        # 2. Check Draft Grounding in Context
+        # 3. Check Draft Grounding in Context
         sentences = [s.strip() for s in re.split(r"[.!?]\s+", draft) if len(s.strip()) > 10]
         unsupported: list[str] = []
 
         for sentence in sentences:
-            sent_words = set(re.findall(r"\w+", sentence.lower()))
-            content_words = sent_words - stopwords
-
-            if content_words:
-                overlap = len(content_words.intersection(context_words))
-                ratio = overlap / len(content_words)
-                if ratio < 0.35:
+            sent_words = [w for w in re.findall(r"\w+", sentence.lower()) if w not in stopwords]
+            if sent_words:
+                matches = sum(1 for w in sent_words if w in context_lower)
+                ratio = matches / len(sent_words)
+                if ratio < 0.25:
                     unsupported.append(sentence)
 
         is_grounded = len(unsupported) == 0

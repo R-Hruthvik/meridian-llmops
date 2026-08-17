@@ -30,6 +30,8 @@ export interface QueryResponse {
   verified: boolean;
   refusal: boolean;
   execution_time_ms: number;
+  serving_provider?: string;
+  serving_model?: string;
 }
 
 export interface IngestRequest {
@@ -70,16 +72,34 @@ export interface HealthStatus {
 }
 
 export interface LLMSettings {
+  active_provider: string;
   openai_api_key?: string;
+  openai_org_id?: string;
+  openai_proj_id?: string;
   anthropic_api_key?: string;
   groq_api_key?: string;
+  openrouter_api_key?: string;
+  deepseek_api_key?: string;
+  custom_api_key?: string;
+  custom_base_url?: string;
   default_model: string;
   litellm_base_url: string;
-  active_provider: string;
 }
 
-export interface LLMTestResponse {
+export interface LLMTestAndFetchRequest {
+  provider: string;
+  api_key?: string;
+  base_url?: string;
+  organization_id?: string;
+  project_id?: string;
+  model?: string;
+}
+
+export interface LLMTestAndFetchResponse {
   status: string;
+  success: boolean;
+  provider: string;
   message: string;
   latency_ms: number;
+  models: string[];
 }

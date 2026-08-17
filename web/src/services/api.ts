@@ -5,7 +5,8 @@ import type {
   IngestRequest,
   IngestResponse,
   LLMSettings,
-  LLMTestResponse,
+  LLMTestAndFetchRequest,
+  LLMTestAndFetchResponse,
   QueryRequest,
   QueryResponse,
   TenantMetrics,
@@ -139,15 +140,16 @@ class MeridianApiClient {
     return res.json();
   }
 
-  async testLLMConnection(): Promise<LLMTestResponse> {
-    const res = await fetch(`${this.baseUrl}/v1/settings/llm/test`, {
+  async testAndFetchModels(req: LLMTestAndFetchRequest): Promise<LLMTestAndFetchResponse> {
+    const res = await fetch(`${this.baseUrl}/v1/settings/llm/test-and-fetch-models`, {
       method: 'POST',
       headers: this.getHeaders(),
+      body: JSON.stringify(req),
     });
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(errorData.detail || `LLM Connection test failed: ${res.statusText}`);
+      throw new Error(errorData.detail || `Model fetch test failed: ${res.statusText}`);
     }
 
     return res.json();

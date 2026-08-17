@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -11,9 +11,10 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Zap,
 } from 'lucide-react';
 import { api } from '../services/api';
-import type { QueryResponse } from '../types/api';
+import type { QueryResponse, LLMSettings } from '../types/api';
 
 interface RagWorkspaceProps {
   tenantId: string;
@@ -27,6 +28,42 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
+  const [modelSwitching, setModelSwitching] = useState(false);
+
+  // Load active LLM settings & provider status
+  const loadSettings = async () => {
+    try {
+      const s = await api.getLLMSettings();
+      setLlmSettings(s);
+    } catch {
+      // Fall back
+    }
+  };
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const handleQuickModelChange = async (newModel: string) => {
+    if (!llmSettings) return;
+    setModelSwitching(true);
+    try {
+      await api.updateLLMSettings({
+        active_provider: llmSettings.active_provider,
+        default_model: newModel,
+      });
+      setLlmSettings({
+        ...llmSettings,
+        default_model: newModel,
+      });
+      localStorage.setItem('meridian_default_model', newModel);
+    } catch {
+      // Handled
+    } finally {
+      setModelSwitching(false);
+    }
+  };
 
   const sampleQueries = [
     'What storage engines does Meridian use for dual-memory retrieval?',
@@ -50,6 +87,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         enforce_guardrails: enforceGuardrails,
       });
       setResponse(res);
+      loadSettings();
     } catch (err: any) {
       setError(err.message || 'An error occurred during query execution');
     } finally {
@@ -57,10 +95,75 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     }
   };
 
+  const getAvailableModelsForProvider = (provider: string) => {
+    if (provider === 'groq') {
+      return [
+        'groq/compound-mini',
+        'groq/compound',
+        'openai/gpt-oss-120b',
+        'openai/gpt-oss-20b',
+        'allam-2-7b',
+        'qwen/qwen3.6-27b',
+      ];
+    }
+    if (provider === 'openai') {
+      return ['gpt-4o-mini', 'gpt-4o', 'o3-mini', 'o1'];
+    }
+    if (provider === 'anthropic') {
+      return ['claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'];
+    }
+    return ['llama-3.3-70b-versatile', 'gpt-4o-mini', 'deepseek-chat'];
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       {/* Left Column: Query Input & Settings (7 cols) */}
       <div className="lg:col-span-7 space-y-5">
+        {/* Active Model Governance & Engine Quick-Switch Banner */}
+        <div className="bg-white border border-meridian-border rounded-3xl p-4 sm:p-5 shadow-card flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-xl bg-meridian-blossom border border-meridian-lavender flex items-center justify-center text-meridian-primary shadow-sm">
+              <Zap className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-meridian-textMuted">
+                  Serving Engine
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
+                  Live API Active
+                </span>
+              </div>
+              <div className="text-xs font-bold text-meridian-text capitalize flex items-center space-x-1.5 mt-0.5">
+                <span>{llmSettings?.active_provider || 'OpenAI'} Cloud</span>
+                <span className="text-meridian-textMuted">•</span>
+                <span className="font-mono text-meridian-primary font-bold">
+                  {llmSettings?.default_model || 'gpt-4o-mini'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <label className="text-[11px] font-bold text-meridian-textMuted">
+              Quick Switch:
+            </label>
+            <select
+              value={llmSettings?.default_model || 'gpt-4o-mini'}
+              onChange={(e) => handleQuickModelChange(e.target.value)}
+              disabled={modelSwitching}
+              className="bg-meridian-bg border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-bold outline-none focus:border-meridian-primary focus:bg-white transition-all cursor-pointer"
+            >
+              {getAvailableModelsForProvider(llmSettings?.active_provider || 'openai').map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         {/* Main Query Box */}
         <div className="bg-white border border-meridian-border rounded-3xl p-6 shadow-card hover:shadow-cardHover transition-all">
           <div className="flex items-center justify-between mb-3">
@@ -97,24 +200,25 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
           />
 
           {/* Quick Preset Buttons */}
-          <div className="mt-3.5 flex flex-wrap gap-1.5">
+          <div className="mt-3 flex flex-wrap gap-2">
             {sampleQueries.map((q, idx) => (
               <button
                 key={idx}
+                type="button"
                 onClick={() => {
                   setQuery(q);
                   handleQuery(q);
                 }}
-                className="text-[11px] px-3 py-1.5 rounded-xl bg-meridian-lavenderLight/70 border border-meridian-border text-meridian-textMuted hover:text-meridian-primary hover:bg-meridian-blossom transition-all text-left font-medium"
+                className="text-[11px] text-meridian-textMuted hover:text-meridian-primary bg-meridian-lavenderLight/40 hover:bg-meridian-blossom px-3 py-1.5 rounded-xl border border-meridian-border transition-all text-left"
               >
                 {q}
               </button>
             ))}
           </div>
 
-          {/* Bottom Bar: Sliders & Submit */}
-          <div className="mt-4 pt-3.5 border-t border-meridian-border flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center space-x-4 text-xs text-meridian-textMuted font-medium">
+          {/* Controls Footer */}
+          <div className="mt-5 pt-4 border-t border-meridian-border flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center space-x-4 text-xs text-meridian-textMuted">
               <div className="flex items-center space-x-2">
                 <span>Top K Chunks:</span>
                 <input
@@ -196,6 +300,15 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                   <Cpu className="w-3.5 h-3.5 text-meridian-secondary" />
                   <span>Cycle {response.cycle_count}/{maxCycles}</span>
                 </span>
+
+                {response.serving_model && (
+                  <span className="flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-meridian-lavenderLight/80 border border-meridian-border text-meridian-text">
+                    <Zap className="w-3 h-3 text-meridian-primary" />
+                    <span className="capitalize">{response.serving_provider}</span>
+                    <span className="text-meridian-textMuted">•</span>
+                    <span className="font-mono text-meridian-primary">{response.serving_model}</span>
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center space-x-1.5 text-xs text-meridian-textMuted font-medium">
@@ -249,7 +362,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                       Score: {(chunk.score * 100).toFixed(0)}%
                     </span>
                   </div>
-                  <p className="text-xs text-meridian-textMuted leading-relaxed line-clamp-4">
+                  <p className="text-xs text-meridian-text leading-relaxed font-mono text-[11px] bg-white/70 p-2.5 rounded-xl border border-meridian-border">
                     {chunk.text}
                   </p>
                 </div>
@@ -260,30 +373,32 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
 
         {/* Knowledge Graph Entities */}
         <div className="bg-white border border-meridian-border rounded-3xl p-6 shadow-card">
-          <div className="flex items-center justify-between mb-3.5">
+          <div className="flex items-center justify-between mb-4">
             <h3 className="text-xs font-bold text-meridian-text flex items-center space-x-1.5">
-              <Network className="w-4 h-4 text-meridian-secondary" />
+              <Network className="w-4 h-4 text-meridian-primary" />
               <span>Knowledge Graph Entity Traversal</span>
             </h3>
-            <span className="text-[10px] font-bold uppercase text-meridian-primary bg-meridian-blossom px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-meridian-lavenderLight text-meridian-primary border border-meridian-border">
               Neo4j
             </span>
           </div>
 
-          {!response || !response.entities || response.entities.length === 0 ? (
-            <div className="text-center py-6 text-meridian-textMuted text-xs border border-dashed border-meridian-border rounded-2xl bg-meridian-bg/50">
-              <p>No graph relations traversed for this query.</p>
+          {!response || response.entities.length === 0 ? (
+            <div className="text-center py-10 text-meridian-textMuted text-xs border border-dashed border-meridian-border rounded-2xl bg-meridian-bg/50">
+              <p className="text-[11px]">No graph relations traversed for this query.</p>
             </div>
           ) : (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {response.entities.map((entity, idx) => (
-                <span
+                <div
                   key={idx}
-                  className="text-xs px-3 py-1 rounded-xl bg-meridian-lavenderLight border border-meridian-border text-meridian-text flex items-center space-x-1 shadow-sm"
+                  className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-meridian-bg border border-meridian-border text-xs"
                 >
-                  <span className="font-bold text-meridian-primary">{entity.name}</span>
-                  <span className="text-[10px] text-meridian-textMuted">({entity.entity_type})</span>
-                </span>
+                  <span className="font-bold text-meridian-text">{entity.name}</span>
+                  <span className="text-[10px] font-semibold text-meridian-primary bg-meridian-blossom px-1.5 py-0.5 rounded">
+                    {entity.entity_type}
+                  </span>
+                </div>
               ))}
             </div>
           )}
