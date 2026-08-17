@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   CheckCircle2,
@@ -22,6 +23,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   platformApiKey,
   onSavePlatformApiKey,
 }) => {
+  const [mounted, setMounted] = useState(false);
   const [platformKey, setPlatformKey] = useState(platformApiKey);
   const [openaiKey, setOpenaiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
@@ -33,7 +35,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     if (isOpen) {
+      document.body.style.overflow = 'hidden';
       api.getLLMSettings()
         .then((settings) => {
           setDefaultModel(settings.default_model || 'gpt-4o-mini');
@@ -42,12 +49,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           if (settings.anthropic_api_key) setAnthropicKey(settings.anthropic_api_key);
         })
         .catch(() => {
-          // Fall back to default
+          // Fall back to defaults
         });
+    } else {
+      document.body.style.overflow = 'unset';
     }
+
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (!mounted || !isOpen) return null;
 
   const handleSave = async () => {
     setLoading(true);
@@ -83,9 +96,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-meridian-text/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-lg bg-white border border-meridian-border rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 overflow-hidden">
+      {/* Absolute Backdrop covering entire viewport */}
+      <div
+        className="fixed inset-0 bg-[#1E2050]/40 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Centered Modal Card */}
+      <div className="relative z-10 w-full max-w-lg bg-white border border-meridian-border rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Fixed Header */}
         <div className="flex items-center justify-between p-5 pb-3 border-b border-meridian-border shrink-0">
           <div className="flex items-center space-x-3">
@@ -248,4 +269,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };
