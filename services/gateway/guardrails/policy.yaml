@@ -1,0 +1,9 @@
+# Enterprise compliance policy rules
+rules:
+  prohibited_topics:
+    - financial_advice: ["invest all your money", "high-yield guarantee", "guaranteed returns"]
+    - medical_advice: ["cure for disease", "prescribe medication"]
+  toxic_keywords:
+    - ["hate speech", "violence", "threat"]
+  mandatory_disclaimers:
+    financial: "Disclaimer: This output is for informational purposes only and does not constitute financial advice."
