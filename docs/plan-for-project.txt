@@ -1,0 +1,42 @@
+Unified Enterprise LLMOps Platform: Agentic RAG, Governance, & Continuous Eval
+
+This architecture unifies a Self-Healing Agentic RAG pipeline, an AI Gateway for strict guardrails, and a CI/CD evaluation framework into a single production-grade enterprise LLM system.
+Full Phase Plan
+
+Phase 1: Foundation – Ingestion & Gateway Routing
+
+    Deploy an open-source AI gateway (like LiteLLM) to handle provider routing, load balancing, and API key management across multiple foundation models.
+
+    Implement input guardrails at the gateway layer using tools like NeMo Guardrails or Guardrails AI to immediately block prompt injections, jailbreaks, and PII leakage before data ever reaches the LLM.
+
+    Build a robust offline document ingestion pipeline, prioritizing structural chunking (by headings and paragraphs) rather than naive fixed-size token splitting, which is responsible for the majority of production failures.
+
+    Index chunks into a vector database using a dual-memory approach (Vector DB for semantic search and a Knowledge Graph for entity relationships) to prevent retrieval staleness and capture complex links.
+
+Phase 2: Core Engine – The Agentic RAG System
+
+    Use LangGraph to model the RAG system as a stateful, cyclic orchestration framework rather than a fixed linear chain.
+
+    Implement an Agentic Router that analyzes the user query to determine whether to fetch data from the semantic vector layer, the graph layer, or episodic memory.
+
+    Configure hybrid retrieval, combining dense vector search with traditional keyword-based methods (like BM25) to ensure high recall for exact-match queries like IDs or names.
+
+    Pass the retrieved candidate chunks through a cross-encoder reranker to surface the most contextually relevant information before generation.
+
+Phase 3: Resilience – Self-Healing Logic & Output Guardrails
+
+    Develop a separate "Critic Agent" (an LLM-as-a-judge) designed exclusively to evaluate the generator's drafted answer. This agent checks if the response is strictly grounded in the retrieved sources and flags unsupported claims.
+
+    Create a LangGraph cyclical routing rule: if the Critic Agent rejects the draft, trigger a query reformulator to perform iterative retrieval (e.g., trying different search angles or using step-back prompting) until the answer is fully verified.
+
+    Route the final approved response back through the Output Guardrails layer to validate JSON schemas, filter out toxic or off-topic content, and enforce compliance via a configurable YAML policy engine.
+
+Phase 4: Observability – CI/CD & Automated Evaluation
+
+    Establish a "Golden Dataset" of 100+ edge-case questions, expected outputs, and adversarial inputs to serve as the benchmark for system quality.
+
+    Integrate an evaluation framework like DeepEval, which acts similarly to Pytest for LLMs, to run natively in code during CI/CD pipelines.
+
+    Instrument the entire pipeline using OpenTelemetry platforms (like Arize Phoenix or Langfuse) to capture end-to-end execution traces, latency metrics, and token costs.
+
+    Configure GitHub Actions to automatically run the DeepEval test suite upon every git push. This blocks pull request merges if hallucination rates exceed thresholds (e.g., > 5%) or if latency regresses beyond acceptable SLAs.
