@@ -84,33 +84,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-meridian-text/50 backdrop-blur-sm z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 md:p-6">
-      <div className="bg-white border border-meridian-border rounded-3xl p-5 sm:p-6 max-w-lg w-full shadow-2xl relative my-auto max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-full text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-lavenderLight transition-all"
-        >
-          <X className="w-5 h-5" />
-        </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-meridian-text/50 backdrop-blur-sm">
+      <div className="relative w-full max-w-lg bg-white border border-meridian-border rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Fixed Header */}
+        <div className="flex items-center justify-between p-5 pb-3 border-b border-meridian-border shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-meridian-primary to-meridian-secondary flex items-center justify-center shadow-glow shrink-0">
+              <Key className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-meridian-text">
+                Platform & Foundation LLM Settings
+              </h3>
+              <p className="text-[11px] text-meridian-textMuted">
+                Configure upstream provider API keys and model routing.
+              </p>
+            </div>
+          </div>
 
-        {/* Modal Header */}
-        <div className="flex items-center space-x-3 mb-4 shrink-0 pr-8">
-          <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-meridian-primary to-meridian-secondary flex items-center justify-center shadow-glow shrink-0">
-            <Key className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-meridian-text">
-              Platform & Foundation LLM Settings
-            </h3>
-            <p className="text-[11px] text-meridian-textMuted">
-              Configure upstream provider API keys and model routing.
-            </p>
-          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-lavenderLight transition-all"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Settings Form */}
-        <div className="space-y-3.5 overflow-y-auto flex-1 pr-1">
+        {/* Scrollable Form Body */}
+        <div className="p-5 py-4 overflow-y-auto flex-1 space-y-3.5">
           {/* Platform X-API-Key */}
           <div>
             <label className="block text-[11px] font-bold text-meridian-text mb-1">
@@ -121,7 +122,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               value={platformKey}
               onChange={(e) => setPlatformKey(e.target.value)}
               placeholder="meridian-test-secret-key-2026"
-              className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary focus:bg-white transition-all"
+              className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary focus:bg-white transition-all"
             />
           </div>
 
@@ -135,7 +136,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               value={openaiKey}
               onChange={(e) => setOpenaiKey(e.target.value)}
               placeholder="sk-proj-..."
-              className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary focus:bg-white transition-all"
+              className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary focus:bg-white transition-all"
             />
           </div>
 
@@ -149,7 +150,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               value={anthropicKey}
               onChange={(e) => setAnthropicKey(e.target.value)}
               placeholder="sk-ant-..."
-              className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary focus:bg-white transition-all"
+              className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary focus:bg-white transition-all"
             />
           </div>
 
@@ -162,7 +163,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <select
                 value={defaultModel}
                 onChange={(e) => setDefaultModel(e.target.value)}
-                className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-medium outline-none focus:border-meridian-primary focus:bg-white transition-all"
+                className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3 py-2 text-xs text-meridian-text font-medium outline-none focus:border-meridian-primary focus:bg-white transition-all"
               >
                 <option value="gpt-4o-mini">gpt-4o-mini (OpenAI)</option>
                 <option value="gpt-4o">gpt-4o (OpenAI)</option>
@@ -181,43 +182,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 value={litellmUrl}
                 onChange={(e) => setLitellmUrl(e.target.value)}
                 placeholder="http://localhost:4000"
-                className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary focus:bg-white transition-all"
+                className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary focus:bg-white transition-all"
               />
             </div>
           </div>
+
+          {/* Test Result Message */}
+          {testResult && (
+            <div
+              className={`p-2.5 rounded-xl text-xs flex items-center space-x-2 ${
+                testResult.success
+                  ? 'bg-emerald-50 border border-emerald-300 text-emerald-800'
+                  : 'bg-rose-50 border border-rose-300 text-rose-800'
+              }`}
+            >
+              {testResult.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              )}
+              <span>{testResult.message}</span>
+            </div>
+          )}
+
+          {saveSuccess && (
+            <div className="p-2.5 rounded-xl text-xs bg-emerald-50 border border-emerald-300 text-emerald-800 flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Settings saved successfully!</span>
+            </div>
+          )}
         </div>
 
-        {/* Test Result Message */}
-        {testResult && (
-          <div
-            className={`mt-3 p-2.5 rounded-xl text-xs flex items-center space-x-2 shrink-0 ${
-              testResult.success
-                ? 'bg-emerald-50 border border-emerald-300 text-emerald-800'
-                : 'bg-rose-50 border border-rose-300 text-rose-800'
-            }`}
-          >
-            {testResult.success ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            )}
-            <span>{testResult.message}</span>
-          </div>
-        )}
-
-        {saveSuccess && (
-          <div className="mt-3 p-2.5 rounded-xl text-xs bg-emerald-50 border border-emerald-300 text-emerald-800 flex items-center space-x-2 shrink-0">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Settings saved successfully!</span>
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="mt-4 pt-3 border-t border-meridian-border flex items-center justify-between shrink-0">
+        {/* Fixed Footer */}
+        <div className="p-4 sm:p-5 pt-3 border-t border-meridian-border shrink-0 flex items-center justify-between bg-meridian-lavenderLight/30">
           <button
             onClick={handleTestConnection}
             disabled={testing}
-            className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-meridian-primary bg-meridian-lavenderLight hover:bg-meridian-blossom border border-meridian-border flex items-center space-x-1.5 transition-all"
+            className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-meridian-primary bg-white hover:bg-meridian-blossom border border-meridian-border flex items-center space-x-1.5 transition-all shadow-sm"
           >
             {testing ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -230,7 +231,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="flex space-x-2">
             <button
               onClick={onClose}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-meridian-textMuted hover:bg-meridian-lavenderLight transition-all"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-meridian-textMuted hover:bg-white transition-all"
             >
               Cancel
             </button>
