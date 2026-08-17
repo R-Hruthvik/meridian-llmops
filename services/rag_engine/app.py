@@ -1,9 +1,11 @@
 """Unified Meridian RAG Engine & LLMOps FastAPI Application."""
 
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.staticfiles import StaticFiles
 
 from packages.core.models import (
     DocumentFormat,
@@ -161,3 +163,10 @@ async def query_endpoint(
 async def get_metrics(tenant_id: str = Depends(verify_api_key)):
     """Returns aggregated token usage and cost metrics."""
     return tracer.get_tenant_metrics(tenant_id)
+
+
+# Mount Web UI frontend if built
+web_dist = Path(__file__).parents[2] / "web" / "dist"
+if web_dist.exists():
+    app.mount("/", StaticFiles(directory=str(web_dist), html=True), name="web")
+
