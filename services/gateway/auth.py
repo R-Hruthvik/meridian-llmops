@@ -1,5 +1,6 @@
 """API key authentication and token bucket rate limiting."""
 
+import asyncio
 import time
 from collections import defaultdict
 
@@ -9,6 +10,12 @@ from packages.core.config import get_settings
 
 # Token bucket state: tenant_id -> (tokens_remaining, last_refill_timestamp)
 _rate_limits: dict[str, tuple[float, float]] = defaultdict(lambda: (60.0, time.time()))
+
+# Lock to make token-bucket read-modify-write atomic
+_rate_lock = asyncio.Lock()
+
+# TTL for rate-limit entries: evict entries idle longer than this
+_RATE_LIMIT_TTL = 300.0  # 5 minutes
 
 
 async def verify_api_key(
@@ -29,16 +36,22 @@ async def verify_api_key(
     capacity = float(settings.rate_limit_per_minute)
     refill_rate = capacity / 60.0  # tokens per second
 
-    tokens, last_time = _rate_limits[x_tenant_id]
-    elapsed = now - last_time
-    tokens = min(capacity, tokens + elapsed * refill_rate)
+    async with _rate_lock:
+        # Evict stale entries to prevent unbounded memory growth
+        stale_keys = [k for k, (_, ts) in _rate_limits.items() if now - ts > _RATE_LIMIT_TTL]
+        for k in stale_keys:
+            del _rate_limits[k]
 
-    if tokens < 1.0:
-        _rate_limits[x_tenant_id] = (tokens, now)
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Rate limit exceeded for tenant '{x_tenant_id}'. Max {settings.rate_limit_per_minute} req/min.",
-        )
+        tokens, last_time = _rate_limits[x_tenant_id]
+        elapsed = now - last_time
+        tokens = min(capacity, tokens + elapsed * refill_rate)
 
-    _rate_limits[x_tenant_id] = (tokens - 1.0, now)
+        if tokens < 1.0:
+            _rate_limits[x_tenant_id] = (tokens, now)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded for tenant '{x_tenant_id}'. Max {settings.rate_limit_per_minute} req/min.",
+            )
+
+        _rate_limits[x_tenant_id] = (tokens - 1.0, now)
     return x_tenant_id

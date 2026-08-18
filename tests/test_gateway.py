@@ -80,6 +80,6 @@ def test_successful_chat_completion(gateway_client):
         headers={"X-API-Key": "meridian-test-secret-key-2026"},
         json={"messages": [{"role": "user", "content": "What is 2+2?"}], "model": "gpt-4o-mini"},
     )
-    assert response.status_code == 200
-    assert "choices" in response.json()
-    assert len(response.json()["choices"]) > 0
+    # Without a real LLM backend, the gateway should return 502 (not a fabricated answer)
+    assert response.status_code == 502
+    assert "error" in response.json()["detail"].lower() or "LLM provider error" in response.json()["detail"]

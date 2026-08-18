@@ -1,8 +1,11 @@
 """LLM Client routing requests to LiteLLM Gateway, Groq, OpenAI, Anthropic, or Ollama."""
 
+import logging
 from typing import Any
 
 import httpx
+
+logger = logging.getLogger("meridian.gateway.client")
 
 from packages.core.config import get_settings
 
@@ -102,46 +105,17 @@ class LiteLLMClient:
                         }
                     return data
                 else:
-                    print(f"⚠️ [LLM API Response {resp.status_code}] {endpoint}: {resp.text[:150]}")
+                    logger.error(
+                        "LLM API Response %d - %s: %s",
+                        resp.status_code,
+                        endpoint,
+                        resp.text[:150],
+                    )
+                    raise httpx.HTTPStatusError(
+                        f"LLM API returned status {resp.status_code}",
+                        response=resp,
+                        request=resp.request,
+                    )
         except (httpx.HTTPError, httpx.RequestError, OSError, ValueError, KeyError) as e:
-            print(f"⚠️ [LLM Connection Error] {endpoint}: {e}")
-
-        # Intelligent synthesis fallback when offline or in test environments
-        # Extract question from user message
-        user_content = ""
-        context_content = ""
-        for m in messages:
-            if m.get("role") == "user":
-                content = m.get("content", "")
-                if "Question:" in content:
-                    parts = content.split("Question:")
-                    context_content = parts[0].replace("Context:", "").strip()
-                    user_content = parts[1].strip()
-                else:
-                    user_content = content
-
-        fallback_answer = (
-            f"Based on the enterprise knowledge base, here is the verified answer for '{user_content}':\n\n"
-            f"{context_content}" if context_content else f"Information regarding '{user_content}' has been retrieved."
-        )
-
-        return {
-            "id": "chatcmpl-mock-gateway",
-            "object": "chat.completion",
-            "model": target_model,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": fallback_answer,
-                    },
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {
-                "prompt_tokens": len(user_content.split()) + 30,
-                "completion_tokens": 50,
-                "total_tokens": len(user_content.split()) + 80,
-            },
-        }
+            logger.error("LLM Connection Error - %s: %s", endpoint, e)
+            raise

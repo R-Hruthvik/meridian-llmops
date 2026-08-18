@@ -63,18 +63,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (isOpen) {
       document.body.style.overflow = 'hidden';
 
-      // First populate from local cache if present
+      // Load non-sensitive configuration from localStorage if present.
+      // SECURITY: API keys are NEVER read from or written to localStorage.
+      // Only the active provider and default model (non-secret) may be cached locally.
       const cachedProvider = localStorage.getItem('meridian_active_provider');
       const cachedModel = localStorage.getItem('meridian_default_model');
-      const cachedGroq = localStorage.getItem('meridian_groq_key');
-      const cachedOpenAI = localStorage.getItem('meridian_openai_key');
-      const cachedAnthropic = localStorage.getItem('meridian_anthropic_key');
 
       if (cachedProvider) setProvider(cachedProvider);
       if (cachedModel) setDefaultModel(cachedModel);
-      if (cachedGroq) setCustomKey(cachedGroq);
-      if (cachedOpenAI) setOpenaiKey(cachedOpenAI);
-      if (cachedAnthropic) setAnthropicKey(cachedAnthropic);
 
       api.getLLMSettings()
         .then((settings) => {
@@ -85,17 +81,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           if (settings.active_provider && !cachedProvider) {
             setProvider(settings.active_provider);
           }
-          if (settings.openai_api_key && !cachedOpenAI && !settings.openai_api_key.includes('...')) {
-            setOpenaiKey(settings.openai_api_key);
-          }
+          // Backend returns masked keys (e.g. "sk-...xyz"), which cannot be used
+          // for API calls but are safe to display as hints. We do NOT populate
+          // the input fields with masked values — leave them blank for the user
+          // to enter a new key, since the backend ignores masked values on update.
           if (settings.openai_org_id) setOpenaiOrgId(settings.openai_org_id);
           if (settings.openai_proj_id) setOpenaiProjId(settings.openai_proj_id);
-          if (settings.anthropic_api_key && !cachedAnthropic && !settings.anthropic_api_key.includes('...')) {
-            setAnthropicKey(settings.anthropic_api_key);
-          }
-          if (settings.custom_api_key && !cachedGroq && !settings.custom_api_key.includes('...')) {
-            setCustomKey(settings.custom_api_key);
-          }
           if (settings.custom_base_url) setCustomBaseUrl(settings.custom_base_url);
         })
         .catch(() => {
@@ -195,18 +186,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setSaveSuccess(false);
     onSavePlatformApiKey(platformKey);
 
-    // Persist to browser local storage
+    // SECURITY: Only non-sensitive preferences are persisted to localStorage.
+    // Provider API keys (OpenAI, Anthropic, Groq, etc.) are NEVER stored in
+    // localStorage — they are sent only to the backend API via HTTPS.
     localStorage.setItem('meridian_active_provider', provider);
     localStorage.setItem('meridian_default_model', defaultModel);
-    if (provider === 'groq' && customKey && !customKey.includes('...')) {
-      localStorage.setItem('meridian_groq_key', customKey);
-    }
-    if (provider === 'openai' && openaiKey && !openaiKey.includes('...')) {
-      localStorage.setItem('meridian_openai_key', openaiKey);
-    }
-    if (provider === 'anthropic' && anthropicKey && !anthropicKey.includes('...')) {
-      localStorage.setItem('meridian_anthropic_key', anthropicKey);
-    }
 
     try {
       await api.updateLLMSettings({

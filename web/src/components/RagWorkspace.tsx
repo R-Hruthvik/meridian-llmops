@@ -13,7 +13,7 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react';
-import { api } from '../services/api';
+import { api, ApiError } from '../services/api';
 import type { QueryResponse, LLMSettings } from '../types/api';
 
 interface RagWorkspaceProps {
@@ -27,7 +27,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   const [enforceGuardrails, setEnforceGuardrails] = useState(true);
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<QueryResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; status?: number } | null>(null);
   const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
   const [modelSwitching, setModelSwitching] = useState(false);
 
@@ -89,7 +89,11 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
       setResponse(res);
       loadSettings();
     } catch (err: any) {
-      setError(err.message || 'An error occurred during query execution');
+      const status = err instanceof ApiError ? err.status : undefined;
+      setError({
+        message: err.message || 'An error occurred during query execution',
+        status,
+      });
     } finally {
       setLoading(false);
     }
@@ -263,13 +267,44 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
           </div>
         </div>
 
-        {/* Error Alert */}
+        {/* Error Alert — distinct rendering based on HTTP status */}
         {error && (
-          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start space-x-2.5 shadow-sm">
-            <AlertTriangle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+          <div
+            className={`p-4 rounded-2xl text-xs flex items-start space-x-2.5 shadow-sm ${
+              error.status === 429
+                ? 'bg-amber-50 border border-amber-200 text-amber-800'
+                : error.status === 401
+                  ? 'bg-rose-50 border border-rose-200 text-rose-800'
+                  : error.status && error.status >= 400 && error.status < 500
+                    ? 'bg-rose-50 border border-rose-200 text-rose-800'
+                    : 'bg-rose-50 border border-rose-200 text-rose-800'
+            }`}
+          >
+            {error.status === 429 ? (
+              <Clock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+            )}
             <div>
-              <p className="font-bold">Query Intercepted / Failed</p>
-              <p className="text-rose-700 mt-0.5">{error}</p>
+              <p className="font-bold flex items-center space-x-1.5">
+                <span>
+                  {error.status === 429
+                    ? 'Rate Limit Exceeded'
+                    : error.status === 401
+                      ? 'Authentication Error'
+                      : 'Query Intercepted / Failed'}
+                </span>
+                {error.status && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-black/5 border border-current/30">
+                    HTTP {error.status}
+                  </span>
+                )}
+              </p>
+              <p className="text-rose-700 dark:group mt-0.5">
+                {error.status === 429
+                  ? 'Too many requests in the current time window. Please wait a moment and try again.'
+                  : error.message}
+              </p>
             </div>
           </div>
         )}

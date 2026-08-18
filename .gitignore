@@ -12,3 +12,11 @@ build/
 web-articles/
 web/node_modules/
 web/dist/
+.opencode/
+docs/
+sample_docs/
+web-articles/
+*.md
+!README.md
+
+

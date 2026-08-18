@@ -12,20 +12,39 @@ import type {
   TenantMetrics,
 } from '../types/api';
 
-const DEFAULT_API_KEY = 'meridian-test-secret-key-2026';
+/**
+ * Extended Error with HTTP status code for UI-level error rendering.
+ * Allows the UI to distinguish 400/401/429 etc. and render distinct states.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly detail?: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
 class MeridianApiClient {
   private apiKey: string;
   private baseUrl: string;
 
   constructor() {
-    this.apiKey = localStorage.getItem('meridian_api_key') || DEFAULT_API_KEY;
+    // Platform API key is no longer stored in localStorage for security.
+    // It is expected to be provided via an HTTP-only cookie set by the backend,
+    // or set per-session via `setApiKey()` without persistence.
+    // The header-based approach is retained for local dev where the cookie
+    // may not be present; callers should use `setApiKey` to inject a key
+    // obtained through a secure channel (e.g. a login flow).
+    this.apiKey = '';
     this.baseUrl = '';
   }
 
   setApiKey(key: string) {
+    // Store in memory only — never persist to localStorage to avoid XSS exposure.
     this.apiKey = key;
-    localStorage.setItem('meridian_api_key', key);
   }
 
   getApiKey(): string {
@@ -42,7 +61,11 @@ class MeridianApiClient {
 
   async checkHealth(): Promise<HealthStatus> {
     const res = await fetch(`${this.baseUrl}/health`);
-    if (!res.ok) throw new Error(`Health check failed: ${res.statusText}`);
+    if (!res.ok)
+      throw new ApiError(
+        `Health check failed: ${res.statusText}`,
+        res.status,
+      );
     return res.json();
   }
 
@@ -61,7 +84,11 @@ class MeridianApiClient {
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(errorData.detail || `Query failed: ${res.statusText}`);
+      throw new ApiError(
+        errorData.detail || `Query failed: ${res.statusText}`,
+        res.status,
+        errorData.detail,
+      );
     }
 
     return res.json();
@@ -76,7 +103,11 @@ class MeridianApiClient {
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(errorData.detail || `Ingestion failed: ${res.statusText}`);
+      throw new ApiError(
+        errorData.detail || `Ingestion failed: ${res.statusText}`,
+        res.status,
+        errorData.detail,
+      );
     }
 
     return res.json();
@@ -91,7 +122,11 @@ class MeridianApiClient {
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(errorData.detail || `Guardrail check failed: ${res.statusText}`);
+      throw new ApiError(
+        errorData.detail || `Guardrail check failed: ${res.statusText}`,
+        res.status,
+        errorData.detail,
+      );
     }
 
     return res.json();
@@ -105,7 +140,11 @@ class MeridianApiClient {
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(errorData.detail || `Metrics fetch failed: ${res.statusText}`);
+      throw new ApiError(
+        errorData.detail || `Metrics fetch failed: ${res.statusText}`,
+        res.status,
+        errorData.detail,
+      );
     }
 
     return res.json();
@@ -119,7 +158,11 @@ class MeridianApiClient {
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(errorData.detail || `LLM Settings fetch failed: ${res.statusText}`);
+      throw new ApiError(
+        errorData.detail || `LLM Settings fetch failed: ${res.statusText}`,
+        res.status,
+        errorData.detail,
+      );
     }
 
     return res.json();
@@ -134,7 +177,11 @@ class MeridianApiClient {
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(errorData.detail || `LLM Settings update failed: ${res.statusText}`);
+      throw new ApiError(
+        errorData.detail || `LLM Settings update failed: ${res.statusText}`,
+        res.status,
+        errorData.detail,
+      );
     }
 
     return res.json();
@@ -149,7 +196,11 @@ class MeridianApiClient {
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(errorData.detail || `Model fetch test failed: ${res.statusText}`);
+      throw new ApiError(
+        errorData.detail || `Model fetch test failed: ${res.statusText}`,
+        res.status,
+        errorData.detail,
+      );
     }
 
     return res.json();

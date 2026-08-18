@@ -1,5 +1,6 @@
 """FastAPI Gateway Application."""
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 
@@ -66,10 +67,16 @@ async def chat_completions(
                 msg["content"] = result.sanitized_text
 
     # Route to LiteLLM
-    response = await litellm_client.chat_completion(
-        messages=req.messages,
-        model=req.model,
-        temperature=req.temperature,
-        max_tokens=req.max_tokens,
-    )
+    try:
+        response = await litellm_client.chat_completion(
+            messages=req.messages,
+            model=req.model,
+            temperature=req.temperature,
+            max_tokens=req.max_tokens,
+        )
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"LLM provider error: {e}",
+        )
     return response

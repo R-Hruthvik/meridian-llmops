@@ -509,26 +509,41 @@ async def test_and_fetch_models(
         "models": models,
     }
 
-    elapsed_ms = (time.time() - start_time) * 1000 + 12.0
-
-    return {
-        "status": "connected",
-        "provider": provider,
-        "message": status_msg,
-        "latency_ms": elapsed_ms,
-        "models": models,
-    }
-
 
 @app.post("/v1/settings/llm/test")
 async def test_llm_connection(tenant_id: str = Depends(verify_api_key)):
     """Tests LLM provider connectivity with a test ping."""
     start = time.time()
-    latency = (time.time() - start) * 1000 + 15.0
-    model = _runtime_llm_settings.get("default_model", "gpt-4o-mini")
+    provider = _runtime_llm_settings.get("active_provider", "openai").lower()
+    config = get_active_llm_config()
+    api_key = config.get("api_key", "")
+    base_url = config.get("base_url", "https://api.openai.com/v1")
+    model = config.get("model", "gpt-4o-mini")
+    endpoint = f"{base_url.rstrip('/')}/models"
+
+    status_msg = f"Successfully connected to {model} via {provider}"
+    is_success = True
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            resp = await client.get(
+                endpoint,
+                headers=headers,
+            )
+            if resp.status_code != 200:
+                status_msg = f"Endpoint error (HTTP {resp.status_code})"
+                is_success = False
+    except (httpx.HTTPError, httpx.RequestError, OSError) as e:
+        status_msg = f"Connection Failed: {str(e)[:80]}"
+        is_success = False
+
+    latency = (time.time() - start) * 1000
     return {
-        "status": "connected",
-        "message": f"Successfully connected to {model} via LiteLLM Gateway",
+        "status": "success" if is_success else "error",
+        "message": status_msg,
         "latency_ms": latency,
     }
 

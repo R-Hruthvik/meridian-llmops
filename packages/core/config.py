@@ -1,7 +1,9 @@
 """Application configuration and environment settings."""
 
+import os
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,12 +15,12 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    api_key_secret: str = "meridian-test-secret-key-2026"
+    api_key_secret: str = Field(default_factory=lambda: os.environ.get("API_KEY_SECRET", ""))
     rate_limit_per_minute: int = 60
 
     # LiteLLM AI Gateway
     litellm_base_url: str = "http://localhost:4000"
-    litellm_master_key: str = "sk-litellm-master-key"
+    litellm_master_key: str = Field(default_factory=lambda: os.environ.get("LITELLM_MASTER_KEY", ""))
     default_llm_model: str = "gpt-4o-mini"
     critic_llm_model: str = "gpt-4o-mini"
     embedding_model: str = "BAAI/bge-m3"
@@ -33,7 +35,7 @@ class Settings(BaseSettings):
     # Neo4j Knowledge Graph
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
-    neo4j_password: str = "meridian_password"
+    neo4j_password: str = Field(default_factory=lambda: os.environ.get("NEO4J_PASSWORD", ""))
 
     # Langfuse Observability
     langfuse_host: str = "http://localhost:3000"
