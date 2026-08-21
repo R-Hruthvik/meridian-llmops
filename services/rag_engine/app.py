@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -34,9 +35,10 @@ app = FastAPI(
     description="Production-grade Self-Healing Agentic RAG Platform with Guardrails and Tracing",
 )
 
-# Core singletons
-vector_store = VectorStoreManager(in_memory=True)
-graph_store = KnowledgeGraphStore(in_memory=True)
+# Core singletons - in_memory forced only during testing, otherwise try real Docker services with fallback
+_is_testing = os.environ.get("APP_ENV") == "testing"
+vector_store = VectorStoreManager(in_memory=_is_testing)
+graph_store = KnowledgeGraphStore(in_memory=_is_testing)
 ingestion_pipeline = IngestionPipeline(vector_store=vector_store, graph_store=graph_store)
 retriever = HybridRetriever(vector_store=vector_store)
 input_guardrails = InputGuardrails()
@@ -46,8 +48,69 @@ llm_client = LiteLLMClient()
 
 logger = logging.getLogger("meridian.rag_engine")
 
+# Service readiness tracking
+_service_status: dict[str, Any] = {
+    "qdrant": {"status": "unknown", "endpoint": "", "reachable": False},
+    "neo4j": {"status": "unknown", "endpoint": "", "reachable": False},
+    "litellm": {"status": "unknown", "endpoint": "", "reachable": False},
+}
+
+
+def _probe_http(url: str, timeout: float = 2.0) -> bool:
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.get(url)
+            return resp.status_code < 500
+    except Exception:
+        return False
+
+
+def _check_docker_services() -> dict[str, Any]:
+    from packages.core.config import get_settings as _get_settings
+
+    try:
+        settings = _get_settings()
+    except Exception:
+        settings = None  # type: ignore[assignment]
+
+    qdrant_url = f"http://{getattr(settings, 'qdrant_host', 'localhost')}:{getattr(settings, 'qdrant_port', 6333)}/collections" if settings else "http://localhost:6333/collections"
+    neo4j_url = "http://localhost:7474"
+    litellm_url = f"{getattr(settings, 'litellm_base_url', 'http://localhost:4000').rstrip('/')}/health" if settings else "http://localhost:4000/health"
+
+    qdrant_ok = _probe_http(qdrant_url)
+    neo4j_ok = _probe_http(neo4j_url)
+    litellm_ok = _probe_http(litellm_url) or _probe_http(f"{litellm_url}/readiness")
+
+    statuses: dict[str, Any] = {
+        "qdrant": {"status": "reachable" if qdrant_ok else "degraded", "endpoint": qdrant_url, "reachable": qdrant_ok},
+        "neo4j": {"status": "reachable" if neo4j_ok else "degraded", "endpoint": neo4j_url, "reachable": neo4j_ok},
+        "litellm": {"status": "reachable" if litellm_ok else "degraded", "endpoint": litellm_url, "reachable": litellm_ok},
+    }
+    return statuses
+
+
+def _log_service_banner(statuses: dict[str, Any]) -> None:
+    lines = ["", "=" * 62, " Meridian Service Readiness Check", "=" * 62]
+    for name, info in statuses.items():
+        icon = "✓" if info["reachable"] else "✗"
+        state = "REACHABLE" if info["reachable"] else "DEGRADED (fallback active)"
+        lines.append(f"  {icon} {name:10s} [{state:30s}] {info['endpoint']}")
+    if all(v["reachable"] for v in statuses.values()):
+        lines.append("  All Docker services reachable - production mode")
+    else:
+        lines.append("  Some services degraded - in-memory fallback active (graceful)")
+    lines.append("=" * 62)
+    logger.info("\n".join(lines))
+
+
 # Persistent runtime LLM settings
-SETTINGS_FILE = Path(__file__).parents[2] / ".meridian_settings.json"
+def _get_settings_file() -> Path:
+    if os.environ.get("APP_ENV") == "testing":
+        return Path("/tmp/meridian_test_settings.json")
+    return Path(__file__).parents[2] / ".meridian_settings.json"
+
+
+SETTINGS_FILE = _get_settings_file()
 
 _default_llm_settings: dict[str, Any] = {
     "active_provider": "openai",
@@ -75,9 +138,10 @@ _default_llm_settings: dict[str, Any] = {
 
 def _load_persisted_settings() -> dict[str, Any]:
     settings = dict(_default_llm_settings)
-    if SETTINGS_FILE.exists():
+    settings_file = _get_settings_file()
+    if settings_file.exists():
         try:
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            with open(settings_file, "r", encoding="utf-8") as f:
                 saved = json.load(f)
                 settings.update(saved)
         except (OSError, ValueError, TypeError) as e:
@@ -85,9 +149,30 @@ def _load_persisted_settings() -> dict[str, Any]:
     return settings
 
 def _save_persisted_settings(settings: dict[str, Any]) -> None:
+    settings_file = _get_settings_file()
+    # Non-destructive merge: preserve existing non-blank keys if incoming is blank/masked
+    existing: dict[str, Any] = {}
+    if settings_file.exists():
+        try:
+            with open(settings_file, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+        except (OSError, ValueError, TypeError):
+            existing = {}
+    merged = dict(existing)
+    for k, v in settings.items():
+        if isinstance(v, str):
+            if "..." in v or v == "***":
+                continue
+            if v == "" and k.endswith("_api_key") and existing.get(k):
+                # Never wipe a saved key with blank submission
+                continue
+            if v == "" and k in ("custom_base_url", "litellm_base_url") and existing.get(k):
+                # Preserve existing base URLs if blank
+                continue
+        merged[k] = v
     try:
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=2)
+        with open(settings_file, "w", encoding="utf-8") as f:
+            json.dump(merged, f, indent=2)
     except (OSError, ValueError, TypeError) as e:
         logger.warning(f"Could not save settings file: {e}")
 
@@ -150,31 +235,16 @@ def get_active_llm_config() -> dict[str, Any]:
     }
 
 
-# Hydrate knowledge base from dedicated storage; auto-seed sample_docs on cold-start (0 chunks)
+# Check Docker-backed services readiness (non-blocking, graceful fallback)
+try:
+    _service_status = _check_docker_services()
+    _log_service_banner(_service_status)
+except Exception as e:  # noqa: BLE001
+    logger.warning("Service readiness check failed: %s", e)
+
+# Hydrate knowledge base from dedicated storage - clean start (zero mock data)
 _docs_loaded = ingestion_pipeline.load_persisted_knowledge_base()
-if _docs_loaded == 0 or len(vector_store.get_all_chunks()) == 0:
-    # Cold-start: hydrate returned 0 → seed sample_docs via pipeline.ingest_text
-    sample_docs_dir = Path(__file__).parents[2] / "sample_docs"
-    if sample_docs_dir.exists():
-        for doc_file in sample_docs_dir.glob("*.md"):
-            try:
-                title = doc_file.stem.replace("_", " ").title()
-                ingestion_pipeline.ingest_text(
-                    text=doc_file.read_text(encoding="utf-8", errors="ignore"),
-                    title=title,
-                    doc_format=DocumentFormat.MARKDOWN,
-                    source=str(doc_file.name),
-                )
-            except (OSError, ValueError) as e:
-                logger.warning("Cold-start seed failed for %s: %s", doc_file, e)
-    # Fallback: ensure at least one chunk exists if sample_docs empty
-    if len(vector_store.get_all_chunks()) == 0:
-        ingestion_pipeline.ingest_text(
-            text="Meridian platform uses Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.",
-            title="Meridian System Architecture",
-            doc_format=DocumentFormat.MARKDOWN,
-            source="cold_start_seed.md",
-        )
+logger.info("Hydrated %d documents from dedicated storage (clean start - no mock seeding).", _docs_loaded)
 retriever.update_chunks(vector_store.get_all_chunks())
 agent_graph = build_rag_agent_graph(
     retriever=retriever,
@@ -186,7 +256,13 @@ agent_graph = build_rag_agent_graph(
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "meridian-rag-engine"}
+    return {
+        "status": "healthy",
+        "service": "meridian-rag-engine",
+        "storage_documents": _docs_loaded,
+        "vector_chunks": len(vector_store.get_all_chunks()),
+        "services": _service_status,
+    }
 
 
 @app.post("/v1/ingest")
@@ -489,6 +565,35 @@ async def list_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
         "total_chunks": total_chunks,
         "total_entities": total_entities,
         "documents": docs,
+    }
+
+
+@app.get("/v1/documents/catalog")
+async def catalog_alias_endpoint(tenant_id: str = Depends(verify_api_key)):
+    """Alias for document catalog - returns same as /v1/documents for UI compatibility."""
+    docs = ingestion_pipeline.get_documents()
+    total_chunks = sum(d.get("chunk_count", 0) for d in docs)
+    total_entities = sum(d.get("entities_count", 0) for d in docs)
+    return {
+        "total_documents": len(docs),
+        "total_chunks": total_chunks,
+        "total_entities": total_entities,
+        "documents": docs,
+    }
+
+
+@app.get("/v1/documents/{doc_id}/chunks")
+async def get_document_chunks_endpoint(doc_id: str, tenant_id: str = Depends(verify_api_key)):
+    """Returns all structural chunks for a document with section headings."""
+    doc = ingestion_pipeline.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
+    chunks = doc.get("chunks", [])
+    return {
+        "document_id": doc_id,
+        "title": doc.get("title", ""),
+        "total_chunks": len(chunks),
+        "chunks": chunks,
     }
 
 

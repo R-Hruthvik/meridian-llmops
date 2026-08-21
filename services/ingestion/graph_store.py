@@ -3,6 +3,7 @@
 import logging
 import re
 
+from packages.core.config import get_settings
 from packages.core.models import Entity, Relationship
 
 logger = logging.getLogger("meridian.ingestion.graph_store")
@@ -18,6 +19,30 @@ class KnowledgeGraphStore:
         # doc_id -> set(entity names) and doc_id -> relationships for targeted cleanup
         self._doc_entities: dict[str, set[str]] = {}
         self._doc_relationships: dict[str, list[Relationship]] = {}
+        self.driver: object | None = None
+        self._neo4j_available: bool = False
+        self._neo4j_fallback: bool = False
+
+        if not self.in_memory:
+            try:
+                from neo4j import GraphDatabase  # type: ignore[import-untyped]
+
+                settings = get_settings()
+                self.driver = GraphDatabase.driver(
+                    settings.neo4j_uri,
+                    auth=(settings.neo4j_user, settings.neo4j_password or "meridian_password"),
+                )
+                # Test connectivity
+                self.driver.verify_connectivity()  # type: ignore[attr-defined]
+                self._neo4j_available = True
+                logger.info("Neo4j connected at %s", settings.neo4j_uri)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Neo4j unavailable - using in-memory fallback: %s", e)
+                self.driver = None
+                self._neo4j_available = False
+                self._neo4j_fallback = True
+        else:
+            logger.info("KnowledgeGraphStore in-memory mode (forced)")
 
     def extract_entities_and_relations(self, text: str) -> tuple[list[Entity], list[Relationship]]:
         # Hybrid NER pattern extractor for systems, components, and concepts
@@ -74,6 +99,29 @@ class KnowledgeGraphStore:
         # Track per-document lineage for precise deletion (hint: doc_id→chunk_ids index)
         self._doc_entities[doc_id] = {e.name for e in entities}
         self._doc_relationships[doc_id] = list(relations)
+
+        # Persist to Neo4j if available
+        if self._neo4j_available and self.driver is not None:
+            try:
+                with self.driver.session() as session:  # type: ignore[attr-defined]
+                    for e in entities:
+                        session.run(  # type: ignore[attr-defined]
+                            "MERGE (e:Entity {name: $name}) ON CREATE SET e.type = $entity_type, e.created_at = datetime(), e.doc_id = $doc_id",
+                            name=e.name,
+                            entity_type=e.entity_type,
+                            doc_id=doc_id,
+                        )
+                    for r in relations:
+                        session.run(  # type: ignore[attr-defined]
+                            "MATCH (s:Entity {name: $source}), (t:Entity {name: $target}) MERGE (s)-[rel:RELATION {type: $rel_type}]->(t) ON CREATE SET rel.created_at = datetime(), rel.doc_id = $doc_id",
+                            source=r.source_entity,
+                            target=r.target_entity,
+                            rel_type=r.relation_type,
+                            doc_id=doc_id,
+                        )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Neo4j extract_and_store failed for %s: %s", doc_id, e)
+
         return entities, relations
 
     def delete_by_document(self, doc_id: str) -> int:
@@ -95,11 +143,11 @@ class KnowledgeGraphStore:
                 del self.entities[name]
                 removed += 1
         # If Neo4j client exists (non in_memory), delete via Cypher
-        if not self.in_memory and hasattr(self, "driver") and self.driver:
+        if self._neo4j_available and self.driver is not None:
             try:
-                with self.driver.session() as session:
-                    session.run("MATCH (n {doc_id: $doc_id}) DETACH DELETE n", doc_id=doc_id)
-                    session.run(
+                with self.driver.session() as session:  # type: ignore[attr-defined]
+                    session.run("MATCH (n {doc_id: $doc_id}) DETACH DELETE n", doc_id=doc_id)  # type: ignore[attr-defined]
+                    session.run(  # type: ignore[attr-defined]
                         "MATCH ()-[r {doc_id: $doc_id}]-() DELETE r",
                         doc_id=doc_id,
                     )
@@ -113,14 +161,38 @@ class KnowledgeGraphStore:
         self.relationships.clear()
         self._doc_entities.clear()
         self._doc_relationships.clear()
-        if not self.in_memory and hasattr(self, "driver") and self.driver:
+        if self._neo4j_available and self.driver is not None:
             try:
-                with self.driver.session() as session:
-                    session.run("MATCH (n) DETACH DELETE n")
+                with self.driver.session() as session:  # type: ignore[attr-defined]
+                    session.run("MATCH (n) DETACH DELETE n")  # type: ignore[attr-defined]
             except Exception as e:  # noqa: BLE001 - Neo4j driver may raise varied exceptions
                 logger.warning("Neo4j clear_all failed: %s", e)
 
     def query_entity_neighborhood(self, entity_name: str) -> list[Relationship]:
+        if self._neo4j_available and self.driver is not None:
+            try:
+                with self.driver.session() as session:  # type: ignore[attr-defined]
+                    result = session.run(  # type: ignore[attr-defined]
+                        "MATCH (e:Entity {name: $entity_name})-[r]-(neighbor:Entity) RETURN e.name AS source_entity, type(r) AS relation_type, neighbor.name AS target_entity LIMIT 50",
+                        entity_name=entity_name,
+                    )
+                    records = list(result)  # type: ignore[arg-type]
+                    if records:
+                        neo_rels: list[Relationship] = []
+                        for rec in records:
+                            data = rec.data() if hasattr(rec, "data") else dict(rec)
+                            neo_rels.append(
+                                Relationship(
+                                    source_entity=data.get("source_entity", entity_name),
+                                    target_entity=data.get("target_entity", ""),
+                                    relation_type=data.get("relation_type", "RELATES_TO"),
+                                )
+                            )
+                        if neo_rels:
+                            return neo_rels
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Neo4j query_neighborhood failed for %s: %s", entity_name, e)
+
         return [
             r for r in self.relationships
             if r.source_entity.lower() == entity_name.lower() or r.target_entity.lower() == entity_name.lower()
@@ -128,3 +200,7 @@ class KnowledgeGraphStore:
 
     def query_neighborhood(self, entity_name: str) -> list[Relationship]:
         return self.query_entity_neighborhood(entity_name)
+
+    @property
+    def is_fallback(self) -> bool:
+        return self._neo4j_fallback or not self._neo4j_available and not self.in_memory
