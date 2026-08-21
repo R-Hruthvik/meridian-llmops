@@ -16,13 +16,18 @@ class TestFix1SettingsFile:
 
     def test_no_groq_key_in_settings_file(self):
         settings_path = Path(__file__).parent.parent / ".meridian_settings.json"
+        if not settings_path.exists():
+            # Clean checkout (CI) has no persisted file — default is blank, so pass
+            return
         data = json.loads(settings_path.read_text())
-        assert data["groq_api_key"] == "", "groq_api_key must be blanked"
+        assert data.get("groq_api_key", "") == "", "groq_api_key must be blanked"
 
     def test_no_custom_key_in_settings_file(self):
         settings_path = Path(__file__).parent.parent / ".meridian_settings.json"
+        if not settings_path.exists():
+            return
         data = json.loads(settings_path.read_text())
-        assert data["custom_api_key"] == "", "custom_api_key must be blanked"
+        assert data.get("custom_api_key", "") == "", "custom_api_key must be blanked"
 
     def test_settings_file_in_gitignore(self):
         gitignore_path = Path(__file__).parent.parent / ".gitignore"

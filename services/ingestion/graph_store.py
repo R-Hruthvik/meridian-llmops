@@ -1,8 +1,11 @@
 """Knowledge Graph extractor and store for Neo4j with in-memory graph fallback."""
 
+import logging
 import re
 
 from packages.core.models import Entity, Relationship
+
+logger = logging.getLogger("meridian.ingestion.graph_store")
 
 
 class KnowledgeGraphStore:
@@ -100,8 +103,8 @@ class KnowledgeGraphStore:
                         "MATCH ()-[r {doc_id: $doc_id}]-() DELETE r",
                         doc_id=doc_id,
                     )
-            except Exception:
-                pass
+            except Exception as e:  # noqa: BLE001 - Neo4j driver may raise varied exceptions
+                logger.warning("Neo4j delete_by_document failed for %s: %s", doc_id, e)
         return removed
 
     def clear_all_graph(self) -> None:
@@ -114,8 +117,8 @@ class KnowledgeGraphStore:
             try:
                 with self.driver.session() as session:
                     session.run("MATCH (n) DETACH DELETE n")
-            except Exception:
-                pass
+            except Exception as e:  # noqa: BLE001 - Neo4j driver may raise varied exceptions
+                logger.warning("Neo4j clear_all failed: %s", e)
 
     def query_entity_neighborhood(self, entity_name: str) -> list[Relationship]:
         return [

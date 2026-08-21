@@ -1,10 +1,9 @@
 """API key authentication and token bucket rate limiting."""
 
 import asyncio
+import os
 import time
 from collections import defaultdict
-
-import os
 
 from fastapi import Header, HTTPException, status
 

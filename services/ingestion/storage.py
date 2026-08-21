@@ -147,9 +147,9 @@ class DocumentStorageManager:
                 if doc_path.exists():
                     raw_text = doc_path.read_text(encoding="utf-8", errors="ignore")
 
-            meta["chunks"] = chunks
-            meta["text"] = raw_text
-            return meta
+            meta["chunks"] = chunks  # type: ignore[typeddict-unknown-key]
+            meta["text"] = raw_text  # type: ignore[typeddict-unknown-key]
+            return meta  # type: ignore[no-any-return]
         except (OSError, ValueError, KeyError) as e:
             logger.error("Failed to load document %s: %s", doc_id, e)
             return None
