@@ -8,6 +8,15 @@ from services.rag_engine.app import app
 
 @pytest.fixture
 def client():
+    # Ensure test document is present for seam integration queries
+    from services.rag_engine.app import ingestion_pipeline, retriever, vector_store
+    if len(ingestion_pipeline.get_documents()) == 0:
+        ingestion_pipeline.ingest_text(
+            title="Meridian Storage Architecture",
+            text="Meridian platform uses Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.",
+            source="test_seam.md",
+        )
+        retriever.update_chunks(vector_store.get_all_chunks())
     return TestClient(app)
 
 

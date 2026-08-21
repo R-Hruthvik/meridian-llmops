@@ -72,3 +72,17 @@ class VectorStoreManager:
 
     def get_all_chunks(self) -> list[Chunk]:
         return list(self._memory_chunks.values())
+
+    def get_chunks_by_document(self, doc_id: str) -> list[Chunk]:
+        return [c for c in self._memory_chunks.values() if c.document_id == doc_id]
+
+    def delete_chunks_by_document(self, doc_id: str) -> int:
+        to_delete = [c_id for c_id, c in self._memory_chunks.items() if c.document_id == doc_id]
+        for c_id in to_delete:
+            self._memory_chunks.pop(c_id, None)
+            self._memory_vectors.pop(c_id, None)
+        return len(to_delete)
+
+    def clear(self) -> None:
+        self._memory_chunks.clear()
+        self._memory_vectors.clear()

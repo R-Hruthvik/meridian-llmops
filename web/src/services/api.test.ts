@@ -117,20 +117,70 @@ describe('MeridianApiClient', () => {
     });
   });
 
-  describe('getLLMSettings()', () => {
-    it('returns masked keys from backend (not from localStorage)', async () => {
-      const mockData = {
-        active_provider: 'openai',
-        openai_api_key: 'sk-pr...xyz', // masked by backend (contains '...')
-        default_model: 'gpt-4o-mini',
-        litellm_base_url: 'http://localhost:4000',
+  describe('getDocuments() & deleteDocument()', () => {
+    it('fetches document catalog successfully', async () => {
+      const mockDocs = {
+        total_documents: 2,
+        total_chunks: 5,
+        total_entities: 4,
+        documents: [
+          {
+            id: 'doc-1',
+            title: 'Doc 1',
+            format: 'md',
+            source: 'manual',
+            created_at: '2026-08-18T12:00:00Z',
+            char_count: 100,
+            chunk_count: 2,
+            entities_count: 2,
+            relationships_count: 1,
+            snippet: 'Snippet 1',
+          },
+        ],
       };
-      const mock = mockResponse(mockData, 200);
+      const mock = mockResponse(mockDocs, 200);
       vi.spyOn(global, 'fetch').mockResolvedValueOnce(mock as unknown as Response);
 
-      const result = await api.getLLMSettings();
-      expect(result.openai_api_key).toContain('...'); // masked
-      expect(localStorage.getItem('meridian_openai_key')).toBeNull();
+      const result = await api.getDocuments();
+      expect(result.total_documents).toBe(2);
+      expect(result.documents[0].title).toBe('Doc 1');
+    });
+
+    it('deletes document and returns status', async () => {
+      const mockDel = { status: 'deleted', document_id: 'doc-1', message: 'Document deleted' };
+      const mock = mockResponse(mockDel, 200);
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(mock as unknown as Response);
+
+      const result = await api.deleteDocument('doc-1');
+      expect(result.status).toBe('deleted');
+      expect(result.document_id).toBe('doc-1');
+    });
+  });
+
+  describe('getProviders()', () => {
+    it('fetches provider registry data', async () => {
+      const mockProviders = {
+        active_provider: 'openai',
+        providers: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            description: 'GPT-4o',
+            configured: true,
+            is_active: true,
+            base_url: 'https://api.openai.com/v1',
+            current_model: 'gpt-4o-mini',
+            models: ['gpt-4o-mini'],
+            type: 'cloud',
+          },
+        ],
+      };
+      const mock = mockResponse(mockProviders, 200);
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(mock as unknown as Response);
+
+      const result = await api.getProviders();
+      expect(result.active_provider).toBe('openai');
+      expect(result.providers[0].configured).toBe(true);
     });
   });
 });

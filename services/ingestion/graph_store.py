@@ -12,6 +12,9 @@ class KnowledgeGraphStore:
         self.in_memory = in_memory
         self.entities: dict[str, Entity] = {}
         self.relationships: list[Relationship] = []
+        # doc_id -> set(entity names) and doc_id -> relationships for targeted cleanup
+        self._doc_entities: dict[str, set[str]] = {}
+        self._doc_relationships: dict[str, list[Relationship]] = {}
 
     def extract_entities_and_relations(self, text: str) -> tuple[list[Entity], list[Relationship]]:
         # Hybrid NER pattern extractor for systems, components, and concepts
@@ -65,7 +68,54 @@ class KnowledgeGraphStore:
         for e in entities:
             self.entities[e.name] = e
         self.relationships.extend(relations)
+        # Track per-document lineage for precise deletion (hint: doc_id→chunk_ids index)
+        self._doc_entities[doc_id] = {e.name for e in entities}
+        self._doc_relationships[doc_id] = list(relations)
         return entities, relations
+
+    def delete_by_document(self, doc_id: str) -> int:
+        """Removes entities and relationships tied to doc_id; handles Neo4j persistence if present."""
+        removed = 0
+        doc_ents = self._doc_entities.pop(doc_id, set())
+        doc_rels = self._doc_relationships.pop(doc_id, [])
+        # Remove relationships first
+        for rel in doc_rels:
+            if rel in self.relationships:
+                self.relationships.remove(rel)
+                removed += 1
+        # Remove entities only if no other doc references them
+        remaining_ents = set()
+        for ents in self._doc_entities.values():
+            remaining_ents.update(ents)
+        for name in list(doc_ents):
+            if name not in remaining_ents and name in self.entities:
+                del self.entities[name]
+                removed += 1
+        # If Neo4j client exists (non in_memory), delete via Cypher
+        if not self.in_memory and hasattr(self, "driver") and self.driver:
+            try:
+                with self.driver.session() as session:
+                    session.run("MATCH (n {doc_id: $doc_id}) DETACH DELETE n", doc_id=doc_id)
+                    session.run(
+                        "MATCH ()-[r {doc_id: $doc_id}]-() DELETE r",
+                        doc_id=doc_id,
+                    )
+            except Exception:
+                pass
+        return removed
+
+    def clear_all_graph(self) -> None:
+        """Clears all in-memory graph state and Neo4j if configured."""
+        self.entities.clear()
+        self.relationships.clear()
+        self._doc_entities.clear()
+        self._doc_relationships.clear()
+        if not self.in_memory and hasattr(self, "driver") and self.driver:
+            try:
+                with self.driver.session() as session:
+                    session.run("MATCH (n) DETACH DELETE n")
+            except Exception:
+                pass
 
     def query_entity_neighborhood(self, entity_name: str) -> list[Relationship]:
         return [

@@ -9,6 +9,8 @@ dist/
 build/
 .env
 .meridian_settings.json
+.meridian_knowledge_base.json
+storage/
 web-articles/
 web/node_modules/
 web/dist/

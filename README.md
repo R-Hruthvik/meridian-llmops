@@ -103,7 +103,7 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 ```
 
-### 3. Launch Infrastructure
+### 3. Launch Infrastructure (Optional)
 
 ```bash
 docker-compose up -d
@@ -114,6 +114,16 @@ Services started:
 - **Qdrant Vector DB**: `http://localhost:6333`
 - **Neo4j Graph Browser**: `http://localhost:7474`
 - **Langfuse Observability**: `http://localhost:3000`
+
+### 4. Start Application
+
+```bash
+# Start in Development Mode (FastAPI + Vite dev server with hot reload)
+./start.sh
+
+# Or start in Unified Production Mode (Builds web UI and serves on port 8000)
+./start.sh --prod
+```
 
 ---
 

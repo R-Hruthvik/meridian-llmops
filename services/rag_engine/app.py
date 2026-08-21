@@ -150,31 +150,31 @@ def get_active_llm_config() -> dict[str, Any]:
     }
 
 
-# Pre-seed documentation knowledge base for immediate querying
-ingestion_pipeline.ingest_text(
-    text="""# Meridian Platform Architecture
-Meridian is an enterprise LLMOps platform combining self-healing Agentic RAG with LiteLLM gateway governance.
-The system features dual-memory storage: Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.
-Input Guardrails prevent prompt injections and mask PII, while Critic Agent evaluates grounding in LangGraph.
-The LangGraph cyclic loop is capped to a maximum of 3 query reformulation iterations before standardized refusal.
-DeepEval enforces automated quality assertions (Faithfulness >= 0.90, Answer Relevancy >= 0.80) in GitHub Actions CI/CD.
-""",
-    title="Meridian System Architecture",
-    doc_format=DocumentFormat.MARKDOWN,
-    source="architecture_overview.md",
-)
-
-sample_docs_dir = Path(__file__).parents[2] / "sample_docs"
-if sample_docs_dir.exists():
-    for doc_file in sample_docs_dir.glob("*.md"):
-        title = doc_file.stem.replace("_", " ").title()
+# Hydrate knowledge base from dedicated storage; auto-seed sample_docs on cold-start (0 chunks)
+_docs_loaded = ingestion_pipeline.load_persisted_knowledge_base()
+if _docs_loaded == 0 or len(vector_store.get_all_chunks()) == 0:
+    # Cold-start: hydrate returned 0 → seed sample_docs via pipeline.ingest_text
+    sample_docs_dir = Path(__file__).parents[2] / "sample_docs"
+    if sample_docs_dir.exists():
+        for doc_file in sample_docs_dir.glob("*.md"):
+            try:
+                title = doc_file.stem.replace("_", " ").title()
+                ingestion_pipeline.ingest_text(
+                    text=doc_file.read_text(encoding="utf-8", errors="ignore"),
+                    title=title,
+                    doc_format=DocumentFormat.MARKDOWN,
+                    source=str(doc_file.name),
+                )
+            except (OSError, ValueError) as e:
+                logger.warning("Cold-start seed failed for %s: %s", doc_file, e)
+    # Fallback: ensure at least one chunk exists if sample_docs empty
+    if len(vector_store.get_all_chunks()) == 0:
         ingestion_pipeline.ingest_text(
-            text=doc_file.read_text(encoding="utf-8", errors="ignore"),
-            title=title,
+            text="Meridian platform uses Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.",
+            title="Meridian System Architecture",
             doc_format=DocumentFormat.MARKDOWN,
-            source=str(doc_file.name),
+            source="cold_start_seed.md",
         )
-
 retriever.update_chunks(vector_store.get_all_chunks())
 agent_graph = build_rag_agent_graph(
     retriever=retriever,
@@ -194,13 +194,14 @@ async def ingest_document_endpoint(
     payload: dict[str, Any],
     tenant_id: str = Depends(verify_api_key),
 ):
-    """Ingests text or documents into Qdrant vector store and Neo4j knowledge graph."""
+    """Ingests text or documents into dedicated disk storage, Qdrant vector store, and Neo4j knowledge graph."""
     text = payload.get("text", "")
     title = payload.get("title", "Uploaded Document")
+    source = payload.get("source", "manual")
     if not text.strip():
         raise HTTPException(status_code=400, detail="Document text cannot be empty.")
 
-    result = ingestion_pipeline.ingest_text(text=text, title=title)
+    result = ingestion_pipeline.ingest_text(text=text, title=title, source=source)
     retriever.update_chunks(vector_store.get_all_chunks())
     return result
 
@@ -318,32 +319,196 @@ async def get_llm_settings(tenant_id: str = Depends(verify_api_key)):
     return masked
 
 
+@app.get("/v1/settings/providers")
+async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
+    """Returns status and details for all configured and supported LLM providers."""
+    active = _runtime_llm_settings.get("active_provider", "openai").lower()
+    custom_url = _runtime_llm_settings.get("custom_base_url", "https://api.groq.com/openai/v1")
+    prov_models = _runtime_llm_settings.get("provider_models", {})
+
+    providers_info = [
+        {
+            "id": "openai",
+            "name": "OpenAI",
+            "description": "GPT-4o, GPT-4o-mini, o1, o3-mini",
+            "configured": bool(_runtime_llm_settings.get("openai_api_key")),
+            "is_active": active == "openai",
+            "base_url": "https://api.openai.com/v1",
+            "current_model": _runtime_llm_settings.get("default_model") if active == "openai" else prov_models.get("openai", "gpt-4o-mini"),
+            "models": ["gpt-4o-mini", "gpt-4o", "o3-mini", "o1"],
+            "type": "cloud",
+        },
+        {
+            "id": "anthropic",
+            "name": "Anthropic",
+            "description": "Claude 3.7 Sonnet, Claude 3.5 Sonnet & Haiku",
+            "configured": bool(_runtime_llm_settings.get("anthropic_api_key")),
+            "is_active": active == "anthropic",
+            "base_url": "https://api.anthropic.com/v1",
+            "current_model": _runtime_llm_settings.get("default_model") if active == "anthropic" else prov_models.get("anthropic", "claude-3-5-sonnet-20241022"),
+            "models": ["claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+            "type": "cloud",
+        },
+        {
+            "id": "groq",
+            "name": "Groq Cloud",
+            "description": "Ultra-fast LPU inference (Llama 3.3, Mixtral)",
+            "configured": bool(_runtime_llm_settings.get("groq_api_key") or _runtime_llm_settings.get("custom_api_key")),
+            "is_active": active == "groq",
+            "base_url": _runtime_llm_settings.get("custom_base_url") or "https://api.groq.com/openai/v1",
+            "current_model": _runtime_llm_settings.get("default_model") if active == "groq" else prov_models.get("groq", "llama-3.3-70b-versatile"),
+            "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+            "type": "cloud",
+        },
+        {
+            "id": "openrouter",
+            "name": "OpenRouter",
+            "description": "Unified routing across 200+ models",
+            "configured": bool(_runtime_llm_settings.get("openrouter_api_key") or _runtime_llm_settings.get("custom_api_key")),
+            "is_active": active == "openrouter",
+            "base_url": "https://openrouter.ai/api/v1",
+            "current_model": _runtime_llm_settings.get("default_model") if active == "openrouter" else prov_models.get("openrouter", "meta-llama/llama-3.3-70b-instruct"),
+            "models": ["meta-llama/llama-3.3-70b-instruct", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat"],
+            "type": "cloud",
+        },
+        {
+            "id": "deepseek",
+            "name": "DeepSeek",
+            "description": "DeepSeek-V3 & DeepSeek-R1 reasoning models",
+            "configured": bool(_runtime_llm_settings.get("deepseek_api_key") or _runtime_llm_settings.get("custom_api_key")),
+            "is_active": active == "deepseek",
+            "base_url": "https://api.deepseek.com/v1",
+            "current_model": _runtime_llm_settings.get("default_model") if active == "deepseek" else prov_models.get("deepseek", "deepseek-chat"),
+            "models": ["deepseek-chat", "deepseek-reasoner"],
+            "type": "cloud",
+        },
+        {
+            "id": "ollama",
+            "name": "Local Ollama",
+            "description": "Local offline model execution via Ollama daemon",
+            "configured": True,
+            "is_active": active == "ollama",
+            "base_url": "http://localhost:11434",
+            "current_model": _runtime_llm_settings.get("default_model") if active == "ollama" else prov_models.get("ollama", "llama3"),
+            "models": ["llama3:latest", "mistral:latest", "qwen2.5:latest"],
+            "type": "local",
+        },
+        {
+            "id": "custom",
+            "name": "Custom OpenAI-Compatible / Local vLLM",
+            "description": "Custom API endpoint (vLLM, LMStudio, TGI, SGLang)",
+            "configured": bool(_runtime_llm_settings.get("custom_base_url") or _runtime_llm_settings.get("custom_api_key")),
+            "is_active": active in ["custom", "openai_compatible"],
+            "base_url": custom_url,
+            "current_model": _runtime_llm_settings.get("default_model") if active in ["custom", "openai_compatible"] else prov_models.get("custom", "llama-3.3-70b-versatile"),
+            "models": ["llama-3.3-70b-versatile", "deepseek-chat", "gpt-4o-mini"],
+            "type": "custom",
+        },
+    ]
+
+    return {
+        "active_provider": active,
+        "providers": providers_info,
+    }
+
+
 @app.post("/v1/settings/llm")
 async def update_llm_settings(
     payload: dict[str, Any],
     tenant_id: str = Depends(verify_api_key),
 ):
-    """Updates runtime LLM API keys and default model and persists to disk."""
+    """Updates runtime LLM API keys and default model and persists to disk safely."""
     for k, v in payload.items():
         if v is not None:
-            # If the value is a masked string, do not overwrite the existing unmasked secret
-            if isinstance(v, str) and ("..." in v or v == "***"):
-                continue
+            # If the value is a masked string or empty string for an existing saved key, do not overwrite!
+            if isinstance(v, str):
+                if "..." in v or v == "***":
+                    continue
+                if v == "" and k.endswith("_api_key") and _runtime_llm_settings.get(k):
+                    # Preserve existing API key if user left field blank
+                    continue
             _runtime_llm_settings[k] = v
+
+    # Also update provider_models map if default_model and active_provider were supplied
+    prov = _runtime_llm_settings.get("active_provider", "openai")
+    model = _runtime_llm_settings.get("default_model")
+    if prov and model:
+        if "provider_models" not in _runtime_llm_settings:
+            _runtime_llm_settings["provider_models"] = {}
+        _runtime_llm_settings["provider_models"][prov] = model
 
     _save_persisted_settings(_runtime_llm_settings)
 
-    provider = _runtime_llm_settings.get("active_provider", "openai")
-    base_url = _runtime_llm_settings.get("custom_base_url") if provider in ["groq", "openrouter", "deepseek", "custom"] else None
-    if provider == "ollama":
-        base_url = "http://localhost:11434"
-    api_key = _runtime_llm_settings.get(f"{provider}_api_key") or _runtime_llm_settings.get("custom_api_key")
-
     global agent_graph, llm_client
-    llm_client = LiteLLMClient(base_url=base_url, master_key=api_key)
-    agent_graph = build_rag_agent_graph(retriever=retriever, graph_store=graph_store, llm_client=llm_client)
+    llm_client = LiteLLMClient()
+    agent_graph = build_rag_agent_graph(
+        retriever=retriever,
+        graph_store=graph_store,
+        llm_client=llm_client,
+        llm_config_getter=get_active_llm_config,
+    )
 
     return _runtime_llm_settings
+
+
+@app.delete("/v1/documents")
+async def clear_all_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
+    """Clears all documents and chunks from dedicated storage and active memory."""
+    count = ingestion_pipeline.clear_all()
+    retriever.update_chunks(vector_store.get_all_chunks())
+    return {"status": "cleared", "deleted_count": count, "message": f"All {count} documents removed from storage"}
+
+
+@app.post("/v1/documents/seed-samples")
+async def seed_sample_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
+    """Seeds or resets the default sample documentation into the knowledge base."""
+    sample_docs_dir = Path(__file__).parents[2] / "sample_docs"
+    count = 0
+    if sample_docs_dir.exists():
+        for doc_file in sample_docs_dir.glob("*.md"):
+            title = doc_file.stem.replace("_", " ").title()
+            ingestion_pipeline.ingest_text(
+                text=doc_file.read_text(encoding="utf-8", errors="ignore"),
+                title=title,
+                doc_format=DocumentFormat.MARKDOWN,
+                source=str(doc_file.name),
+            )
+            count += 1
+    retriever.update_chunks(vector_store.get_all_chunks())
+    return {"status": "seeded", "documents_seeded": count}
+
+
+@app.get("/v1/documents")
+async def list_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
+    """Lists all stored documents in the permanent knowledge base catalog."""
+    docs = ingestion_pipeline.get_documents()
+    total_chunks = sum(d.get("chunk_count", 0) for d in docs)
+    total_entities = sum(d.get("entities_count", 0) for d in docs)
+    return {
+        "total_documents": len(docs),
+        "total_chunks": total_chunks,
+        "total_entities": total_entities,
+        "documents": docs,
+    }
+
+
+@app.get("/v1/documents/{doc_id}")
+async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(verify_api_key)):
+    """Retrieves full document metadata and its constituent chunks."""
+    doc = ingestion_pipeline.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
+    return doc
+
+
+@app.delete("/v1/documents/{doc_id}")
+async def delete_document_endpoint(doc_id: str, tenant_id: str = Depends(verify_api_key)):
+    """Deletes a document and its chunks from vector and graph stores."""
+    deleted = ingestion_pipeline.delete_document(doc_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
+    retriever.update_chunks(vector_store.get_all_chunks())
+    return {"status": "deleted", "document_id": doc_id, "message": "Document successfully deleted"}
 
 
 @app.post("/v1/settings/llm/test-and-fetch-models")
@@ -497,6 +662,19 @@ async def test_and_fetch_models(
     except (httpx.HTTPError, httpx.RequestError, OSError, ValueError, KeyError) as e:
         status_msg = f"Connection Failed: Could not reach {provider} endpoint ({str(e)[:80]})"
         is_success = False
+
+    if is_success and models:
+        # Cache successfully verified models & endpoints
+        if "provider_available_models" not in _runtime_llm_settings:
+            _runtime_llm_settings["provider_available_models"] = {}
+        _runtime_llm_settings["provider_available_models"][provider] = models
+        if api_key:
+            if provider in ["groq", "openrouter", "deepseek", "custom"]:
+                _runtime_llm_settings["custom_api_key"] = api_key
+            _runtime_llm_settings[f"{provider}_api_key"] = api_key
+        if base_url and provider in ["groq", "openrouter", "deepseek", "custom"]:
+            _runtime_llm_settings["custom_base_url"] = base_url
+        _save_persisted_settings(_runtime_llm_settings)
 
     elapsed_ms = (time.time() - start_time) * 1000
 

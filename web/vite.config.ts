@@ -1,8 +1,13 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import type { InlineConfig } from 'vitest/node'
+
+interface VitestConfigExport extends UserConfig {
+  test?: InlineConfig
+}
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default (defineConfig as (config: VitestConfigExport) => VitestConfigExport)({
   plugins: [react()],
   server: {
     port: 5173,

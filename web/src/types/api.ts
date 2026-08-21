@@ -103,3 +103,54 @@ export interface LLMTestAndFetchResponse {
   latency_ms: number;
   models: string[];
 }
+
+export interface DocumentChunk {
+  id: string;
+  chunk_index: number;
+  section_heading?: string | null;
+  text: string;
+  metadata?: Record<string, any>;
+  embedding?: number[] | null;
+}
+
+export interface DocumentSummary {
+  id: string;
+  title: string;
+  format: string;
+  source: string;
+  created_at: string;
+  char_count: number;
+  chunk_count: number;
+  entities_count: number;
+  relationships_count: number;
+  snippet: string;
+}
+
+export interface DocumentDetail extends DocumentSummary {
+  text: string;
+  chunks: DocumentChunk[];
+}
+
+export interface DocumentListResponse {
+  total_documents: number;
+  total_chunks: number;
+  total_entities: number;
+  documents: DocumentSummary[];
+}
+
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  description: string;
+  configured: boolean;
+  is_active: boolean;
+  base_url: string;
+  current_model: string;
+  models: string[];
+  type: 'cloud' | 'local' | 'custom';
+}
+
+export interface ProvidersResponse {
+  active_provider: string;
+  providers: ProviderInfo[];
+}

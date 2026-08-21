@@ -6,12 +6,15 @@ import {
   ChevronDown,
   HelpCircle,
   Key,
+  Layers,
   RefreshCw,
   Server,
   X,
   Zap,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { PROVIDER_DEFAULT_BASE_URLS, PROVIDER_MODELS } from '../constants/providerModels';
+import type { ProviderInfo, ProvidersResponse } from '../types/api';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -55,43 +58,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // Registry state
+  const [providersData, setProvidersData] = useState<ProvidersResponse | null>(null);
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  const loadAllSettings = async () => {
+    try {
+      const [settings, provs] = await Promise.all([
+        api.getLLMSettings().catch(() => null),
+        api.getProviders().catch(() => null),
+      ]);
+
+      if (provs) {
+        setProvidersData(provs);
+      }
+
+      if (settings) {
+        if (settings.active_provider) setProvider(settings.active_provider);
+        if (settings.default_model) setDefaultModel(settings.default_model);
+        if (settings.litellm_base_url) setLitellmUrl(settings.litellm_base_url);
+        if (settings.openai_org_id) setOpenaiOrgId(settings.openai_org_id);
+        if (settings.openai_proj_id) setOpenaiProjId(settings.openai_proj_id);
+        if (settings.custom_base_url) setCustomBaseUrl(settings.custom_base_url);
+      }
+    } catch {
+      // Handled
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
-
-      // Load non-sensitive configuration from localStorage if present.
-      // SECURITY: API keys are NEVER read from or written to localStorage.
-      // Only the active provider and default model (non-secret) may be cached locally.
-      const cachedProvider = localStorage.getItem('meridian_active_provider');
-      const cachedModel = localStorage.getItem('meridian_default_model');
-
-      if (cachedProvider) setProvider(cachedProvider);
-      if (cachedModel) setDefaultModel(cachedModel);
-
-      api.getLLMSettings()
-        .then((settings) => {
-          if (settings.default_model && !cachedModel) {
-            setDefaultModel(settings.default_model);
-          }
-          setLitellmUrl(settings.litellm_base_url || 'http://localhost:4000');
-          if (settings.active_provider && !cachedProvider) {
-            setProvider(settings.active_provider);
-          }
-          // Backend returns masked keys (e.g. "sk-...xyz"), which cannot be used
-          // for API calls but are safe to display as hints. We do NOT populate
-          // the input fields with masked values — leave them blank for the user
-          // to enter a new key, since the backend ignores masked values on update.
-          if (settings.openai_org_id) setOpenaiOrgId(settings.openai_org_id);
-          if (settings.openai_proj_id) setOpenaiProjId(settings.openai_proj_id);
-          if (settings.custom_base_url) setCustomBaseUrl(settings.custom_base_url);
-        })
-        .catch(() => {
-          // Fall back to defaults
-        });
+      loadAllSettings();
     } else {
       document.body.style.overflow = 'unset';
     }
@@ -107,30 +108,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setProvider(newProvider);
     setTestResult(null);
 
-    // Dynamic model recommendations
-    if (newProvider === 'openai') {
-      setModelList(['gpt-4o-mini', 'gpt-4o', 'o3-mini', 'o1', 'gpt-4-turbo', 'text-embedding-3-small']);
-      setDefaultModel('gpt-4o-mini');
-    } else if (newProvider === 'anthropic') {
-      setModelList(['claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229']);
-      setDefaultModel('claude-3-5-sonnet-20241022');
-    } else if (newProvider === 'groq') {
-      setCustomBaseUrl('https://api.groq.com/openai/v1');
-      setModelList(['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768']);
-      setDefaultModel('llama-3.3-70b-versatile');
-    } else if (newProvider === 'openrouter') {
-      setCustomBaseUrl('https://openrouter.ai/api/v1');
-      setModelList(['openai/gpt-4o', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-chat']);
-      setDefaultModel('meta-llama/llama-3.3-70b-instruct');
-    } else if (newProvider === 'deepseek') {
-      setCustomBaseUrl('https://api.deepseek.com/v1');
-      setModelList(['deepseek-chat', 'deepseek-reasoner']);
-      setDefaultModel('deepseek-chat');
-    } else if (newProvider === 'ollama') {
-      setModelList(['llama3:latest', 'mistral:latest', 'qwen2.5:latest', 'nomic-embed-text:latest']);
-      setDefaultModel('llama3:latest');
+    // Source model list from PROVIDER_MODELS (single registry, frontend fallback)
+    const models = PROVIDER_MODELS[newProvider] ?? PROVIDER_MODELS.custom;
+    setModelList(models);
+    // Prefer provider's curated default (from GET /v1/settings/providers) if available,
+    // otherwise first entry of PROVIDER_MODELS.
+    const providerInfo = providersData?.providers.find((p) => p.id === newProvider);
+    if (providerInfo?.current_model) {
+      setDefaultModel(providerInfo.current_model);
     } else {
-      setModelList(['llama-3.3-70b-versatile', 'deepseek-chat', 'gpt-4o-mini']);
+      setDefaultModel(models[0]);
+    }
+
+    // Sync base URL for OpenAI-compatible providers via PROVIDER_DEFAULT_BASE_URLS map
+    const defaultUrl = PROVIDER_DEFAULT_BASE_URLS[newProvider];
+    if (defaultUrl) {
+      const isCustomProvider = ['groq', 'openrouter', 'deepseek', 'custom'].includes(newProvider);
+      if (isCustomProvider && (!customBaseUrl || customBaseUrl.includes('openai.com') || customBaseUrl.includes('localhost') || customBaseUrl.includes('groq.com'))) {
+        // Only override when current URL looks like a placeholder from another provider
+        setCustomBaseUrl(defaultUrl);
+      }
     }
   };
 
@@ -150,6 +147,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleTestAndFetchModels = async () => {
     setTesting(true);
     setTestResult(null);
+    if (platformKey) {
+      api.setApiKey(platformKey);
+      onSavePlatformApiKey(platformKey);
+    }
     try {
       const res = await api.testAndFetchModels({
         provider,
@@ -171,6 +172,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         success: res.success,
         message: `${res.message} (${res.latency_ms.toFixed(0)} ms)`,
       });
+
+      // Refresh providers registry
+      const updatedProvs = await api.getProviders().catch(() => null);
+      if (updatedProvs) setProvidersData(updatedProvs);
     } catch (err: any) {
       setTestResult({
         success: false,
@@ -181,43 +186,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (switchProvider?: string, switchModel?: string) => {
     setLoading(true);
     setSaveSuccess(false);
-    onSavePlatformApiKey(platformKey);
+    if (platformKey) {
+      onSavePlatformApiKey(platformKey);
+      api.setApiKey(platformKey);
+    }
 
-    // SECURITY: Only non-sensitive preferences are persisted to localStorage.
-    // Provider API keys (OpenAI, Anthropic, Groq, etc.) are NEVER stored in
-    // localStorage — they are sent only to the backend API via HTTPS.
-    localStorage.setItem('meridian_active_provider', provider);
-    localStorage.setItem('meridian_default_model', defaultModel);
+    const targetProvider = switchProvider || provider;
+    const targetModel = switchModel || defaultModel;
+
+    localStorage.setItem('meridian_active_provider', targetProvider);
+    localStorage.setItem('meridian_default_model', targetModel);
 
     try {
       await api.updateLLMSettings({
-        active_provider: provider,
-        openai_api_key: openaiKey,
-        openai_org_id: openaiOrgId,
-        openai_proj_id: openaiProjId,
-        anthropic_api_key: anthropicKey,
-        groq_api_key: provider === 'groq' ? customKey : undefined,
-        openrouter_api_key: provider === 'openrouter' ? customKey : undefined,
-        deepseek_api_key: provider === 'deepseek' ? customKey : undefined,
-        custom_api_key: customKey,
-        custom_base_url: customBaseUrl,
-        default_model: defaultModel,
-        litellm_base_url: litellmUrl,
+        active_provider: targetProvider,
+        openai_api_key: openaiKey || undefined,
+        openai_org_id: openaiOrgId || undefined,
+        openai_proj_id: openaiProjId || undefined,
+        anthropic_api_key: anthropicKey || undefined,
+        groq_api_key: targetProvider === 'groq' && customKey ? customKey : undefined,
+        openrouter_api_key: targetProvider === 'openrouter' && customKey ? customKey : undefined,
+        deepseek_api_key: targetProvider === 'deepseek' && customKey ? customKey : undefined,
+        custom_api_key: customKey || undefined,
+        custom_base_url: customBaseUrl || undefined,
+        default_model: targetModel,
+        litellm_base_url: litellmUrl || undefined,
       });
+
       setSaveSuccess(true);
-      // Automatically close modal after brief visual confirmation
+      await loadAllSettings();
       setTimeout(() => {
         setSaveSuccess(false);
         onClose();
-      }, 700);
+      }, 600);
     } catch {
       // Handled
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSelectProviderCard = (p: ProviderInfo) => {
+    setProvider(p.id);
+    handleProviderChange(p.id);
   };
 
   const modalContent = (
@@ -230,7 +244,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       />
 
       {/* Centered Modal Card */}
-      <div className="relative z-10 w-full max-w-xl bg-white border border-meridian-border rounded-3xl shadow-2xl flex flex-col max-h-[88vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="relative z-10 w-full max-w-2xl bg-white border border-meridian-border rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Fixed Header */}
         <div className="flex items-center justify-between p-5 pb-3 border-b border-meridian-border shrink-0 bg-white">
           <div className="flex items-center space-x-3">
@@ -246,18 +260,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </p>
             </div>
           </div>
-
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-lavenderLight transition-all"
+            className="p-1.5 rounded-xl text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg transition-all"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Scrollable Form Body */}
-        <div className="p-5 py-4 overflow-y-auto flex-1 space-y-4">
-          {/* Row 1: LLM Provider Selection Dropdown */}
+        {/* Scrollable Modal Body */}
+        <div className="p-5 overflow-y-auto space-y-4 flex-1">
+          {/* Section 0: Configured Providers Quick-Selector Pills */}
+          {providersData && providersData.providers.length > 0 && (
+            <div className="p-3.5 rounded-2xl bg-meridian-bg/70 border border-meridian-border space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-meridian-text flex items-center space-x-1.5">
+                  <Layers className="w-3.5 h-3.5 text-meridian-primary" />
+                  <span>Configured Providers Status ({providersData.providers.filter((p) => p.configured).length} ready)</span>
+                </span>
+                <span className="text-[10px] text-meridian-textMuted font-medium">Click to configure</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {providersData.providers.map((p) => {
+                  const isSelected = provider === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleSelectProviderCard(p)}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? 'bg-meridian-blossom border-meridian-primary ring-2 ring-meridian-primary/20 shadow-sm'
+                          : p.configured
+                          ? 'bg-white border-meridian-border hover:border-meridian-lavender'
+                          : 'bg-white/60 border-meridian-border/60 opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full mb-1">
+                        <span className="text-[11px] font-bold text-meridian-text truncate">{p.name.split(' ')[0]}</span>
+                        {p.is_active ? (
+                          <span className="w-2 h-2 rounded-full bg-meridian-primary animate-pulse" />
+                        ) : p.configured ? (
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        ) : null}
+                      </div>
+                      <span className="text-[9px] text-meridian-textMuted font-mono truncate block">
+                        {p.is_active ? 'Active' : p.configured ? 'Configured' : 'Unconfigured'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Section 1: LLM Provider Selection Dropdown */}
           <div>
             <label className="block text-xs font-bold text-meridian-text mb-1">
               1. Foundation LLM Provider:
@@ -279,7 +337,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Row 2: Dynamic Provider Credentials */}
+          {/* Section 2: Dynamic Provider Credentials */}
           <div className="p-4 rounded-2xl bg-meridian-bg/80 border border-meridian-border space-y-3">
             {/* OpenAI Configuration */}
             {provider === 'openai' && (
@@ -287,7 +345,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div>
                   <label className="block text-[11px] font-bold text-meridian-text mb-1 flex items-center justify-between">
                     <span>OpenAI API Key (<code className="text-meridian-primary">OPENAI_API_KEY</code>)</span>
-                    <span className="text-[10px] text-meridian-textMuted font-normal">Required</span>
+                    <span className="text-[10px] text-meridian-textMuted font-normal">Leave blank to keep existing</span>
                   </label>
                   <input
                     type="password"
@@ -356,7 +414,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="text"
                     value={customBaseUrl}
                     onChange={(e) => setCustomBaseUrl(e.target.value)}
-                    placeholder="https://api.groq.com/openai/v1"
+                    placeholder="http://localhost:20128/v1 or https://api.groq.com/openai/v1"
                     className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary transition-all"
                   />
                 </div>
@@ -364,13 +422,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div>
                   <label className="block text-[11px] font-bold text-meridian-text mb-1 flex items-center justify-between">
                     <span>Provider API Key:</span>
-                    <span className="text-[10px] text-meridian-textMuted font-normal">Required</span>
+                    <span className="text-[10px] text-meridian-textMuted font-normal">Optional for local vLLM / LMStudio</span>
                   </label>
                   <input
                     type="password"
                     value={customKey}
                     onChange={(e) => setCustomKey(e.target.value)}
-                    placeholder="gsk_... or sk-or-..."
+                    placeholder="Enter API key or leave blank for unauthenticated local endpoints"
                     className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary transition-all"
                   />
                 </div>
@@ -397,7 +455,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          {/* Row 3: Model Selector & Dynamic Population */}
+          {/* Section 3: Model Selector & Dynamic Population */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-xs font-bold text-meridian-text">
@@ -408,31 +466,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </span>
             </div>
 
-            <div className="relative">
-              <select
-                value={defaultModel}
-                onChange={(e) => setDefaultModel(e.target.value)}
-                className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-bold outline-none focus:border-meridian-primary focus:bg-white transition-all cursor-pointer"
-              >
-                {modelList.map((m, idx) => (
-                  <option key={idx} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-2">
+              <div className="relative">
+                <select
+                  value={defaultModel}
+                  onChange={(e) => setDefaultModel(e.target.value)}
+                  className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-bold outline-none focus:border-meridian-primary focus:bg-white transition-all cursor-pointer"
+                >
+                  {modelList.map((m, idx) => (
+                    <option key={idx} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  value={defaultModel}
+                  onChange={(e) => setDefaultModel(e.target.value)}
+                  placeholder="Or enter any custom model name..."
+                  className="flex-1 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary"
+                />
+              </div>
             </div>
-            <p className="text-[10px] text-meridian-textMuted mt-1">
-              💡 Tip: Click <strong>"Test Connection & Fetch Models"</strong> below to validate your API key and auto-populate all available models in the dropdown.
+
+            <p className="text-[11px] text-meridian-textMuted mt-1">
+              💡 Tip: Click <strong>"Test Connection & Fetch Models"</strong> below to validate endpoint and auto-populate available models.
             </p>
           </div>
 
-          {/* Test Status Banner (Green for Success, Red for Error) */}
+          {/* Test Result Banner */}
           {testResult && (
             <div
-              className={`p-3 rounded-2xl text-xs flex items-center space-x-2.5 ${
+              className={`p-3.5 rounded-2xl border text-xs flex items-center space-x-2.5 animate-in fade-in duration-150 ${
                 testResult.success
-                  ? 'bg-emerald-50 border border-emerald-300 text-emerald-900'
-                  : 'bg-rose-50 border border-rose-300 text-rose-900'
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                  : 'bg-rose-50 border-rose-300 text-rose-900'
               }`}
             >
               {testResult.success ? (
@@ -440,12 +511,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               ) : (
                 <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
               )}
-              <span className="font-semibold">{testResult.message}</span>
+              <span className="font-medium leading-relaxed">{testResult.message}</span>
             </div>
           )}
 
+          {/* Success Banner */}
           {saveSuccess && (
-            <div className="p-3 rounded-2xl text-xs bg-emerald-50 border border-emerald-300 text-emerald-900 flex items-center space-x-2.5">
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center space-x-2 animate-in fade-in duration-150">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <span className="font-bold">Settings and active model saved successfully!</span>
             </div>
@@ -456,7 +528,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center justify-between w-full text-xs font-bold text-meridian-primary hover:text-meridian-primaryHover py-1"
+              className="flex items-center justify-between w-full text-xs font-bold text-meridian-primary hover:text-meridian-primaryHover py-1 cursor-pointer"
             >
               <span className="flex items-center space-x-1.5">
                 <HelpCircle className="w-4 h-4 text-meridian-secondary" />
@@ -473,7 +545,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <span>Meridian Platform Key (<code>X-API-Key</code>)</span>
                   </h4>
                   <p className="text-[11px] text-meridian-textMuted mt-0.5 leading-relaxed">
-                    This is your <strong>internal security token</strong>. It authenticates external AI agents and client applications against your local/hosted Meridian platform endpoints (<code>/v1/query</code>, <code>/v1/ingest</code>, <code>/v1/guardrails</code>) and enforces per-tenant rate limits.
+                    Internal security token that authenticates client requests against Meridian platform endpoints.
                   </p>
                   <input
                     type="text"
@@ -490,7 +562,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <span>LiteLLM Gateway URL</span>
                   </h4>
                   <p className="text-[11px] text-meridian-textMuted mt-0.5 leading-relaxed">
-                    The endpoint where the <strong>AI Gateway container</strong> runs (default <code>http://localhost:4000</code>). It handles upstream provider failover, load balancing, and rate limits across OpenAI, Anthropic, and open-source models.
+                    The endpoint where the AI Gateway container runs (default <code>http://localhost:4000</code>).
                   </p>
                   <input
                     type="text"
@@ -511,7 +583,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             type="button"
             onClick={handleTestAndFetchModels}
             disabled={testing}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-meridian-primary bg-white hover:bg-meridian-blossom border border-meridian-border flex items-center space-x-2 transition-all shadow-sm"
+            className="px-4 py-2 rounded-xl text-xs font-bold text-meridian-primary bg-white hover:bg-meridian-blossom border border-meridian-border flex items-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50"
           >
             {testing ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -525,25 +597,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-meridian-textMuted hover:bg-white transition-all"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-meridian-textMuted hover:bg-white transition-all cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="button"
-              onClick={handleSave}
+              onClick={() => handleSave()}
               disabled={loading || saveSuccess}
-              className={`px-6 py-2 rounded-xl text-xs font-bold shadow-glow flex items-center space-x-1.5 transition-all ${
+              className={`px-6 py-2 rounded-xl text-xs font-bold shadow-glow flex items-center space-x-1.5 transition-all cursor-pointer ${
                 saveSuccess
                   ? 'bg-emerald-600 text-white cursor-default'
                   : 'bg-meridian-primary hover:bg-meridian-primaryHover text-white'
               }`}
             >
-              {loading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-              {saveSuccess ? (
+              {loading ? (
                 <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                  <span>Saved & Applied!</span>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving...</span>
                 </>
               ) : (
                 <span>Save & Apply</span>

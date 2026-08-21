@@ -4,6 +4,8 @@ import asyncio
 import time
 from collections import defaultdict
 
+import os
+
 from fastapi import Header, HTTPException, status
 
 from packages.core.config import get_settings
@@ -24,8 +26,13 @@ async def verify_api_key(
 ) -> str:
     """Validates X-API-Key and enforces per-tenant rate limiting."""
     settings = get_settings()
+    # Require real secret from env; allow MERIDIAN_API_KEY fallback only in dev/testing.
+    # Fail-fast in prod: if no secret configured, every request will 401 (operator must set API_KEY_SECRET).
+    expected_secret = settings.api_key_secret or (
+        os.environ.get("MERIDIAN_API_KEY", "") if settings.app_env in ("development", "testing") else ""
+    )
 
-    if not x_api_key or x_api_key != settings.api_key_secret:
+    if not x_api_key or x_api_key != expected_secret:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API key header 'X-API-Key'",

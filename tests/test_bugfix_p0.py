@@ -334,3 +334,56 @@ class TestRegressionEndpoints:
             headers={"X-API-Key": "meridian-test-secret-key-2026"},
         )
         assert res.status_code == 200
+
+    def test_providers_status_endpoint(self):
+        from services.rag_engine.app import app
+
+        client = TestClient(app)
+        res = client.get(
+            "/v1/settings/providers",
+            headers={"X-API-Key": "meridian-test-secret-key-2026"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert "active_provider" in data
+        assert "providers" in data
+        assert len(data["providers"]) >= 6
+
+    def test_document_catalog_endpoints(self):
+        from services.rag_engine.app import app
+
+        client = TestClient(app)
+        headers = {"X-API-Key": "meridian-test-secret-key-2026"}
+
+        # 1. Ingest a document
+        ingest_res = client.post(
+            "/v1/ingest",
+            headers=headers,
+            json={"title": "Test Catalog Doc", "text": "Testing permanent catalog persistence for Meridian."},
+        )
+        assert ingest_res.status_code == 200
+        doc_id = ingest_res.json()["document_id"]
+
+        # 2. List documents
+        list_res = client.get("/v1/documents", headers=headers)
+        assert list_res.status_code == 200
+        list_data = list_res.json()
+        assert list_data["total_documents"] >= 1
+        found = any(d["id"] == doc_id for d in list_data["documents"])
+        assert found, "Ingested document must appear in document catalog"
+
+        # 3. Get single document details
+        detail_res = client.get(f"/v1/documents/{doc_id}", headers=headers)
+        assert detail_res.status_code == 200
+        detail_data = detail_res.json()
+        assert detail_data["id"] == doc_id
+        assert len(detail_data["chunks"]) >= 1
+
+        # 4. Delete document
+        del_res = client.delete(f"/v1/documents/{doc_id}", headers=headers)
+        assert del_res.status_code == 200
+        assert del_res.json()["status"] == "deleted"
+
+        # 5. Verify deleted from catalog
+        after_del = client.get(f"/v1/documents/{doc_id}", headers=headers)
+        assert after_del.status_code == 404

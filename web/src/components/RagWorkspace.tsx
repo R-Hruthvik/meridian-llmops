@@ -14,7 +14,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { api, ApiError } from '../services/api';
-import type { QueryResponse, LLMSettings } from '../types/api';
+import { PROVIDER_FALLBACK_MODELS, PROVIDER_MODELS } from '../constants/providerModels';
+import type { QueryResponse, LLMSettings, ProvidersResponse } from '../types/api';
 
 interface RagWorkspaceProps {
   tenantId: string;
@@ -29,13 +30,18 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   const [response, setResponse] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<{ message: string; status?: number } | null>(null);
   const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
+  const [providersInfo, setProvidersInfo] = useState<ProvidersResponse | null>(null);
   const [modelSwitching, setModelSwitching] = useState(false);
 
   // Load active LLM settings & provider status
   const loadSettings = async () => {
     try {
-      const s = await api.getLLMSettings();
-      setLlmSettings(s);
+      const [s, provs] = await Promise.all([
+        api.getLLMSettings().catch(() => null),
+        api.getProviders().catch(() => null),
+      ]);
+      if (s) setLlmSettings(s);
+      if (provs) setProvidersInfo(provs);
     } catch {
       // Fall back
     }
@@ -100,23 +106,17 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   };
 
   const getAvailableModelsForProvider = (provider: string) => {
-    if (provider === 'groq') {
-      return [
-        'groq/compound-mini',
-        'groq/compound',
-        'openai/gpt-oss-120b',
-        'openai/gpt-oss-20b',
-        'allam-2-7b',
-        'qwen/qwen3.6-27b',
-      ];
+    // Primary: use registry from GET /v1/settings/providers
+    const prov = providersInfo?.providers.find((p) => p.id === provider);
+    if (prov && prov.models && prov.models.length > 0) {
+      const list = [...prov.models];
+      if (llmSettings?.default_model && !list.includes(llmSettings.default_model)) {
+        list.unshift(llmSettings.default_model);
+      }
+      return list;
     }
-    if (provider === 'openai') {
-      return ['gpt-4o-mini', 'gpt-4o', 'o3-mini', 'o1'];
-    }
-    if (provider === 'anthropic') {
-      return ['claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'];
-    }
-    return ['llama-3.3-70b-versatile', 'gpt-4o-mini', 'deepseek-chat'];
+    // Fallback: shared PROVIDER_MODELS map (single frontend truth)
+    return PROVIDER_MODELS[provider] ?? PROVIDER_FALLBACK_MODELS;
   };
 
   return (
