@@ -24,6 +24,10 @@ dependencies = [
     "opentelemetry-api>=1.23.0",
     "opentelemetry-sdk>=1.23.0",
     "pyyaml>=6.0.1",
+    "sqlalchemy>=2.0.28",
+    "asyncpg>=0.29.0",
+    "aiosqlite>=0.20.0",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

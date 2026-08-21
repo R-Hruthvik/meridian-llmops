@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     enable_input_guardrails: bool = True
     enable_output_guardrails: bool = True
 
+    # Relational Database & Human-in-the-Loop Review Queue
+    database_url: str = Field(default_factory=lambda: os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./verified_rag.db"))
+    confidence_threshold: float = 0.85
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -16,3 +16,6 @@ class RagAgentState(TypedDict):
     is_grounded: bool
     is_refusal: bool
     tenant_id: str
+    claims: list[dict[str, Any]]
+    verification_result: dict[str, Any] | None
+

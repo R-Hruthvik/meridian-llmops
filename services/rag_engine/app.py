@@ -26,14 +26,28 @@ from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.pipeline import IngestionPipeline
 from services.ingestion.vector_store import VectorStoreManager
 from services.rag_engine.agent.graph import build_rag_agent_graph
+from packages.core.db import init_db
 from services.rag_engine.observability.langfuse_client import MeridianTracer
 from services.rag_engine.retrieval.hybrid import HybridRetriever
+from services.rag_engine.routers.review import router as review_router
 
 app = FastAPI(
     title="Meridian LLMOps RAG Engine",
     version="0.1.0",
     description="Production-grade Self-Healing Agentic RAG Platform with Guardrails and Tracing",
 )
+
+app.include_router(review_router)
+
+
+@app.on_event("startup")
+async def on_startup():
+    """Initializes relational database schema on application startup."""
+    try:
+        await init_db()
+    except Exception as e:
+        logger.warning(f"Database initialization warning: {e}")
+
 
 # Core singletons - in_memory forced only during testing, otherwise try real Docker services with fallback
 _is_testing = os.environ.get("APP_ENV") == "testing"

@@ -20,5 +20,10 @@ sample_docs/
 web-articles/
 *.md
 !README.md
+*.db
+.coverage
+coverage/
+web/coverage/
+
 
 

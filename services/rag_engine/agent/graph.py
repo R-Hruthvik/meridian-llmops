@@ -7,7 +7,9 @@ from langgraph.graph import END, StateGraph
 
 logger = logging.getLogger("meridian.rag_engine.agent")
 
+from packages.verification.tiered_verifier import TieredCitationVerifier
 from services.gateway.client import LiteLLMClient
+
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.agent.reformulator import QueryReformulator
@@ -24,7 +26,9 @@ def build_rag_agent_graph(
 ):
     """Assembles and compiles the cyclic LangGraph RAG workflow."""
     critic = CriticAgent()
+    tiered_verifier = TieredCitationVerifier()
     reformulator = QueryReformulator()
+
     refusal_gen = SafeRefusalGenerator()
     client = llm_client or LiteLLMClient()
 
@@ -133,10 +137,18 @@ def build_rag_agent_graph(
         context = "\n".join([c.get("text", "") for c in valid_chunks])
 
         verdict = critic.evaluate(query=query, draft=draft, context=context)
+
+        # Decompose draft into sentence claims and verify via 3-Tier Verifier
+        sentences = [s.strip() for s in draft.split(".") if s.strip()]
+        verification_res = tiered_verifier.verify_claims(sentences, valid_chunks)
+
         return {
             "critic_verdict": verdict.model_dump(),
             "is_grounded": verdict.is_grounded,
+            "claims": [c.model_dump() for c in verification_res.claims],
+            "verification_result": verification_res.model_dump(),
         }
+
 
     def reformulate_node(state: RagAgentState) -> dict[str, Any]:
         cycle = state.get("cycle_count", 1)
