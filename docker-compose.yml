@@ -48,10 +48,12 @@ services:
       - "host.docker.internal:host-gateway"
     command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4000/health/readiness || exit 1"]
+      # Image ships no wget/curl; probe with python3 stdlib instead.
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:4000/health/readiness', timeout=5).status == 200 else 1)\""]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 15s
 
   langfuse-db:
     image: postgres:16-alpine
