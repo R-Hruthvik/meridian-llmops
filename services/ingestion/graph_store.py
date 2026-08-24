@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 
 from packages.core.config import get_settings
 from packages.core.models import Entity, Relationship
@@ -24,23 +25,30 @@ class KnowledgeGraphStore:
         self._neo4j_fallback: bool = False
 
         if not self.in_memory:
-            try:
-                from neo4j import GraphDatabase  # type: ignore[import-untyped]
+            from neo4j import GraphDatabase  # type: ignore[import-untyped]
 
-                settings = get_settings()
-                self.driver = GraphDatabase.driver(
-                    settings.neo4j_uri,
-                    auth=(settings.neo4j_user, settings.neo4j_password or "meridian_password"),
-                )
-                # Test connectivity
-                self.driver.verify_connectivity()  # type: ignore[attr-defined]
-                self._neo4j_available = True
-                logger.info("Neo4j connected at %s", settings.neo4j_uri)
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Neo4j unavailable - using in-memory fallback: %s", e)
-                self.driver = None
-                self._neo4j_available = False
-                self._neo4j_fallback = True
+            settings = get_settings()
+            # Bounded retry: container may still be initializing (Bolt not yet serving)
+            for attempt in range(1, 4):
+                try:
+                    self.driver = GraphDatabase.driver(
+                        settings.neo4j_uri,
+                        auth=(settings.neo4j_user, settings.neo4j_password or "meridian_password"),
+                    )
+                    # Test connectivity
+                    self.driver.verify_connectivity()  # type: ignore[attr-defined]
+                    self._neo4j_available = True
+                    logger.info("Neo4j connected at %s", settings.neo4j_uri)
+                    break
+                except Exception as e:  # noqa: BLE001
+                    self.driver = None
+                    self._neo4j_available = False
+                    if attempt < 3:
+                        logger.info("Neo4j not ready (attempt %d/3): %s - retrying in 2s", attempt, e)
+                        time.sleep(2)
+                    else:
+                        logger.warning("Neo4j unavailable - using in-memory fallback: %s", e)
+                        self._neo4j_fallback = True
         else:
             logger.info("KnowledgeGraphStore in-memory mode (forced)")
 

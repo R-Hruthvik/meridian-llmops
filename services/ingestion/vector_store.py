@@ -1,6 +1,7 @@
 """Dense Vector Store Manager for Qdrant with in-memory fallback for local testing."""
 
 import logging
+import uuid
 
 import numpy as np
 
@@ -8,6 +9,19 @@ from packages.core.config import get_settings
 from packages.core.models import Chunk, SearchResult
 
 logger = logging.getLogger("meridian.ingestion.vector_store")
+
+
+def _qdrant_point_id(chunk_id: str) -> str:
+    """Normalize chunk IDs to a Qdrant-compatible UUID string.
+
+    New chunks already use UUID hex IDs. Older persisted chunks used strings
+    like ``doc-<uuid>-chunk-<n>`` which Qdrant rejects. We map any non-UUID
+    id to a deterministic UUID5 so re-ingestion is idempotent.
+    """
+    try:
+        return str(uuid.UUID(chunk_id))
+    except ValueError:
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
 
 
 def generate_embedding(text: str, dim: int = 1024) -> list[float]:
@@ -58,6 +72,7 @@ class VectorStoreManager:
                     host=self.settings.qdrant_host,
                     port=self.settings.qdrant_port,
                     timeout=5,
+                    
                 )
                 # Test connectivity
                 self.client.get_collections()  # type: ignore[attr-defined]
@@ -114,7 +129,7 @@ class VectorStoreManager:
                     }
                     points.append(
                         PointStruct(
-                            id=chunk.id,
+                            id=_qdrant_point_id(chunk.id),
                             vector=chunk.embedding or generate_embedding(chunk.text, dim=self.dim),
                             payload=payload,
                         )

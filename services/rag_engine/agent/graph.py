@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from typing import Any
 
 import httpx
@@ -43,10 +44,43 @@ def build_rag_agent_graph(
 
         # Extract graph neighborhood if entities match
         extracted_entities: list[dict[str, Any]] = []
-        for word in query.split():
-            relations = graph_store.query_neighborhood(word)
+        matched_names: set[str] = set()
+
+        # Clean punctuation from query words
+        query_words = [re.sub(r"[^\w\s-]", "", w).strip() for w in query.split()]
+        query_words = [w for w in query_words if len(w) > 1]
+
+        # 1. Match direct entities from KnowledgeGraphStore
+        for w in query_words:
+            for ent_name, ent in graph_store.entities.items():
+                if w.lower() in ent_name.lower() or ent_name.lower() in w.lower():
+                    if ent_name not in matched_names:
+                        matched_names.add(ent_name)
+                        extracted_entities.append({
+                            "name": ent.name,
+                            "entity_type": ent.entity_type,
+                        })
+
+        # 2. Match relations and extract connected nodes
+        for w in query_words:
+            relations = graph_store.query_neighborhood(w)
             for r in relations:
-                extracted_entities.append(r.model_dump())
+                for target_name in [r.source_entity, r.target_entity]:
+                    if target_name and target_name not in matched_names:
+                        matched_names.add(target_name)
+                        ent_obj = graph_store.entities.get(target_name)
+                        extracted_entities.append({
+                            "name": target_name,
+                            "entity_type": ent_obj.entity_type if ent_obj else "Concept",
+                        })
+
+        # Fallback: if no query words matched specifically, surface active graph entities
+        if not extracted_entities and graph_store.entities:
+            for ent in list(graph_store.entities.values())[:10]:
+                extracted_entities.append({
+                    "name": ent.name,
+                    "entity_type": ent.entity_type,
+                })
 
         return {
             "retrieved_chunks": chunk_dicts,
@@ -86,7 +120,9 @@ def build_rag_agent_graph(
                 "role": "system",
                 "content": (
                     "You are Meridian AI, an enterprise knowledge assistant. "
-                    "Answer the user's question accurately and concisely using the provided context."
+                    "Answer the user's question with high accuracy, focus, and structure using the provided context. "
+                    "Format your answer cleanly using standard Markdown (use bold text for key terms, section headings, bullet points, or tables where appropriate). "
+                    "Be direct, structured, and focused on providing a comprehensive yet easy-to-read answer."
                 ),
             },
             {

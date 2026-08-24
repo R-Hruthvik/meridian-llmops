@@ -162,9 +162,26 @@ def _load_persisted_settings() -> dict[str, Any]:
             logger.warning(f"Could not load settings file: {e}")
     return settings
 
+def _is_masked(value: str) -> bool:
+    return "..." in value or value == "***"
+
+
+def _merge_preserving_saved(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    """Non-destructive merge: incoming masked or blank strings never clobber saved values."""
+    merged = dict(base)
+    for k, v in incoming.items():
+        if isinstance(v, str):
+            if _is_masked(v):
+                continue
+            if v == "" and merged.get(k):
+                # Never wipe a saved value with a blank submission
+                continue
+        merged[k] = v
+    return merged
+
+
 def _save_persisted_settings(settings: dict[str, Any]) -> None:
     settings_file = _get_settings_file()
-    # Non-destructive merge: preserve existing non-blank keys if incoming is blank/masked
     existing: dict[str, Any] = {}
     if settings_file.exists():
         try:
@@ -172,18 +189,7 @@ def _save_persisted_settings(settings: dict[str, Any]) -> None:
                 existing = json.load(f)
         except (OSError, ValueError, TypeError):
             existing = {}
-    merged = dict(existing)
-    for k, v in settings.items():
-        if isinstance(v, str):
-            if "..." in v or v == "***":
-                continue
-            if v == "" and k.endswith("_api_key") and existing.get(k):
-                # Never wipe a saved key with blank submission
-                continue
-            if v == "" and k in ("custom_base_url", "litellm_base_url") and existing.get(k):
-                # Preserve existing base URLs if blank
-                continue
-        merged[k] = v
+    merged = _merge_preserving_saved(existing, settings)
     try:
         with open(settings_file, "w", encoding="utf-8") as f:
             json.dump(merged, f, indent=2)
@@ -443,7 +449,7 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
             "id": "groq",
             "name": "Groq Cloud",
             "description": "Ultra-fast LPU inference (Llama 3.3, Mixtral)",
-            "configured": bool(_runtime_llm_settings.get("groq_api_key") or _runtime_llm_settings.get("custom_api_key")),
+            "configured": bool(_runtime_llm_settings.get("groq_api_key")),
             "is_active": active == "groq",
             "base_url": _runtime_llm_settings.get("custom_base_url") or "https://api.groq.com/openai/v1",
             "current_model": _runtime_llm_settings.get("default_model") if active == "groq" else prov_models.get("groq", "llama-3.3-70b-versatile"),
@@ -454,7 +460,7 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
             "id": "openrouter",
             "name": "OpenRouter",
             "description": "Unified routing across 200+ models",
-            "configured": bool(_runtime_llm_settings.get("openrouter_api_key") or _runtime_llm_settings.get("custom_api_key")),
+            "configured": bool(_runtime_llm_settings.get("openrouter_api_key")),
             "is_active": active == "openrouter",
             "base_url": "https://openrouter.ai/api/v1",
             "current_model": _runtime_llm_settings.get("default_model") if active == "openrouter" else prov_models.get("openrouter", "meta-llama/llama-3.3-70b-instruct"),
@@ -465,7 +471,7 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
             "id": "deepseek",
             "name": "DeepSeek",
             "description": "DeepSeek-V3 & DeepSeek-R1 reasoning models",
-            "configured": bool(_runtime_llm_settings.get("deepseek_api_key") or _runtime_llm_settings.get("custom_api_key")),
+            "configured": bool(_runtime_llm_settings.get("deepseek_api_key")),
             "is_active": active == "deepseek",
             "base_url": "https://api.deepseek.com/v1",
             "current_model": _runtime_llm_settings.get("default_model") if active == "deepseek" else prov_models.get("deepseek", "deepseek-chat"),
@@ -508,16 +514,8 @@ async def update_llm_settings(
     tenant_id: str = Depends(verify_api_key),
 ):
     """Updates runtime LLM API keys and default model and persists to disk safely."""
-    for k, v in payload.items():
-        if v is not None:
-            # If the value is a masked string or empty string for an existing saved key, do not overwrite!
-            if isinstance(v, str):
-                if "..." in v or v == "***":
-                    continue
-                if v == "" and k.endswith("_api_key") and _runtime_llm_settings.get(k):
-                    # Preserve existing API key if user left field blank
-                    continue
-            _runtime_llm_settings[k] = v
+    updates = {k: v for k, v in payload.items() if v is not None}
+    _runtime_llm_settings.update(_merge_preserving_saved(_runtime_llm_settings, updates))
 
     # Also update provider_models map if default_model and active_provider were supplied
     prov = _runtime_llm_settings.get("active_provider", "openai")
@@ -787,11 +785,11 @@ async def test_and_fetch_models(
         if "provider_available_models" not in _runtime_llm_settings:
             _runtime_llm_settings["provider_available_models"] = {}
         _runtime_llm_settings["provider_available_models"][provider] = models
-        if api_key:
+        if api_key and not _is_masked(api_key):
             if provider in ["groq", "openrouter", "deepseek", "custom"]:
                 _runtime_llm_settings["custom_api_key"] = api_key
             _runtime_llm_settings[f"{provider}_api_key"] = api_key
-        if base_url and provider in ["groq", "openrouter", "deepseek", "custom"]:
+        if base_url and provider in ["groq", "openrouter", "deepseek", "custom"] and not _is_masked(base_url):
             _runtime_llm_settings["custom_base_url"] = base_url
         _save_persisted_settings(_runtime_llm_settings)
 

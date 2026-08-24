@@ -46,10 +46,18 @@ export const App: React.FC = () => {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8">
-        {activeTab === 'rag' && <RagWorkspace tenantId={tenantId} />}
-        {activeTab === 'ingest' && <IngestionStudio tenantId={tenantId} />}
-        {activeTab === 'guardrails' && <GuardrailsStudio tenantId={tenantId} />}
-        {activeTab === 'metrics' && <MetricsDashboard tenantId={tenantId} />}
+        <div className={activeTab === 'rag' ? 'block' : 'hidden'}>
+          <RagWorkspace tenantId={tenantId} />
+        </div>
+        <div className={activeTab === 'ingest' ? 'block' : 'hidden'}>
+          <IngestionStudio tenantId={tenantId} />
+        </div>
+        <div className={activeTab === 'guardrails' ? 'block' : 'hidden'}>
+          <GuardrailsStudio tenantId={tenantId} />
+        </div>
+        <div className={activeTab === 'metrics' ? 'block' : 'hidden'}>
+          <MetricsDashboard tenantId={tenantId} />
+        </div>
       </main>
 
       <footer className="border-t border-meridian-border bg-white/60 backdrop-blur-sm py-4 px-6 text-center text-xs font-semibold text-meridian-textMuted">

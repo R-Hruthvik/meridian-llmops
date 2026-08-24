@@ -84,6 +84,7 @@ export interface LLMSettings {
   custom_base_url?: string;
   default_model: string;
   litellm_base_url: string;
+  provider_available_models?: Record<string, string[]>;
 }
 
 export interface LLMTestAndFetchRequest {

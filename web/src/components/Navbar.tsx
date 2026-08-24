@@ -22,6 +22,13 @@ interface NavbarProps {
   setApiKey: (key: string) => void;
 }
 
+const TABS = [
+  { id: 'rag', label: 'Agentic RAG', icon: Bot },
+  { id: 'ingest', label: 'Ingestion Studio', icon: Database },
+  { id: 'guardrails', label: 'Guardrails Security', icon: ShieldAlert },
+  { id: 'metrics', label: 'Observability & Costs', icon: LineChart },
+];
+
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
@@ -33,6 +40,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
+  const [localTenant, setLocalTenant] = useState(tenantId);
+
+  // Sync local tenant when parent prop changes
+  useEffect(() => {
+    setLocalTenant(tenantId);
+  }, [tenantId]);
+
+  // Debounce tenantId changes before propagating up
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (localTenant !== tenantId) {
+        setTenantId(localTenant);
+      }
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [localTenant, tenantId, setTenantId]);
 
   const fetchSettings = () => {
     api.getLLMSettings()
@@ -43,13 +66,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   useEffect(() => {
     fetchSettings();
   }, [showSettingsModal]);
-
-  const tabs = [
-    { id: 'rag', label: 'Agentic RAG', icon: Bot },
-    { id: 'ingest', label: 'Ingestion Studio', icon: Database },
-    { id: 'guardrails', label: 'Guardrails Security', icon: ShieldAlert },
-    { id: 'metrics', label: 'Observability & Costs', icon: LineChart },
-  ];
 
   return (
     <header className="border-b border-meridian-border bg-white/80 backdrop-blur-md sticky top-0 z-50 px-6 py-3.5 shadow-card">
@@ -64,7 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="font-extrabold text-lg tracking-tight text-meridian-text">
                 Meridian <span className="text-meridian-primary">LLMOps</span>
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-meridian-blossom text-meridian-primary border border-meridian-lavender">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-meridian-blossom text-meridian-text border border-meridian-lavender">
                 v0.1.0
               </span>
             </div>
@@ -72,15 +88,21 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="flex items-center space-x-1.5 bg-meridian-lavenderLight/70 p-1.5 rounded-2xl border border-meridian-border">
-          {tabs.map((tab) => {
+        <nav
+          role="tablist"
+          aria-label="Main Navigation"
+          className="flex items-center space-x-1.5 bg-meridian-lavenderLight/70 p-1.5 rounded-2xl border border-meridian-border"
+        >
+          {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary ${
                   isActive
                     ? 'bg-meridian-primary text-white shadow-glow'
                     : 'text-meridian-textMuted hover:text-meridian-text hover:bg-white/80'
@@ -96,35 +118,42 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Tenant, Active Engine Badge & Health */}
         <div className="flex items-center space-x-3">
           {/* Tenant Selector */}
-          <div className="flex items-center space-x-1.5 bg-meridian-lavenderLight/60 px-3 py-1.5 rounded-xl border border-meridian-border text-xs">
-            <span className="text-meridian-textMuted font-medium">Tenant:</span>
+          <div className="flex items-center space-x-1.5 bg-meridian-lavenderLight/60 hover:bg-meridian-lavenderLight focus-within:bg-white focus-within:border-meridian-primary/50 focus-within:ring-2 focus-within:ring-meridian-primary px-3 py-1.5 rounded-xl border border-meridian-border text-xs transition-all">
+            <span className="text-meridian-textMuted font-medium select-none">Tenant:</span>
             <input
               type="text"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              className="bg-transparent text-meridian-primary font-bold outline-none w-20 text-xs"
+              value={localTenant}
+              onChange={(e) => setLocalTenant(e.target.value)}
+              className="bg-transparent text-meridian-primary font-bold outline-none w-20 text-xs focus-visible:outline-none"
               placeholder="tenant_id"
+              aria-label="Tenant Identifier"
             />
           </div>
 
           {/* Active Provider & Model Pill */}
           <button
             onClick={() => setShowSettingsModal(true)}
-            className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white hover:bg-meridian-blossom border border-meridian-border text-meridian-text transition-all text-xs font-semibold shadow-sm group"
-            title="Active LLM Engine - Click to Configure"
+            className="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-white hover:bg-meridian-blossom/50 border border-meridian-border hover:border-meridian-primary/50 text-meridian-text transition-all text-xs font-semibold shadow-sm group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary"
+            title="Active Provider & Model Config - Click to Open Engine Settings"
+            aria-label="Open LLM Engine Settings"
           >
-            <div className="w-2 h-2 rounded-full bg-meridian-primary group-hover:animate-ping" />
-            <Zap className="w-3.5 h-3.5 text-meridian-primary" />
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-meridian-primary opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-meridian-primary" />
+            </span>
+            <Zap className="w-3.5 h-3.5 text-meridian-primary shrink-0" />
             <span className="capitalize">{llmSettings?.active_provider || 'OpenAI'}</span>
             <span className="text-meridian-textMuted">•</span>
             <span className="font-mono text-meridian-primary font-bold text-[11px]">
               {llmSettings?.default_model || 'gpt-4o-mini'}
             </span>
-            <Settings className="w-3 h-3 text-meridian-textMuted group-hover:text-meridian-primary ml-0.5" />
+            <Settings className="w-3.5 h-3.5 text-meridian-textMuted group-hover:text-meridian-primary group-hover:rotate-45 transition-transform duration-300 ml-0.5 shrink-0" />
           </button>
 
           {/* Health Status Indicator */}
           <div
+            role="status"
+            aria-live="polite"
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold ${
               isBackendHealthy
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
@@ -154,3 +183,4 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+

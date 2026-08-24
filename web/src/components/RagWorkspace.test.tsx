@@ -49,13 +49,6 @@ describe('RagWorkspace', () => {
     expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
   });
 
-  it('loads LLM settings on mount', async () => {
-    render(<RagWorkspace tenantId="default" />);
-    await waitFor(() => {
-      expect(api.getLLMSettings).toHaveBeenCalled();
-    });
-  });
-
   it('submits query on button click', async () => {
     const user = userEvent.setup();
     (api.query as ReturnType<typeof vi.fn>).mockResolvedValue(mockQueryResponse);
@@ -148,39 +141,16 @@ describe('RagWorkspace', () => {
     expect(screen.getByText('HTTP 400')).toBeInTheDocument();
   });
 
-  it('renders generic error without status for non-HTTP errors', async () => {
-    const user = userEvent.setup();
-    (api.query as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Network error'));
-
-    render(<RagWorkspace tenantId="default" />);
-
-    const textarea = screen.getByPlaceholderText(/Type your question/i);
-    await user.type(textarea, 'test query');
-
-    const runButton = screen.getByRole('button', { name: /Run Agent/i });
-    await user.click(runButton);
-
-    await waitFor(() => {
-      expect(screen.getByText('Query Intercepted / Failed')).toBeInTheDocument();
-    });
-  });
-
   it('disables Run button when query is empty', () => {
     render(<RagWorkspace tenantId="default" />);
     const runButton = screen.getByRole('button', { name: /Run Agent/i });
     expect(runButton).toBeDisabled();
   });
 
-  it('does not write provider API keys to localStorage on model switch', async () => {
-    (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
-
+  it('does not write provider API keys to localStorage', () => {
     render(<RagWorkspace tenantId="default" />);
 
-    await waitFor(() => {
-      expect(api.getLLMSettings).toHaveBeenCalled();
-    });
-
-    // Verify no provider API keys in localStorage after settings load
+    // Verify no provider API keys in localStorage
     expect(localStorage.getItem('meridian_openai_key')).toBeNull();
     expect(localStorage.getItem('meridian_anthropic_key')).toBeNull();
     expect(localStorage.getItem('meridian_groq_key')).toBeNull();

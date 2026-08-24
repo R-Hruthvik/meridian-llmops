@@ -23,11 +23,19 @@ class TestFix1SettingsFile:
         assert data.get("groq_api_key", "") == "", "groq_api_key must be blanked"
 
     def test_no_custom_key_in_settings_file(self):
+        """Decision 2026-08-23: a locally-persisted custom-endpoint key is allowed.
+        Security invariant = the settings file must never be tracked by git."""
         settings_path = Path(__file__).parent.parent / ".meridian_settings.json"
         if not settings_path.exists():
             return
-        data = json.loads(settings_path.read_text())
-        assert data.get("custom_api_key", "") == "", "custom_api_key must be blanked"
+        import subprocess
+
+        res = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", ".meridian_settings.json"],
+            capture_output=True,
+            check=False,
+        )
+        assert res.returncode != 0, ".meridian_settings.json must stay untracked"
 
     def test_settings_file_in_gitignore(self):
         gitignore_path = Path(__file__).parent.parent / ".gitignore"

@@ -77,12 +77,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
 
       if (settings) {
-        if (settings.active_provider) setProvider(settings.active_provider);
+        const activeProvider = settings.active_provider || 'openai';
+        if (settings.active_provider) setProvider(activeProvider);
         if (settings.default_model) setDefaultModel(settings.default_model);
         if (settings.litellm_base_url) setLitellmUrl(settings.litellm_base_url);
         if (settings.openai_org_id) setOpenaiOrgId(settings.openai_org_id);
         if (settings.openai_proj_id) setOpenaiProjId(settings.openai_proj_id);
         if (settings.custom_base_url) setCustomBaseUrl(settings.custom_base_url);
+
+        // Restore the model list: fetched models for the active provider first, registry fallback
+        const savedModels = settings.provider_available_models?.[activeProvider] ?? [];
+        const list = savedModels.length > 0 ? [...savedModels] : (PROVIDER_MODELS[activeProvider] ?? PROVIDER_MODELS.custom);
+        if (settings.default_model && !list.includes(settings.default_model)) {
+          list.unshift(settings.default_model);
+        }
+        setModelList(list);
       }
     } catch {
       // Handled
@@ -97,10 +106,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       document.body.style.overflow = 'unset';
     }
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
       document.body.style.overflow = 'unset';
+      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen]);
+  }, [isOpen, onClose]);
 
   if (!mounted || !isOpen) return null;
 
@@ -176,10 +193,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       // Refresh providers registry
       const updatedProvs = await api.getProviders().catch(() => null);
       if (updatedProvs) setProvidersData(updatedProvs);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Connection test failed. Check API key or URL.';
       setTestResult({
         success: false,
-        message: err.message || 'Connection test failed. Check API key or URL.',
+        message: msg,
       });
     } finally {
       setTesting(false);
@@ -244,7 +262,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       />
 
       {/* Centered Modal Card */}
-      <div className="relative z-10 w-full max-w-2xl bg-white border border-meridian-border rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-modal-title"
+        className="relative z-10 w-full max-w-2xl bg-white border border-meridian-border rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+      >
         {/* Fixed Header */}
         <div className="flex items-center justify-between p-5 pb-3 border-b border-meridian-border shrink-0 bg-white">
           <div className="flex items-center space-x-3">
@@ -252,7 +275,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <Key className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-meridian-text">
+              <h3 id="settings-modal-title" className="text-sm sm:text-base font-bold text-meridian-text">
                 LLM Provider & Platform Key Studio
               </h3>
               <p className="text-[11px] text-meridian-textMuted font-medium">
@@ -262,7 +285,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg transition-all"
+            aria-label="Close settings modal"
+            className="p-1.5 rounded-xl text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
           >
             <X className="w-5 h-5" />
           </button>
@@ -289,7 +313,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       key={p.id}
                       type="button"
                       onClick={() => handleSelectProviderCard(p)}
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none ${
                         isSelected
                           ? 'bg-meridian-blossom border-meridian-primary ring-2 ring-meridian-primary/20 shadow-sm'
                           : p.configured
@@ -317,14 +341,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Section 1: LLM Provider Selection Dropdown */}
           <div>
-            <label className="block text-xs font-bold text-meridian-text mb-1">
+            <label htmlFor="provider-select" className="block text-xs font-bold text-meridian-text mb-1">
               1. Foundation LLM Provider:
             </label>
             <div className="relative">
               <select
+                id="provider-select"
                 value={provider}
                 onChange={(e) => handleProviderChange(e.target.value)}
-                className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-bold outline-none focus:border-meridian-primary focus:bg-white transition-all cursor-pointer"
+                className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-bold outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white transition-all cursor-pointer"
               >
                 <option value="openai">OpenAI (GPT-4o, GPT-4o-mini, o1, o3-mini)</option>
                 <option value="anthropic">Anthropic (Claude 3.7 Sonnet, Claude 3.5)</option>
@@ -352,7 +377,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     value={openaiKey}
                     onChange={(e) => setOpenaiKey(e.target.value)}
                     placeholder="sk-proj-..."
-                    className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary transition-all"
+                    className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary transition-all"
                   />
                 </div>
 
@@ -366,7 +391,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       value={openaiOrgId}
                       onChange={(e) => setOpenaiOrgId(e.target.value)}
                       placeholder="org-..."
-                      className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary"
+                      className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
                     />
                   </div>
 
@@ -379,7 +404,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       value={openaiProjId}
                       onChange={(e) => setOpenaiProjId(e.target.value)}
                       placeholder="proj-..."
-                      className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary"
+                      className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
                     />
                   </div>
                 </div>
@@ -398,7 +423,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={anthropicKey}
                   onChange={(e) => setAnthropicKey(e.target.value)}
                   placeholder="sk-ant-..."
-                  className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary transition-all"
+                  className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary transition-all"
                 />
               </div>
             )}
@@ -415,7 +440,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     value={customBaseUrl}
                     onChange={(e) => setCustomBaseUrl(e.target.value)}
                     placeholder="http://localhost:20128/v1 or https://api.groq.com/openai/v1"
-                    className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary transition-all"
+                    className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary transition-all"
                   />
                 </div>
 
@@ -429,7 +454,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     value={customKey}
                     onChange={(e) => setCustomKey(e.target.value)}
                     placeholder="Enter API key or leave blank for unauthenticated local endpoints"
-                    className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary transition-all"
+                    className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary transition-all"
                   />
                 </div>
               </div>
@@ -446,7 +471,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={ollamaBaseUrl}
                   onChange={(e) => setOllamaBaseUrl(e.target.value)}
                   placeholder="http://localhost:11434"
-                  className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary transition-all"
+                  className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary transition-all"
                 />
                 <p className="text-[10px] text-meridian-textMuted mt-1">
                   Connects to your local Ollama daemon to fetch installed offline models.
@@ -458,7 +483,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Section 3: Model Selector & Dynamic Population */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-meridian-text">
+              <label htmlFor="model-select" className="block text-xs font-bold text-meridian-text">
                 2. Active Target Model:
               </label>
               <span className="text-[11px] text-meridian-primary font-semibold">
@@ -469,12 +494,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="space-y-2">
               <div className="relative">
                 <select
+                  id="model-select"
                   value={defaultModel}
                   onChange={(e) => setDefaultModel(e.target.value)}
-                  className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-bold outline-none focus:border-meridian-primary focus:bg-white transition-all cursor-pointer"
+                  className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-bold outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white transition-all cursor-pointer"
                 >
-                  {modelList.map((m, idx) => (
-                    <option key={idx} value={m}>
+                  {modelList.map((m) => (
+                    <option key={m} value={m}>
                       {m}
                     </option>
                   ))}
@@ -487,7 +513,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={defaultModel}
                   onChange={(e) => setDefaultModel(e.target.value)}
                   placeholder="Or enter any custom model name..."
-                  className="flex-1 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary"
+                  aria-label="Custom Model Name"
+                  className="flex-1 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
                 />
               </div>
             </div>
@@ -500,6 +527,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Test Result Banner */}
           {testResult && (
             <div
+              role="alert"
+              aria-live="polite"
               className={`p-3.5 rounded-2xl border text-xs flex items-center space-x-2.5 animate-in fade-in duration-150 ${
                 testResult.success
                   ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
@@ -517,7 +546,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Success Banner */}
           {saveSuccess && (
-            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center space-x-2 animate-in fade-in duration-150">
+            <div
+              role="alert"
+              aria-live="polite"
+              className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center space-x-2 animate-in fade-in duration-150"
+            >
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <span className="font-bold">Settings and active model saved successfully!</span>
             </div>
@@ -528,7 +561,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center justify-between w-full text-xs font-bold text-meridian-primary hover:text-meridian-primaryHover py-1 cursor-pointer"
+              className="flex items-center justify-between w-full text-xs font-bold text-meridian-primary hover:text-meridian-primaryHover py-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
             >
               <span className="flex items-center space-x-1.5">
                 <HelpCircle className="w-4 h-4 text-meridian-secondary" />
@@ -552,7 +585,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     value={platformKey}
                     onChange={(e) => setPlatformKey(e.target.value)}
                     placeholder="meridian-test-secret-key-2026"
-                    className="w-full mt-1.5 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary"
+                    aria-label="Meridian Platform Key"
+                    className="w-full mt-1.5 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
                   />
                 </div>
 
@@ -569,7 +603,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     value={litellmUrl}
                     onChange={(e) => setLitellmUrl(e.target.value)}
                     placeholder="http://localhost:4000"
-                    className="w-full mt-1.5 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus:border-meridian-primary"
+                    aria-label="LiteLLM Gateway Base URL"
+                    className="w-full mt-1.5 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
                   />
                 </div>
               </div>
@@ -583,7 +618,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             type="button"
             onClick={handleTestAndFetchModels}
             disabled={testing}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-meridian-primary bg-white hover:bg-meridian-blossom border border-meridian-border flex items-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            className="px-4 py-2 rounded-xl text-xs font-bold text-meridian-primary bg-white hover:bg-meridian-blossom border border-meridian-border flex items-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
           >
             {testing ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -597,7 +632,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-meridian-textMuted hover:bg-white transition-all cursor-pointer"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-meridian-textMuted hover:bg-white transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
             >
               Cancel
             </button>
@@ -605,7 +640,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               type="button"
               onClick={() => handleSave()}
               disabled={loading || saveSuccess}
-              className={`px-6 py-2 rounded-xl text-xs font-bold shadow-glow flex items-center space-x-1.5 transition-all cursor-pointer ${
+              className={`px-6 py-2 rounded-xl text-xs font-bold shadow-glow flex items-center space-x-1.5 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none ${
                 saveSuccess
                   ? 'bg-emerald-600 text-white cursor-default'
                   : 'bg-meridian-primary hover:bg-meridian-primaryHover text-white'
@@ -628,3 +663,4 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return createPortal(modalContent, document.body);
 };
+

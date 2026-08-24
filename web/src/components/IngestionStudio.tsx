@@ -26,6 +26,12 @@ interface IngestionStudioProps {
   tenantId: string;
 }
 
+const SAMPLE_DOC = `# High-Performance Distributed Caching
+The Distributed Cache Layer uses Redis Cluster with multi-region replication.
+Cache invalidation is handled via Kafka events emitted by write operations.
+Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
+`;
+
 export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) => {
   const [activeTab, setActiveTab] = useState<'catalog' | 'upload'>('catalog');
   const [title, setTitle] = useState('');
@@ -47,19 +53,18 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  const sampleDoc = `# High-Performance Distributed Caching
-The Distributed Cache Layer uses Redis Cluster with multi-region replication.
-Cache invalidation is handled via Kafka events emitted by write operations.
-Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
-`;
-
-  const fetchDocuments = async () => {
+  const fetchDocuments = async (retry = true) => {
     setLoadingDocs(true);
     try {
       const res = await api.getDocuments();
       setDocList(res);
-    } catch (err: any) {
-      // Handled silently
+    } catch {
+      // Backend may still be booting — retry the initial load once before giving up
+      if (retry) {
+        setTimeout(() => {
+          void fetchDocuments(false);
+        }, 2000);
+      }
     } finally {
       setLoadingDocs(false);
     }
@@ -69,8 +74,20 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
     fetchDocuments();
   }, []);
 
-  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
-    setToastMessage({ text, type });
+  // Escape key handler for Chunk Inspector Modal
+  useEffect(() => {
+    if (!selectedDocDetail) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedDocDetail(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDocDetail]);
+
+  const showToast = (toastText: string, type: 'success' | 'error' = 'success') => {
+    setToastMessage({ text: toastText, type });
     setTimeout(() => setToastMessage(null), 3500);
   };
 
@@ -96,8 +113,10 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
       setText('');
       await fetchDocuments();
       setActiveTab('catalog');
-    } catch (err: any) {
-      setError(err.message || 'Ingestion failed');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Ingestion failed';
+      setError(msg);
+      setResult(null);
     } finally {
       setLoading(false);
     }
@@ -120,8 +139,9 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
     try {
       const detail = await api.getDocument(doc.id);
       setSelectedDocDetail(detail);
-    } catch (err: any) {
-      showToast(err.message || 'Could not load document chunks', 'error');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not load document chunks';
+      showToast(msg, 'error');
     }
   };
 
@@ -138,8 +158,9 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
         setSelectedDocDetail(null);
       }
       await fetchDocuments();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to delete document', 'error');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete document';
+      showToast(msg, 'error');
     } finally {
       setDeletingId(null);
     }
@@ -157,6 +178,8 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
       {/* Toast Notification */}
       {toastMessage && (
         <div
+          role="alert"
+          aria-live="polite"
           className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl shadow-2xl text-xs font-bold flex items-center space-x-2 animate-in fade-in slide-in-from-bottom-4 duration-200 ${
             toastMessage.type === 'success'
               ? 'bg-emerald-600 text-white border border-emerald-500'
@@ -170,7 +193,7 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 
       {/* Top Banner & Overview Statistics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
+        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
           <div>
             <span className="text-[11px] font-bold text-meridian-textMuted uppercase tracking-wider block mb-1">
               Knowledge Base Documents
@@ -188,7 +211,7 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
           </div>
         </div>
 
-        <div className="bg-white border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
+        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
           <div>
             <span className="text-[11px] font-bold text-meridian-textMuted uppercase tracking-wider block mb-1">
               Vector Chunks (Qdrant)
@@ -205,7 +228,7 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
           </div>
         </div>
 
-        <div className="bg-white border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
+        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
           <div>
             <span className="text-[11px] font-bold text-meridian-textMuted uppercase tracking-wider block mb-1">
               Graph Entities (Neo4j)
@@ -222,7 +245,7 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
           </div>
         </div>
 
-        <div className="bg-white border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
+        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
           <div>
             <span className="text-[11px] font-bold text-meridian-textMuted uppercase tracking-wider block mb-1">
               Storage Engine
@@ -242,10 +265,12 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 
       {/* Navigation Tabs Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-meridian-border pb-3">
-        <div className="flex space-x-2">
+        <div role="tablist" aria-label="Ingestion Studio Navigation" className="flex space-x-2">
           <button
+            role="tab"
+            aria-selected={activeTab === 'catalog'}
             onClick={() => setActiveTab('catalog')}
-            className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none ${
               activeTab === 'catalog'
                 ? 'bg-meridian-primary text-white shadow-glow'
                 : 'bg-white text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg border border-meridian-border'
@@ -256,8 +281,10 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
           </button>
 
           <button
+            role="tab"
+            aria-selected={activeTab === 'upload'}
             onClick={() => setActiveTab('upload')}
-            className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none ${
               activeTab === 'upload'
                 ? 'bg-meridian-primary text-white shadow-glow'
                 : 'bg-white text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg border border-meridian-border'
@@ -270,9 +297,10 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 
         <div className="flex items-center space-x-2">
           <button
-            onClick={fetchDocuments}
+            onClick={() => void fetchDocuments(false)}
             disabled={loadingDocs}
-            className="p-2 rounded-xl bg-white border border-meridian-border text-meridian-textMuted hover:text-meridian-primary hover:bg-meridian-bg transition-all text-xs font-semibold flex items-center space-x-1.5 shadow-sm cursor-pointer"
+            aria-label="Refresh document catalog"
+            className="p-2 rounded-xl bg-white border border-meridian-border text-meridian-textMuted hover:text-meridian-primary hover:bg-meridian-bg transition-all text-xs font-semibold flex items-center space-x-1.5 shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
             title="Refresh Knowledge Base"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loadingDocs ? 'animate-spin text-meridian-primary' : ''}`} />
@@ -285,11 +313,12 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
                 const res = await api.seedSampleDocuments();
                 showToast(`Seeded ${res.documents_seeded} sample architecture documents.`);
                 await fetchDocuments();
-              } catch (err: any) {
-                showToast(err.message || 'Failed to seed sample docs', 'error');
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : 'Failed to seed sample docs';
+                showToast(msg, 'error');
               }
             }}
-            className="px-3 py-2 rounded-xl bg-white border border-meridian-border text-meridian-textMuted hover:text-meridian-primary hover:bg-meridian-bg transition-all text-xs font-semibold flex items-center space-x-1.5 shadow-sm cursor-pointer"
+            className="px-3 py-2 rounded-xl bg-white border border-meridian-border text-meridian-textMuted hover:text-meridian-primary hover:bg-meridian-bg transition-all text-xs font-semibold flex items-center space-x-1.5 shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
             title="Seed sample architecture documents"
           >
             <Sparkles className="w-3.5 h-3.5 text-meridian-secondary" />
@@ -306,11 +335,12 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
                   const res = await api.clearAllDocuments();
                   showToast(`Cleared all ${res.deleted_count} documents from storage.`);
                   await fetchDocuments();
-                } catch (err: any) {
-                  showToast(err.message || 'Failed to clear documents', 'error');
+                } catch (err: unknown) {
+                  const msg = err instanceof Error ? err.message : 'Failed to clear documents';
+                  showToast(msg, 'error');
                 }
               }}
-              className="px-3 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition-all text-xs font-semibold flex items-center space-x-1.5 shadow-sm cursor-pointer"
+              className="px-3 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition-all text-xs font-semibold flex items-center space-x-1.5 shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
               title="Clear entire Knowledge Base"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -324,7 +354,7 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
       {activeTab === 'catalog' && (
         <div className="space-y-4">
           {/* Search & Filter Bar */}
-          <div className="bg-white border border-meridian-border rounded-3xl p-4 shadow-card flex flex-wrap items-center justify-between gap-3">
+          <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-4 shadow-card flex flex-wrap items-center justify-between gap-3">
             <div className="relative flex-1 min-w-[260px]">
               <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-meridian-textMuted" />
               <input
@@ -332,7 +362,8 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search documents by title, source, or content..."
-                className="w-full bg-meridian-bg border border-meridian-border rounded-xl pl-9 pr-3.5 py-2 text-xs text-meridian-text outline-none focus:border-meridian-primary focus:bg-white transition-all font-medium"
+                aria-label="Search documents catalog"
+                className="w-full bg-meridian-bg border border-meridian-border rounded-xl pl-9 pr-3.5 py-2 text-xs text-meridian-text outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white transition-all font-medium"
               />
             </div>
             <div className="text-[11px] font-semibold text-meridian-textMuted">
@@ -342,20 +373,28 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 
           {/* Document Table / Card Grid */}
           {filteredDocs.length === 0 ? (
-            <div className="text-center py-16 bg-white border border-dashed border-meridian-border rounded-3xl shadow-card">
+            <div className="text-center py-16 bg-white/80 backdrop-blur-md border border-dashed border-meridian-border rounded-3xl shadow-card">
               <FileText className="w-10 h-10 mx-auto mb-2 text-meridian-secondary/50" />
               <h4 className="text-sm font-bold text-meridian-text">
                 {searchQuery ? 'No matching documents found' : 'No documents in Knowledge Base'}
               </h4>
               <p className="text-xs text-meridian-textMuted mt-1 max-w-md mx-auto">
                 {searchQuery
-                  ? 'Try searching with different keywords or clear the filter.'
+                  ? 'Try searching with different keywords or reset your filter.'
                   : 'Start by ingesting your first document to enable dual-memory search and semantic retrieval.'}
               </p>
-              {!searchQuery && (
+              {searchQuery ? (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="mt-4 px-4 py-2 rounded-xl bg-meridian-lavenderLight text-meridian-primary text-xs font-bold border border-meridian-border hover:bg-meridian-blossom transition-all inline-flex items-center space-x-1.5 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Reset Search</span>
+                </button>
+              ) : (
                 <button
                   onClick={() => setActiveTab('upload')}
-                  className="mt-4 px-4 py-2 rounded-xl bg-meridian-primary text-white text-xs font-bold shadow-glow hover:bg-meridian-primaryHover transition-all inline-flex items-center space-x-1.5"
+                  className="mt-4 px-4 py-2 rounded-xl bg-meridian-primary text-white text-xs font-bold shadow-glow hover:bg-meridian-primaryHover transition-all inline-flex items-center space-x-1.5 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Ingest Your First Document</span>
@@ -367,21 +406,24 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
               {filteredDocs.map((doc) => (
                 <div
                   key={doc.id}
-                  className="bg-white border border-meridian-border rounded-3xl p-5 shadow-card hover:shadow-cardHover transition-all flex flex-col justify-between space-y-4 group"
+                  className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-5 shadow-card hover:shadow-cardHover transition-all flex flex-col justify-between space-y-4 group overflow-hidden"
                 >
-                  <div className="space-y-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center space-x-2">
-                        <span className="w-8 h-8 rounded-xl bg-meridian-blossom border border-meridian-lavender flex items-center justify-center text-meridian-primary font-bold text-[10px] uppercase">
+                  <div className="space-y-2.5 min-w-0">
+                    <div className="flex items-start justify-between gap-2 min-w-0">
+                      <div className="flex items-center space-x-2 min-w-0 flex-1">
+                        <span className="w-8 h-8 rounded-xl bg-meridian-blossom border border-meridian-lavender flex items-center justify-center text-meridian-text font-extrabold text-[10px] uppercase shrink-0">
                           {doc.format || 'MD'}
                         </span>
-                        <div>
-                          <h4 className="text-xs font-bold text-meridian-text group-hover:text-meridian-primary transition-colors line-clamp-1">
+                        <div className="min-w-0 flex-1">
+                          <h4
+                            className="text-xs font-bold text-meridian-text group-hover:text-meridian-primary transition-colors truncate"
+                            title={doc.title}
+                          >
                             {doc.title}
                           </h4>
-                          <span className="text-[10px] font-medium text-meridian-textMuted flex items-center space-x-1">
-                            <Clock className="w-2.5 h-2.5" />
-                            <span>
+                          <span className="text-[10px] font-medium text-meridian-textMuted flex items-center space-x-1 mt-0.5">
+                            <Clock className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate">
                               {doc.created_at
                                 ? new Date(doc.created_at).toLocaleDateString(undefined, {
                                     month: 'short',
@@ -394,7 +436,7 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
                           </span>
                         </div>
                       </div>
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-meridian-lavenderLight border border-meridian-border text-meridian-primary uppercase shrink-0">
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-meridian-lavenderLight border border-meridian-border text-meridian-primary uppercase shrink-0 ml-1">
                         {doc.source}
                       </span>
                     </div>
@@ -421,7 +463,7 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
                     <div className="flex items-center space-x-2">
                       <button
                         onClick={() => handleViewDetails(doc)}
-                        className="flex-1 px-3 py-1.5 rounded-xl bg-meridian-lavenderLight hover:bg-meridian-blossom border border-meridian-border text-meridian-primary text-xs font-bold flex items-center justify-center space-x-1.5 transition-all shadow-sm"
+                        className="flex-1 px-3 py-1.5 rounded-xl bg-meridian-lavenderLight hover:bg-meridian-blossom border border-meridian-border text-meridian-primary text-xs font-bold flex items-center justify-center space-x-1.5 transition-all shadow-sm focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         <span>Inspect Chunks</span>
@@ -430,7 +472,8 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
                       <button
                         onClick={() => handleDelete(doc.id, doc.title)}
                         disabled={deletingId === doc.id}
-                        className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 transition-all text-xs"
+                        aria-label={`Delete ${doc.title}`}
+                        className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 transition-all text-xs focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
                         title="Delete document and chunks"
                       >
                         {deletingId === doc.id ? (
@@ -453,18 +496,19 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left: Input Form (7 cols) */}
           <div className="lg:col-span-7 space-y-5">
-            <div className="bg-white border border-meridian-border rounded-3xl p-6 shadow-card hover:shadow-cardHover transition-all space-y-4">
+            <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card hover:shadow-cardHover transition-all space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-bold text-meridian-text flex items-center space-x-1.5">
                   <Database className="w-4 h-4 text-meridian-primary" />
                   <span>Document Ingestion & Structural Chunking</span>
                 </h3>
                 <button
+                  disabled={loading}
                   onClick={() => {
                     setTitle('Distributed Caching Architecture');
-                    setText(sampleDoc);
+                    setText(SAMPLE_DOC);
                   }}
-                  className="text-xs text-meridian-primary font-semibold hover:text-meridian-primaryHover flex items-center space-x-1 bg-meridian-lavenderLight px-3 py-1 rounded-full border border-meridian-border"
+                  className="text-xs text-meridian-primary font-semibold hover:text-meridian-primaryHover flex items-center space-x-1 bg-meridian-lavenderLight px-3 py-1 rounded-full border border-meridian-border disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-meridian-secondary" />
                   <span>Load Sample Doc</span>
@@ -473,15 +517,16 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 
               {/* Document Title */}
               <div>
-                <label className="block text-xs font-semibold text-meridian-text mb-1">
+                <label htmlFor="doc-title-input" className="block text-xs font-semibold text-meridian-text mb-1">
                   Document Title
                 </label>
                 <input
+                  id="doc-title-input"
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g. Enterprise Security Policy 2026"
-                  className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-medium outline-none focus:border-meridian-primary focus:bg-white transition-all"
+                  className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-medium outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white transition-all"
                 />
               </div>
 
@@ -490,8 +535,10 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
                 <input
                   type="file"
                   onChange={handleFileUpload}
+                  disabled={loading}
                   accept=".txt,.md,.markdown,.json,.html,.pdf,.docx"
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  aria-label="Upload document file"
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full disabled:cursor-not-allowed"
                 />
                 <FileUp className="w-7 h-7 mx-auto mb-1 text-meridian-primary" />
                 <p className="text-xs font-bold text-meridian-text">
@@ -504,14 +551,15 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 
               {/* Document Body Textarea */}
               <div>
-                <label className="block text-xs font-semibold text-meridian-text mb-1">
+                <label htmlFor="doc-body-input" className="block text-xs font-semibold text-meridian-text mb-1">
                   Document Content (Markdown / Text)
                 </label>
                 <textarea
+                  id="doc-body-input"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   placeholder="Paste or write structured documentation with # headings, sections, and paragraphs..."
-                  className="w-full h-48 bg-meridian-bg border border-meridian-border rounded-2xl p-4 text-xs text-meridian-text font-mono placeholder-meridian-textMuted outline-none focus:border-meridian-primary focus:bg-white resize-none transition-all leading-relaxed"
+                  className="w-full h-48 bg-meridian-bg border border-meridian-border rounded-2xl p-4 text-xs text-meridian-text font-mono placeholder-meridian-textMuted outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white resize-none transition-all leading-relaxed"
                 />
               </div>
 
@@ -520,7 +568,7 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
                 <button
                   onClick={handleIngest}
                   disabled={loading || !text.trim() || !title.trim()}
-                  className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-meridian-primary hover:bg-meridian-primaryHover text-white text-xs font-bold shadow-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-meridian-primary hover:bg-meridian-primaryHover text-white text-xs font-bold shadow-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
                 >
                   {loading ? (
                     <>
@@ -538,7 +586,7 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
             </div>
 
             {error && (
-              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+              <div role="alert" aria-live="polite" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
                 {error}
               </div>
             )}
@@ -546,13 +594,19 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 
           {/* Right: Ingestion Status & Statistics (5 cols) */}
           <div className="lg:col-span-5 space-y-5">
-            <div className="bg-white border border-meridian-border rounded-3xl p-6 shadow-card space-y-4">
+            <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card space-y-4">
               <h3 className="text-xs font-bold text-meridian-text flex items-center space-x-1.5">
                 <Layers className="w-4 h-4 text-meridian-primary" />
                 <span>Dual-Memory Ingestion Pipeline</span>
               </h3>
 
-              {!result ? (
+              {loading ? (
+                <div className="p-6 rounded-2xl border border-meridian-primary/40 bg-meridian-bg/50 animate-pulse space-y-3 text-center">
+                  <RefreshCw className="w-8 h-8 mx-auto text-meridian-primary animate-spin" />
+                  <p className="text-xs font-bold text-meridian-text">Parsing & Splitting Document Chunks...</p>
+                  <p className="text-[11px] text-meridian-textMuted">Generating dense vector embeddings & extracting Neo4j entities</p>
+                </div>
+              ) : !result ? (
                 <div className="text-center py-14 text-meridian-textMuted text-xs border border-dashed border-meridian-border rounded-2xl bg-meridian-bg/50">
                   <FileCode className="w-8 h-8 mx-auto mb-2 text-meridian-secondary/60" />
                   <p className="font-semibold text-meridian-text">Ready for Document Upload</p>
@@ -605,7 +659,7 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 
                   <button
                     onClick={() => setActiveTab('catalog')}
-                    className="w-full py-2.5 rounded-xl bg-meridian-lavenderLight border border-meridian-border text-xs font-bold text-meridian-primary hover:bg-meridian-blossom transition-all flex items-center justify-center space-x-1.5"
+                    className="w-full py-2.5 rounded-xl bg-meridian-lavenderLight border border-meridian-border text-xs font-bold text-meridian-primary hover:bg-meridian-blossom transition-all flex items-center justify-center space-x-1.5 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
                   >
                     <BookOpen className="w-4 h-4" />
                     <span>View in Document Catalog</span>
@@ -619,22 +673,33 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 
       {/* Chunk Inspector Modal */}
       {selectedDocDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1E2050]/50 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white border border-meridian-border rounded-3xl w-full max-w-3xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1E2050]/50 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setSelectedDocDetail(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="chunk-inspector-modal-title"
+            className="bg-white border border-meridian-border rounded-3xl w-full max-w-3xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Header */}
             <div className="p-5 border-b border-meridian-border flex items-center justify-between bg-white shrink-0">
-              <div>
-                <h3 className="text-sm font-bold text-meridian-text flex items-center space-x-2">
-                  <Database className="w-4 h-4 text-meridian-primary" />
-                  <span>Document Chunk Inspector: {selectedDocDetail.title}</span>
+              <div className="min-w-0 flex-1 pr-4">
+                <h3 id="chunk-inspector-modal-title" className="text-sm font-bold text-meridian-text flex items-center space-x-2 truncate">
+                  <Database className="w-4 h-4 text-meridian-primary shrink-0" />
+                  <span className="truncate">Document Chunk Inspector: {selectedDocDetail.title}</span>
                 </h3>
-                <p className="text-[11px] text-meridian-textMuted mt-0.5">
+                <p className="text-[11px] text-meridian-textMuted mt-0.5 font-medium">
                   ID: <code className="font-mono text-[10px]">{selectedDocDetail.id}</code> • {selectedDocDetail.chunks.length} structural chunks • {selectedDocDetail.char_count} characters
                 </p>
               </div>
               <button
                 onClick={() => setSelectedDocDetail(null)}
-                className="p-1.5 rounded-xl text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg transition-all"
+                aria-label="Close Chunk Inspector"
+                className="p-1.5 rounded-xl text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg transition-all shrink-0 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+                title="Close Inspector"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -647,16 +712,16 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
                   key={chunk.id}
                   className="bg-white border border-meridian-border rounded-2xl p-4 shadow-sm space-y-2.5"
                 >
-                  <div className="flex items-center justify-between text-[11px] font-bold text-meridian-text">
-                    <span className="px-2.5 py-0.5 rounded-full bg-meridian-lavenderLight text-meridian-primary border border-meridian-border">
+                  <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-meridian-text">
+                    <span className="px-2.5 py-0.5 rounded-full bg-meridian-lavenderLight text-meridian-primary border border-meridian-border shrink-0">
                       Chunk #{idx + 1}
                     </span>
                     {chunk.section_heading && (
-                      <span className="text-meridian-textMuted font-mono text-[10px]">
+                      <span className="text-meridian-textMuted font-mono text-[10px] truncate max-w-[280px]" title={chunk.section_heading}>
                         Section: {chunk.section_heading}
                       </span>
                     )}
-                    <span className="text-[10px] text-meridian-textMuted font-mono">
+                    <span className="text-[10px] text-meridian-textMuted font-mono shrink-0">
                       ID: {chunk.id.slice(0, 8)}...
                     </span>
                   </div>
@@ -668,11 +733,14 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
               ))}
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-meridian-border flex justify-end bg-white shrink-0">
+            {/* Modal Footer (Streamlined single close section) */}
+            <div className="px-5 py-3 border-t border-meridian-border/60 flex items-center justify-between bg-white shrink-0 text-xs text-meridian-textMuted">
+              <span className="font-medium text-[11px]">
+                Showing {selectedDocDetail.chunks.length} structural chunks from vector store
+              </span>
               <button
                 onClick={() => setSelectedDocDetail(null)}
-                className="px-5 py-2 rounded-xl bg-meridian-primary text-white text-xs font-bold shadow-glow hover:bg-meridian-primaryHover transition-all"
+                className="px-4 py-1.5 rounded-xl bg-meridian-lavenderLight hover:bg-meridian-blossom text-meridian-primary text-xs font-bold border border-meridian-border transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
               >
                 Close Inspector
               </button>
@@ -683,3 +751,4 @@ Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
     </div>
   );
 };
+

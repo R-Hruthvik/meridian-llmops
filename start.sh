@@ -39,6 +39,21 @@ print_help() {
     echo ""
 }
 
+# Bring up supporting Docker services (Qdrant, Neo4j, litellm, Langfuse) if Docker is available.
+# `up -d` is idempotent: no-op if already running. Left running on exit (persistent data layer).
+start_docker_stack() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo -e "${YELLOW}Docker not found — skipping containers (in-memory fallback may be used).${NC}"
+        return 0
+    fi
+    if ! docker compose ps >/dev/null 2>&1; then
+        echo -e "${YELLOW}Docker daemon not running — skipping containers.${NC}"
+        return 0
+    fi
+    echo -e "${BLUE}Starting Docker services (Qdrant, Neo4j, litellm, Langfuse)...${NC}"
+    docker compose up -d || echo -e "${YELLOW}Some Docker services failed to start; continuing.${NC}"
+}
+
 # Parse Python executable
 if [ -f "$ROOT_DIR/.venv/bin/python" ]; then
     PYTHON_CMD="$ROOT_DIR/.venv/bin/python"
@@ -92,6 +107,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 print_banner
+
+# Start the data-layer containers before launching the app services.
+start_docker_stack
 
 # Trap function to clean up background processes on Ctrl+C / kill
 cleanup() {
