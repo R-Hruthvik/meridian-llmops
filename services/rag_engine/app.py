@@ -380,6 +380,7 @@ async def query_endpoint(
         query=req.query,
         answer=final_answer,
         source_chunks=chunks_data,
+        entities=final_state.get("entities", []),
         cycle_count=final_state.get("cycle_count", 1),
         verified=final_state.get("is_grounded", False),
         refusal=final_state.get("is_refusal", False),

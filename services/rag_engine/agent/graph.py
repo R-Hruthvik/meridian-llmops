@@ -49,24 +49,47 @@ def build_rag_agent_graph(
         query_words = [re.sub(r"[^\w\s-]", "", w).strip() for w in query.split()]
         query_words = [w for w in query_words if len(w) > 1]
 
-        # 1. Match direct entities from KnowledgeGraphStore
+        # 1. Match direct entities from KnowledgeGraphStore.
+        #    Exact word matches rank first; longer substrings catch inflections
+        #    ("storage" ~ "Storage"), but short/stopword-like tokens are skipped so
+        #    noise such as "use" matching "Useful" never reaches the UI panel.
+        exact_hits: list[dict[str, Any]] = []
+        fuzzy_hits: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        # Interrogatives/connectors that would otherwise hit prose-derived Concept
+        # nodes such as "Which" or "Because" in the graph.
+        stopwords = {
+            "the", "and", "for", "what", "which", "who", "does", "did", "is", "are",
+            "was", "were", "its", "how", "why", "when", "where", "use", "uses",
+            "used", "using", "each", "provide", "because", "between", "from", "with",
+            "that", "this", "into", "about", "can", "will",
+        }
         for w in query_words:
+            wl = w.lower()
+            if len(wl) < 3 or wl in stopwords:
+                continue
             for ent_name, ent in graph_store.entities.items():
-                if (
-                    (w.lower() in ent_name.lower() or ent_name.lower() in w.lower())
-                    and ent_name not in matched_names
-                ):
-                    matched_names.add(ent_name)
-                    extracted_entities.append({
-                        "name": ent.name,
-                        "entity_type": ent.entity_type,
-                    })
+                if ent_name in seen:
+                    continue
+                el = ent_name.lower()
+                hit = {"name": ent.name, "entity_type": ent.entity_type}
+                if wl == el:
+                    exact_hits.append(hit)
+                    seen.add(ent_name)
+                elif min(len(wl), len(el)) >= 5 and (wl in el or el in wl):
+                    fuzzy_hits.append(hit)
+                    seen.add(ent_name)
 
-        # 2. Match relations and extract connected nodes
-        for w in query_words:
-            relations = graph_store.query_neighborhood(w)
-            for r in relations:
-                for target_name in [r.source_entity, r.target_entity]:
+        extracted_entities.extend(exact_hits[:8])
+        extracted_entities.extend(fuzzy_hits[: max(0, 12 - len(extracted_entities))])
+        matched_names.update(e["name"] for e in extracted_entities)
+
+        # 2. Expand one graph hop around matched entities to surface real relations.
+        #    query_neighborhood requires exact node names, so this only fires for
+        #    confirmed matches rather than raw query words.
+        for e in list(extracted_entities):
+            for r in graph_store.query_neighborhood(e["name"]):
+                for target_name in (r.source_entity, r.target_entity):
                     if target_name and target_name not in matched_names:
                         matched_names.add(target_name)
                         ent_obj = graph_store.entities.get(target_name)
