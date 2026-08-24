@@ -1,19 +1,25 @@
+# Routes through the local omniroute proxy (http://localhost:20128/v1).
+# No external OpenAI/Anthropic keys needed — omniroute handles routing + fallback.
+# Model IDs use omniroute's prefixed namespace (e.g. gh/..., github/...) or auto/* combos.
 model_list:
   - model_name: gpt-4o-mini
     litellm_params:
-      model: openai/gpt-4o-mini
-      api_key: os.environ/OPENAI_API_KEY
-  - model_name: claude-3-5-sonnet
+      model: openai/gh/gpt-4o-mini
+      api_base: http://host.docker.internal:20128/v1
+      api_key: os.environ/OMNIROUTE_API_KEY
+  - model_name: claude
     litellm_params:
-      model: anthropic/claude-3-5-sonnet-20241022
-      api_key: os.environ/ANTHROPIC_API_KEY
-  - model_name: text-embedding-3-small
+      model: openai/github/claude-sonnet-4
+      api_base: http://host.docker.internal:20128/v1
+      api_key: os.environ/OMNIROUTE_API_KEY
+  - model_name: best-coding
     litellm_params:
-      model: openai/text-embedding-3-small
-      api_key: os.environ/OPENAI_API_KEY
+      model: openai/auto/best-coding
+      api_base: http://host.docker.internal:20128/v1
+      api_key: os.environ/OMNIROUTE_API_KEY
 
 litellm_settings:
   drop_params: True
   set_verbose: False
-  request_timeout: 30
+  request_timeout: 60
   telemetry: False

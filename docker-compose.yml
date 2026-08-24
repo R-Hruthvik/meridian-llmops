@@ -42,6 +42,7 @@ services:
     environment:
       - LITELLM_MASTER_KEY=sk-litellm-master-key
       - STORE_MODEL_IN_DB=False
+      - OMNIROUTE_API_KEY=${OMNIROUTE_API_KEY:-}
     volumes:
       - ./services/gateway/litellm_config.yaml:/app/config.yaml
     extra_hosts:
