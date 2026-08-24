@@ -12,6 +12,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from packages.core.db import init_db
 from packages.core.models import (
     DocumentFormat,
     QueryRequest,
@@ -26,7 +27,6 @@ from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.pipeline import IngestionPipeline
 from services.ingestion.vector_store import VectorStoreManager
 from services.rag_engine.agent.graph import build_rag_agent_graph
-from packages.core.db import init_db
 from services.rag_engine.observability.langfuse_client import MeridianTracer
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 from services.rag_engine.routers.review import router as review_router
@@ -45,7 +45,7 @@ async def on_startup():
     """Initializes relational database schema on application startup."""
     try:
         await init_db()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - startup must never crash on DB hiccups
         logger.warning(f"Database initialization warning: {e}")
 
 
@@ -75,7 +75,7 @@ def _probe_http(url: str, timeout: float = 2.0) -> bool:
         with httpx.Client(timeout=timeout) as client:
             resp = client.get(url)
             return resp.status_code < 500
-    except Exception:
+    except Exception:  # noqa: BLE001 - any probe failure means unreachable
         return False
 
 
@@ -84,7 +84,7 @@ def _check_docker_services() -> dict[str, Any]:
 
     try:
         settings = _get_settings()
-    except Exception:
+    except Exception:  # noqa: BLE001 - degraded banner is better than a boot crash
         settings = None  # type: ignore[assignment]
 
     qdrant_url = f"http://{getattr(settings, 'qdrant_host', 'localhost')}:{getattr(settings, 'qdrant_port', 6333)}/collections" if settings else "http://localhost:6333/collections"

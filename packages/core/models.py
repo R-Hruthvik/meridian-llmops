@@ -104,8 +104,9 @@ class QueryResponse(BaseModel):
 # =====================================================================
 
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import String, Text, Float, Integer, DateTime, ForeignKey, JSON
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -121,7 +122,7 @@ class ORMDocument(Base):
     file_type: Mapped[str] = mapped_column(String(50), nullable=False)
     source_uri: Mapped[str] = mapped_column(String(512), nullable=True)
     processing_status: Mapped[str] = mapped_column(String(50), default="processed")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     chunks: Mapped[list["ORMChunk"]] = relationship("ORMChunk", back_populates="document", cascade="all, delete-orphan")
     extracted_fields: Mapped[list["ExtractedField"]] = relationship("ExtractedField", back_populates="document", cascade="all, delete-orphan")
@@ -180,7 +181,7 @@ class ORMAnswer(Base):
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
     status: Mapped[str] = mapped_column(String(50), default="verified")
     latency_ms: Mapped[float] = mapped_column(Float, default=0.0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     claims: Mapped[list["ORMClaim"]] = relationship("ORMClaim", back_populates="answer", cascade="all, delete-orphan")
 

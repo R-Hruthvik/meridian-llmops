@@ -10,7 +10,6 @@ logger = logging.getLogger("meridian.rag_engine.agent")
 
 from packages.verification.tiered_verifier import TieredCitationVerifier
 from services.gateway.client import LiteLLMClient
-
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.agent.reformulator import QueryReformulator
@@ -53,13 +52,15 @@ def build_rag_agent_graph(
         # 1. Match direct entities from KnowledgeGraphStore
         for w in query_words:
             for ent_name, ent in graph_store.entities.items():
-                if w.lower() in ent_name.lower() or ent_name.lower() in w.lower():
-                    if ent_name not in matched_names:
-                        matched_names.add(ent_name)
-                        extracted_entities.append({
-                            "name": ent.name,
-                            "entity_type": ent.entity_type,
-                        })
+                if (
+                    (w.lower() in ent_name.lower() or ent_name.lower() in w.lower())
+                    and ent_name not in matched_names
+                ):
+                    matched_names.add(ent_name)
+                    extracted_entities.append({
+                        "name": ent.name,
+                        "entity_type": ent.entity_type,
+                    })
 
         # 2. Match relations and extract connected nodes
         for w in query_words:

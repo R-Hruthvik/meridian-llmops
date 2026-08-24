@@ -63,7 +63,10 @@ class VectorStoreManager:
         if not self.in_memory:
             try:
                 from qdrant_client import QdrantClient  # type: ignore[import-untyped]
-                from qdrant_client.models import Distance, VectorParams  # type: ignore[import-untyped]  # noqa: I001
+                from qdrant_client.models import (  # type: ignore[import-untyped]
+                    Distance,
+                    VectorParams,
+                )
             except Exception as e:  # noqa: BLE001
                 logger.warning("qdrant-client not installed - using in-memory fallback: %s", e)
                 return
@@ -245,12 +248,15 @@ class VectorStoreManager:
         if self._qdrant_available and self.client is not None:
             try:
                 # Delete and recreate collection for clean slate
-                from qdrant_client.models import Distance, VectorParams  # type: ignore[import-untyped]
+                from qdrant_client.models import (  # type: ignore[import-untyped]
+                    Distance,
+                    VectorParams,
+                )
 
                 try:
                     self.client.delete_collection(collection_name=self.collection_name)  # type: ignore[attr-defined]
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as cleanup_error:  # noqa: BLE001 - best-effort delete before recreate
+                    logger.debug("Collection delete before recreate failed: %s", cleanup_error)
                 self.client.create_collection(  # type: ignore[attr-defined]
                     collection_name=self.collection_name,
                     vectors_config=VectorParams(size=self.dim, distance=Distance.COSINE),

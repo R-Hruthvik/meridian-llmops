@@ -1,14 +1,12 @@
 """Pydantic schemas for citation verification, claim models, and human review items."""
 
-from datetime import datetime
-from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
 class CitationSchema(BaseModel):
     """Citation pointing to source chunk quote and support score."""
     chunk_id: str
-    document_id: Optional[str] = None
+    document_id: str | None = None
     page: int = 1
     section: str = "General"
     quote: str
@@ -19,13 +17,13 @@ class CitationSchema(BaseModel):
 class ClaimSchema(BaseModel):
     """Atomic claim extracted from generated answer with supporting citations."""
     text: str
-    citations: List[CitationSchema] = []
+    citations: list[CitationSchema] = []
     verification_status: str = "supported"  # supported, partially_supported, unsupported
 
 
 class VerificationResult(BaseModel):
     """Result payload from the 3-Tier Citation Verification Engine."""
-    claims: List[ClaimSchema]
+    claims: list[ClaimSchema]
     overall_status: str = "supported"  # supported, partially_supported, unsupported
     overall_confidence: float = 1.0
 
@@ -40,12 +38,12 @@ class ReviewItemResponse(BaseModel):
     confidence: float
     provenance_page: int
     status: str  # pending, approved, rejected, corrected
-    corrected_value: Optional[str] = None
-    notes: Optional[str] = None
+    corrected_value: str | None = None
+    notes: str | None = None
 
 
 class ReviewItemAction(BaseModel):
     """Payload for approving, rejecting, or correcting a review item."""
     action: str  # approve, reject, correct
-    corrected_value: Optional[str] = None
-    notes: Optional[str] = None
+    corrected_value: str | None = None
+    notes: str | None = None

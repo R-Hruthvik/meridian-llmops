@@ -83,8 +83,6 @@ def seeded_golden_kb(api_client):
 def test_golden_dataset_faithfulness_and_relevancy(api_client, golden_dataset):
     """Evaluates pipeline outputs against expected thresholds (Faithfulness >= 0.90, Recall >= 0.75)."""
     headers = {"X-API-Key": "meridian-test-secret-key-2026", "X-Tenant-Id": "ci-eval-tenant"}
-    passed_cases = 0
-    total_cases = len(golden_dataset)
 
     # Mock Critic in testing to ensure deterministic grounded results without live LLM.
     # The gateway + retrieval seams are still exercised; only the LLM-as-judge verdict is stubbed.

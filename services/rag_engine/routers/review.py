@@ -1,19 +1,19 @@
 """Human-in-the-Loop (HITL) Review Queue router for low-confidence extractions."""
 
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core.db import get_db
-from packages.core.models import ReviewItem, ExtractedField
-from packages.core.schemas import ReviewItemResponse, ReviewItemAction
+from packages.core.models import ExtractedField, ReviewItem
+from packages.core.schemas import ReviewItemAction, ReviewItemResponse
 
 router = APIRouter(prefix="/v1/review", tags=["Human Review Queue"])
 
 
-@router.get("/items", response_model=List[ReviewItemResponse])
+@router.get("/items", response_model=list[ReviewItemResponse])
 async def list_pending_review_items(db: AsyncSession = Depends(get_db)):
     """Lists all pending low-confidence items in the Human Review Queue."""
     stmt = (
@@ -80,7 +80,7 @@ async def process_review_action(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid action")
 
     item.notes = action_data.notes
-    item.reviewed_at = datetime.now(timezone.utc)
+    item.reviewed_at = datetime.now(UTC)
     await db.commit()
 
     return ReviewItemResponse(
