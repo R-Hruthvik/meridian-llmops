@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+import zlib
 
 import numpy as np
 
@@ -25,7 +26,10 @@ def _qdrant_point_id(chunk_id: str) -> str:
 
 
 def generate_embedding(text: str, dim: int = 1024) -> list[float]:
-    """Generates a normalized dense vector embedding (deterministic pseudo-embedding fallback for tests)."""
+    """Generates a normalized dense vector embedding (deterministic pseudo-embedding fallback for tests).
+
+    Uses zlib.crc32 rather than hash(): Python randomizes str hashes per process,
+    which silently invalidated every stored vector across backend restarts."""
     # Use deterministic token hashing to produce consistent dense vectors
     vec = np.zeros(dim, dtype=np.float32)
     tokens = text.lower().split()
@@ -33,7 +37,7 @@ def generate_embedding(text: str, dim: int = 1024) -> list[float]:
         return vec.tolist()
 
     for idx, token in enumerate(tokens):
-        h = hash(token) % dim
+        h = zlib.crc32(token.encode("utf-8")) % dim
         vec[h] += 1.0 / (idx + 1.0)
 
     norm = np.linalg.norm(vec)

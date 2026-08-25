@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import uuid
 from typing import Any
 
 import httpx
@@ -139,6 +140,10 @@ def build_rag_agent_graph(
             }
 
         context_text = "\n\n".join([f"[{i+1}] {c.get('text', '')}" for i, c in enumerate(valid_chunks)])
+        # Issue #34/#35: upstream proxies may serve semantic-cached completions for
+        # repeated prompts. A per-request nonce keeps every signature unique so each
+        # query is guaranteed a fresh LLM generation.
+        request_nonce = uuid.uuid4().hex
         messages = [
             {
                 "role": "system",
@@ -147,6 +152,7 @@ def build_rag_agent_graph(
                     "Answer the user's question with high accuracy, focus, and structure using the provided context. "
                     "Format your answer cleanly using standard Markdown (use bold text for key terms, section headings, bullet points, or tables where appropriate). "
                     "Be direct, structured, and focused on providing a comprehensive yet easy-to-read answer."
+                    f" [request:{request_nonce}]"
                 ),
             },
             {
