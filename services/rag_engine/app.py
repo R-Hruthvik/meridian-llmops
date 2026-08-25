@@ -376,6 +376,22 @@ async def query_endpoint(
         for c in final_state.get("retrieved_chunks", [])
     ]
 
+    degraded_reason: str | None = final_state.get("generation_error")
+    # Latency tripwire (issue #34): a "verified" non-refusal answer produced implausibly
+    # fast means it did not come from a real generation — flag it instead of trusting it.
+    if (
+        degraded_reason is None
+        and os.environ.get("APP_ENV") != "testing"
+        and not final_state.get("is_refusal", False)
+        and final_state.get("draft_answer")
+        and elapsed_ms < 500
+    ):
+        degraded_reason = (
+            f"Answer arrived in {elapsed_ms:.0f} ms, below plausible generation latency; "
+            "response may be cached or stale and is not attributable to a fresh LLM call"
+        )
+        logger.warning("Latency tripwire tripped (%.0f ms): %s", elapsed_ms, degraded_reason)
+
     return QueryResponse(
         query=req.query,
         answer=final_answer,
@@ -387,6 +403,7 @@ async def query_endpoint(
         execution_time_ms=elapsed_ms,
         serving_provider=active_cfg.get("provider", "openai"),
         serving_model=active_cfg.get("model", "gpt-4o-mini"),
+        degraded_reason=degraded_reason,
     )
 
 

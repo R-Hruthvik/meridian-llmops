@@ -80,6 +80,42 @@ async def test_agent_graph_successful_flow(populated_retriever_and_graph):
 
 
 @pytest.mark.asyncio
+async def test_agent_graph_records_generation_error_on_llm_failure(monkeypatch, populated_retriever_and_graph):
+    """Issue #34 regression: LLM failure must surface as generation_error, not silently degrade."""
+    # Simulate production: APP_ENV unset disables the extractive testing fallback.
+    monkeypatch.delenv("APP_ENV", raising=False)
+    retriever, gstore = populated_retriever_and_graph
+
+    class FailingClient:
+        async def chat_completion(self, **kwargs):
+            raise RuntimeError("connection refused")
+
+    graph = build_rag_agent_graph(retriever=retriever, graph_store=gstore, llm_client=FailingClient())
+
+    initial_state = {
+        "query": "What does Meridian platform use for gateway routing?",
+        "current_search_query": "What does Meridian platform use for gateway routing?",
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "critic_verdict": None,
+        "cycle_count": 0,
+        "max_cycles": 3,
+        "is_grounded": False,
+        "is_refusal": False,
+        "tenant_id": "test-tenant",
+    }
+
+    final_state = await graph.ainvoke(initial_state)
+
+    # Pipeline must end in a safe refusal AND carry the generation failure reason
+    assert final_state["is_refusal"] is True
+    assert final_state["generation_error"] is not None
+    assert "LLM generation failed" in final_state["generation_error"]
+    assert "connection refused" in final_state["generation_error"]
+
+
+@pytest.mark.asyncio
 async def test_agent_graph_self_healing_safe_refusal_when_unanswerable(populated_retriever_and_graph):
     retriever, gstore = populated_retriever_and_graph
     graph = build_rag_agent_graph(retriever=retriever, graph_store=gstore)

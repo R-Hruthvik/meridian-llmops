@@ -179,15 +179,21 @@ def build_rag_agent_graph(
                 if os.environ.get("APP_ENV") == "testing" and valid_chunks:
                     draft = "\n".join(c.get("text", "") for c in valid_chunks)
                 else:
-                    draft = ""
+                    return {
+                        "draft_answer": "",
+                        "generation_error": f"LLM returned an empty completion via {provider} ({model})",
+                    }
         except (httpx.HTTPError, httpx.RequestError, OSError, ValueError, KeyError, RuntimeError) as e:
             logger.error("LLM Generation Failed via %s (%s @ %s): %s", provider, model, base_url, e)
             if os.environ.get("APP_ENV") == "testing" and valid_chunks:
                 draft = "\n".join(c.get("text", "") for c in valid_chunks)
             else:
-                draft = ""
+                return {
+                    "draft_answer": "",
+                    "generation_error": f"LLM generation failed via {provider} ({model} @ {base_url}): {e}",
+                }
 
-        return {"draft_answer": draft}
+        return {"draft_answer": draft, "generation_error": None}
 
     def critic_node(state: RagAgentState) -> dict[str, Any]:
         query = state["query"]

@@ -95,6 +95,7 @@ class QueryResponse(BaseModel):
     verified: bool = Field(True, description="Whether the response passed Critic verification")
     refusal: bool = Field(False, description="Whether the response is a safe refusal fallback")
     execution_time_ms: float = Field(0.0, description="Total latency in milliseconds")
+    degraded_reason: str | None = Field(None, description="Why this response was produced on a degraded path (e.g. LLM generation failed); null when a normal generation succeeded")
     serving_provider: str = Field("openai", description="Upstream LLM provider that generated the response")
     serving_model: str = Field("gpt-4o-mini", description="Specific model that generated the response")
 

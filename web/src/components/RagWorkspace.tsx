@@ -319,6 +319,16 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                   <span>Cycle {response.cycle_count}/{maxCycles}</span>
                 </span>
 
+                {response.degraded_reason && (
+                  <span
+                    className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 border border-red-300 text-red-800 shadow-sm"
+                    title={response.degraded_reason}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                    <span>Degraded Path</span>
+                  </span>
+                )}
+
                 {response.serving_model && (
                   <span className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-white border border-meridian-border text-meridian-text shadow-sm">
                     <Zap className="w-3.5 h-3.5 text-meridian-primary" />

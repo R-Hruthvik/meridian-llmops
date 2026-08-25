@@ -32,6 +32,7 @@ export interface QueryResponse {
   execution_time_ms: number;
   serving_provider?: string;
   serving_model?: string;
+  degraded_reason?: string | null;
 }
 
 export interface IngestRequest {
