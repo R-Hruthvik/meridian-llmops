@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
@@ -63,10 +63,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [timeoutSeconds, setTimeoutSeconds] = useState('');
   const [maxCycles, setMaxCycles] = useState('');
   const [enforceGuardrails, setEnforceGuardrails] = useState(true);
-  const [pipelineDirty, setPipelineDirty] = useState(false);
-  // Dirty flag: only send pipeline fields when the user opened Advanced or
-  // touched one of its inputs — otherwise a default save would clobber a
-  // server-side `enforce_guardrails: false` back to true.
+  // Snapshot of pipeline values taken when the modal opens. GET
+  // /v1/settings/llm returns no pipeline fields (timeout/max_cycles/
+  // enforce_guardrails), so the snapshot is the local defaults. Pipeline
+  // fields are sent only when a current value differs from the snapshot —
+  // expanding Advanced without editing must never clobber a server-side
+  // `enforce_guardrails: false` back to true.
+  const pipelineSnapshot = useRef({ timeoutSeconds: '', maxCycles: '', enforceGuardrails: true });
   const [pinging, setPinging] = useState(false);
   const [pingResult, setPingResult] = useState<{ success: boolean; message: string } | null>(null);
   // Per-provider key status from providers_configured (GET booleans) merged
@@ -125,7 +128,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
-      setPipelineDirty(false);
+      pipelineSnapshot.current = { timeoutSeconds: '', maxCycles: '', enforceGuardrails: true };
+      setTimeoutSeconds('');
+      setMaxCycles('');
+      setEnforceGuardrails(true);
       loadAllSettings();
     } else {
       document.body.style.overflow = 'unset';
@@ -271,9 +277,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } else if (isCustomFamily && customBaseUrl) {
       payload.custom_base_url = customBaseUrl;
     }
-    // Advanced pipeline settings — only send when the user interacted with
-    // the Advanced section (dirty flag); blank numerics are still omitted.
-    if (pipelineDirty) {
+    // Advanced pipeline settings — only send when a value differs from the
+    // open-time snapshot; blank numerics are still omitted.
+    const pipelineSnap = pipelineSnapshot.current;
+    const pipelineChanged =
+      timeoutSeconds !== pipelineSnap.timeoutSeconds ||
+      maxCycles !== pipelineSnap.maxCycles ||
+      enforceGuardrails !== pipelineSnap.enforceGuardrails;
+    if (pipelineChanged) {
       const parsedTimeout = Number(timeoutSeconds);
       if (timeoutSeconds.trim() && Number.isFinite(parsedTimeout)) {
         payload.timeout_seconds = Math.min(300, Math.max(1, Math.round(parsedTimeout)));
@@ -644,10 +655,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="pt-2 border-t border-meridian-border">
             <button
               type="button"
-              onClick={() => setShowPipelineSettings((prev) => {
-                if (!prev) setPipelineDirty(true);
-                return !prev;
-              })}
+              onClick={() => setShowPipelineSettings((prev) => !prev)}
               aria-expanded={showPipelineSettings}
               className="flex items-center justify-between w-full text-xs font-bold text-meridian-primary hover:text-meridian-primaryHover py-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
             >
@@ -670,7 +678,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     min={1}
                     max={300}
                     value={timeoutSeconds}
-                    onChange={(e) => { setPipelineDirty(true); setTimeoutSeconds(e.target.value); }}
+                    onChange={(e) => setTimeoutSeconds(e.target.value)}
                     placeholder="e.g. 60"
                     className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
                   />
@@ -685,7 +693,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     min={1}
                     max={10}
                     value={maxCycles}
-                    onChange={(e) => { setPipelineDirty(true); setMaxCycles(e.target.value); }}
+                    onChange={(e) => setMaxCycles(e.target.value)}
                     placeholder="e.g. 3"
                     className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
                   />
@@ -695,7 +703,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <input
                       type="checkbox"
                       checked={enforceGuardrails}
-                      onChange={(e) => { setPipelineDirty(true); setEnforceGuardrails(e.target.checked); }}
+                      onChange={(e) => setEnforceGuardrails(e.target.checked)}
                       className="rounded text-meridian-primary focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none cursor-pointer"
                     />
                     <span>Enforce guardrails</span>

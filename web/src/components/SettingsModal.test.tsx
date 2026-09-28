@@ -495,6 +495,30 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
     expect(payload).toHaveProperty('enforce_guardrails', false);
   });
 
+  it('G4: expand Advanced without editing omits all pipeline fields on save', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    // Expand Advanced but change nothing, then save.
+    await user.click(screen.getByRole('button', { name: /Advanced: timeout, guardrails/i }));
+    expect(screen.getByLabelText(/Timeout \(seconds/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalledTimes(1);
+    });
+    const payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).not.toHaveProperty('enforce_guardrails');
+    expect(payload).not.toHaveProperty('timeout_seconds');
+    expect(payload).not.toHaveProperty('max_cycles');
+  });
+
   it('G5: Quick ping calls testLLMConnection and shows latency inline', async () => {
     const user = userEvent.setup();
     render(
