@@ -299,6 +299,86 @@ describe('IngestionStudio focused source (citation drill-through)', () => {
     expect(document.querySelector('[data-focused-document]')).toBeNull();
   });
 
+  it('closing the inspector (X) consumes the citation focus', async () => {
+    withOneDoc();
+    vi.spyOn(api, 'getDocument').mockResolvedValue(DETAIL);
+    const onDismissFocus = vi.fn();
+
+    render(
+      <IngestionStudio
+        tenantId="default"
+        focusedDocumentId="doc-arch-1"
+        focusedChunkId="chunk-b"
+        onDismissFocus={onDismissFocus}
+      />
+    );
+
+    await userEvent.setup().click(
+      await screen.findByRole('button', { name: /Close Chunk Inspector/i })
+    );
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onDismissFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it('closing the inspector (Close Inspector button) consumes the citation focus', async () => {
+    withOneDoc();
+    vi.spyOn(api, 'getDocument').mockResolvedValue(DETAIL);
+    const onDismissFocus = vi.fn();
+
+    render(
+      <IngestionStudio
+        tenantId="default"
+        focusedDocumentId="doc-arch-1"
+        focusedChunkId="chunk-b"
+        onDismissFocus={onDismissFocus}
+      />
+    );
+
+    await userEvent.setup().click(
+      await screen.findByRole('button', { name: /^Close Inspector$/i })
+    );
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onDismissFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-entering Corpus after closing the inspector does NOT re-open it', async () => {
+    withOneDoc();
+    vi.spyOn(api, 'getDocument').mockResolvedValue(DETAIL);
+
+    // Harness mirroring App: focusedDocumentId lives ABOVE IngestionStudio and
+    // is only cleared via onDismissFocus. Remounting the child simulates the B5
+    // lazy-mount when the user leaves and re-enters Corpus.
+    const Harness: React.FC<{ mounted: boolean }> = ({ mounted }) => {
+      const [focused, setFocused] = React.useState<string | null>('doc-arch-1');
+      if (!mounted) return null;
+      return (
+        <IngestionStudio
+          tenantId="default"
+          focusedDocumentId={focused}
+          focusedChunkId="chunk-b"
+          onDismissFocus={() => setFocused(null)}
+        />
+      );
+    };
+
+    const { rerender } = render(<Harness mounted />);
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /^Close Inspector$/i }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // Leave Corpus, then come back.
+    rerender(<Harness mounted={false} />);
+    rerender(<Harness mounted />);
+
+    await screen.findByText('Meridian Architecture Overview');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(api.getDocument).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces an error when the focused document cannot be loaded', async () => {
     withOneDoc();
     vi.spyOn(api, 'getDocument').mockRejectedValue(new Error('Document not found'));

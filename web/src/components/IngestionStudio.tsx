@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   CheckCircle2,
@@ -153,17 +153,26 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
     }
   };
 
+  // Citation focus is one-shot. Every close path runs through here so the
+  // App-level focus is consumed too — otherwise the B5 lazy-mount re-runs the
+  // drill-through effect and pops the inspector open on every Corpus visit.
+  const closeInspector = useCallback(() => {
+    setSelectedDocDetail(null);
+    setFocusError(null);
+    onDismissFocus?.();
+  }, [onDismissFocus]);
+
   // Escape key handler for Chunk Inspector Modal
   useEffect(() => {
     if (!selectedDocDetail) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setSelectedDocDetail(null);
+        closeInspector();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedDocDetail]);
+  }, [selectedDocDetail, closeInspector]);
 
   const showToast = (toastText: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text: toastText, type });
@@ -839,7 +848,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
       {selectedDocDetail && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1E2050]/50 backdrop-blur-sm animate-in fade-in duration-150"
-          onClick={() => setSelectedDocDetail(null)}
+          onClick={closeInspector}
         >
           <div
             role="dialog"
@@ -860,7 +869,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                 </p>
               </div>
               <button
-                onClick={() => setSelectedDocDetail(null)}
+                onClick={closeInspector}
                 aria-label="Close Chunk Inspector"
                 className="p-1.5 rounded-xl text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg transition-all shrink-0 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
                 title="Close Inspector"
@@ -909,7 +918,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                 Showing {selectedDocDetail.chunks.length} structural chunks from vector store
               </span>
               <button
-                onClick={() => setSelectedDocDetail(null)}
+                onClick={closeInspector}
                 className="px-4 py-1.5 rounded-xl bg-meridian-lavenderLight hover:bg-meridian-blossom text-meridian-primary text-xs font-bold border border-meridian-border transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
               >
                 Close Inspector
