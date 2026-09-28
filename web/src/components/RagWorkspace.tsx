@@ -78,6 +78,36 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
       });
   };
 
+  // Header wording is derived from the response so it can never contradict the
+  // answer body. Precedence matches the telemetry badge below it: degraded
+  // wins over refusal, which wins over verified.
+  const header = !response
+    ? null
+    : response.degraded_reason
+      ? {
+          title: 'Degraded Pipeline Output',
+          badge: 'Degraded',
+          subtitle: `Pipeline degraded, answer is not a verified synthesis: ${response.degraded_reason}`,
+        }
+      : response.refusal
+        ? {
+            title: 'Refusal Response',
+            badge: 'Refusal',
+            subtitle: 'The pipeline declined to answer from the retrieved context.',
+          }
+        : response.verified
+          ? {
+              title: 'AI Agent Synthesis Output',
+              badge: 'Hero Output',
+              subtitle:
+                'Self-healing verified response synthesized from Qdrant vector passages & Neo4j graph nodes',
+            }
+          : {
+              title: 'AI Agent Output',
+              badge: 'Unverified',
+              subtitle: 'Generated from retrieved context; not critic-verified.',
+            };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       {/* Left Column: Query Input & Settings (7 cols) */}
@@ -263,14 +293,14 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                 <div>
                   <div className="flex items-center space-x-2">
                     <h2 className="text-sm md:text-base font-extrabold bg-gradient-to-r from-meridian-primary via-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                      AI Agent Synthesis Output
+                      {header!.title}
                     </h2>
                     <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-meridian-blossom text-meridian-text border border-meridian-lavender">
-                      Hero Output
+                      {header!.badge}
                     </span>
                   </div>
                   <p className="text-[11px] text-meridian-textMuted font-medium mt-0.5">
-                    Self-healing verified response synthesized from Qdrant vector passages & Neo4j graph nodes
+                    {header!.subtitle}
                   </p>
                 </div>
               </div>

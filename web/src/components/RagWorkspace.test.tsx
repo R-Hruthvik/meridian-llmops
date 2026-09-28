@@ -238,3 +238,92 @@ describe('RagWorkspace', () => {
     });
   });
 });
+
+// B3: the answer panel header must not contradict the answer body.
+// A degraded / refused answer may not be labelled as a
+// "self-healing verified response" synthesis.
+describe('RagWorkspace B3: answer header matches answer state', () => {
+  const run = async (user: ReturnType<typeof userEvent.setup>, response: object) => {
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(response);
+
+    render(<RagWorkspace tenantId="default" />);
+
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'test query');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+  };
+
+  const baseResponse = {
+    query: 'test query',
+    answer: 'test answer',
+    source_chunks: [],
+    entities: [],
+    cycle_count: 1,
+    verified: false,
+    refusal: false,
+    execution_time_ms: 1234,
+    serving_provider: 'openai',
+    serving_model: 'gpt-4o-mini',
+  };
+
+  const mockSettings = {
+    active_provider: 'openai',
+    default_model: 'gpt-4o-mini',
+    litellm_base_url: 'http://localhost:4000',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
+  });
+
+  it('grounded verified answer: header claims verified synthesis', async () => {
+    const user = userEvent.setup();
+    await run(user, { ...baseResponse, verified: true });
+
+    await waitFor(() => {
+      expect(screen.getByText('AI Agent Synthesis Output')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/self-healing verified response/i)).toBeInTheDocument();
+    expect(screen.queryByText('Refusal Response')).toBeNull();
+  });
+
+  it('refusal: header must not claim a verified synthesis', async () => {
+    const user = userEvent.setup();
+    await run(user, { ...baseResponse, refusal: true, answer: 'I cannot answer that.' });
+
+    await waitFor(() => {
+      expect(screen.getByText('Safe Refusal Fallback')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/self-healing verified response/i)).toBeNull();
+    expect(screen.queryByText('AI Agent Synthesis Output')).toBeNull();
+    expect(screen.getByText('Refusal Response')).toBeInTheDocument();
+  });
+
+  it('degraded: header must not claim a verified synthesis and wins over verified', async () => {
+    const user = userEvent.setup();
+    await run(user, {
+      ...baseResponse,
+      verified: true,
+      degraded_reason: 'LLM generation failed, served fallback',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Degraded Response')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/self-healing verified response/i)).toBeNull();
+    expect(screen.queryByText('AI Agent Synthesis Output')).toBeNull();
+    expect(screen.getByText('Degraded Pipeline Output')).toBeInTheDocument();
+    expect(screen.getByText(/LLM generation failed, served fallback/)).toBeInTheDocument();
+  });
+
+  it('unverified non-degraded answer: header does not claim verification', async () => {
+    const user = userEvent.setup();
+    await run(user, { ...baseResponse, verified: false });
+
+    await waitFor(() => {
+      expect(screen.getByText('Generated Response')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/self-healing verified response/i)).toBeNull();
+    expect(screen.getByText('AI Agent Output')).toBeInTheDocument();
+  });
+});
