@@ -42,6 +42,15 @@ const HEALTHY = {
   },
 };
 
+const DEGRADED = {
+  ...HEALTHY,
+  services: {
+    qdrant: { status: 'reachable', endpoint: 'http://localhost:6333/collections', reachable: true },
+    neo4j: { status: 'unreachable', endpoint: 'http://localhost:7474', reachable: false },
+    litellm: { status: 'reachable', endpoint: 'http://localhost:4000/health', reachable: true },
+  },
+};
+
 const DOC = {
   id: 'doc-arch-1',
   title: 'Meridian Architecture Overview',
@@ -131,29 +140,199 @@ beforeEach(() => {
     total_tokens: 0,
     total_cost_usd: 0,
   });
-  (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ providers: [] });
   (api.checkGuardrails as ReturnType<typeof vi.fn>).mockResolvedValue({});
   (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue(INDEX_STATUS);
   (api.query as ReturnType<typeof vi.fn>).mockResolvedValue(QUERY_RESPONSE);
 });
 
-/** The three primary area tabs, which live in the header nav. */
-const mainNav = () => screen.getByRole('tablist', { name: 'Main Navigation' });
-const areaTab = (name: string) => within(mainNav()).getByRole('tab', { name });
+/** The three primary lenses live in the left icon rail. */
+const rail = () => screen.getByRole('navigation', { name: 'Workbench lenses' });
+const lens = (name: string) => within(rail()).getByRole('button', { name });
 
-describe('App: three connected workbench areas', () => {
-  it('exposes exactly three primary areas', () => {
+/** Every non-lens capability is reachable as an overlay from this strip. */
+const capabilityStrip = () => screen.getByRole('navigation', { name: 'Capability overlays' });
+
+const topBar = () => screen.getByRole('banner');
+
+const chipVariant = (name: RegExp) => screen.getByText(name).closest('[data-variant]');
+
+describe('App shell: three lenses on the icon rail', () => {
+  it('exposes exactly three lenses and no capability surfaces', () => {
     render(<App />);
 
-    const tabs = within(mainNav()).getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent?.trim())).toEqual(['Ask', 'Corpus', 'Operate']);
-    expect(screen.queryByRole('tab', { name: 'Settings' })).toBeNull();
+    const lenses = within(rail()).getAllByRole('button');
+    expect(lenses.map((l) => l.textContent?.trim())).toEqual(['Ask', 'Corpus', 'Operate']);
   });
 
-  it('starts in Ask with the RAG workspace mounted and no other studio', () => {
+  it('does not put Index, Guardrails, Review or Metrics on the rail', () => {
     render(<App />);
 
-    expect(areaTab('Ask')).toHaveAttribute('aria-selected', 'true');
+    for (const name of ['Index & Storage', 'Guardrails', 'Review Queue', 'Metrics']) {
+      expect(within(rail()).queryByRole('button', { name })).toBeNull();
+    }
+  });
+
+  it('marks the active lens with the accent wash and accent ink', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(lens('Ask')).toHaveAttribute('aria-current', 'page');
+    expect(lens('Ask').className).toContain('bg-accent-wash');
+    expect(lens('Ask').className).toContain('text-accent-ink');
+    expect(lens('Corpus')).toHaveAttribute('aria-current', 'false');
+
+    await user.click(lens('Corpus'));
+    expect(lens('Corpus')).toHaveAttribute('aria-current', 'page');
+    expect(lens('Ask')).toHaveAttribute('aria-current', 'false');
+  });
+
+  it('gives every lens an accessible tooltip name beyond the glyph', () => {
+    render(<App />);
+
+    for (const name of ['Ask', 'Corpus', 'Operate']) {
+      expect(lens(name)).toHaveAttribute('title', name);
+    }
+  });
+});
+
+describe('App shell: the top bar is one line', () => {
+  it('never wraps its row', () => {
+    render(<App />);
+
+    const bar = topBar();
+    expect(bar.className).toContain('flex-nowrap');
+    expect(bar.className).toContain('whitespace-nowrap');
+    expect(bar.className).toContain('overflow-x-auto');
+  });
+
+  it('holds brand, tenant, provider/model, health and settings in one cluster', async () => {
+    render(<App />);
+
+    const bar = topBar();
+    await waitFor(() => expect(api.getLLMSettings).toHaveBeenCalled());
+
+    expect(within(bar).getByText('Meridian')).toBeInTheDocument();
+    expect(within(bar).getByLabelText('Tenant Identifier')).toBeInTheDocument();
+    expect(within(bar).getByText(/openai/i)).toBeInTheDocument();
+    expect(within(bar).getByText('gpt-4o-mini')).toBeInTheDocument();
+    expect(within(bar).getByRole('button', { name: /open llm engine settings/i })).toBeInTheDocument();
+  });
+
+  it('renders exactly one tenant field and one health readout — no duplicate cluster', async () => {
+    render(<App />);
+    await waitFor(() => expect(api.checkHealth).toHaveBeenCalled());
+
+    expect(screen.getAllByLabelText('Tenant Identifier')).toHaveLength(1);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+});
+
+describe('App shell: the health chip reports real state only', () => {
+  it('reads Online on a fully reachable services map', async () => {
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    expect(screen.getByText('Online')).toBeInTheDocument();
+    expect(chipVariant(/Online/)).toHaveAttribute('data-variant', 'ok');
+  });
+
+  it('reads Degraded when any service is unreachable', async () => {
+    (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue(DEGRADED);
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('Degraded')).toBeInTheDocument());
+    expect(chipVariant(/Degraded/)).toHaveAttribute('data-variant', 'warn');
+  });
+
+  it('reads Offline when health cannot be reached at all', async () => {
+    (api.checkHealth as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('down'));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('Offline')).toBeInTheDocument());
+    expect(chipVariant(/Offline/)).toHaveAttribute('data-variant', 'fail');
+  });
+
+  it('preserves the health poll', async () => {
+    render(<App />);
+
+    await waitFor(() => expect(api.checkHealth).toHaveBeenCalled());
+  });
+});
+
+describe('App shell: the overlay host serves every capability', () => {
+  it('opens and closes each of the five capability overlays', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const cases = [
+      { opener: 'Corpus', dialog: 'Corpus' },
+      { opener: 'Index & Storage', dialog: 'Index & Storage' },
+      { opener: 'Guardrails', dialog: 'Guardrails' },
+      { opener: 'Review Queue', dialog: 'Review Queue' },
+      { opener: 'Metrics', dialog: 'Metrics' },
+    ] as const;
+
+    for (const { opener, dialog } of cases) {
+      expect(screen.queryByRole('dialog', { name: dialog })).toBeNull();
+
+      await user.click(within(capabilityStrip()).getByRole('button', { name: opener }));
+      expect(await screen.findByRole('dialog', { name: dialog })).toBeInTheDocument();
+
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: dialog })).toBeNull());
+    }
+  });
+
+  it('shows no overlay before anything asks for one', () => {
+    render(<App />);
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(api.getMetrics).not.toHaveBeenCalled();
+    expect(api.getIndexStatus).not.toHaveBeenCalled();
+    expect(api.listReviewItems).not.toHaveBeenCalled();
+  });
+
+  it('names where an overlay was opened from in its breadcrumb', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(within(capabilityStrip()).getByRole('button', { name: 'Metrics' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Metrics' });
+    expect(within(dialog).getByText('ASK')).toBeInTheDocument();
+  });
+
+  it('keeps the Ask canvas mounted behind an open overlay', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(within(capabilityStrip()).getByRole('button', { name: 'Metrics' }));
+
+    await waitFor(() => expect(api.getMetrics).toHaveBeenCalled());
+    expect(lens('Ask')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
+  });
+});
+
+describe('App shell: settings opens the LLM studio from the top bar', () => {
+  it('opens the settings modal from the gear without leaving the lens', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: /open llm engine settings/i }));
+
+    expect(await screen.findByRole('dialog', { name: /llm provider & platform key studio/i })).toBeInTheDocument();
+    expect(lens('Ask')).toHaveAttribute('aria-current', 'page');
+  });
+});
+
+// B5: the lazy-mount invariant. Only the ACTIVE lens's studio is mounted, so
+// inactive studios never fetch and unmounted DOM is really gone.
+describe('App B5: only the active lens is mounted', () => {
+  it('starts in Ask with the workspace mounted and nothing else', () => {
+    render(<App />);
+
     expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
     expect(api.getMetrics).not.toHaveBeenCalled();
     expect(api.getDocuments).not.toHaveBeenCalled();
@@ -161,105 +340,46 @@ describe('App: three connected workbench areas', () => {
     expect(api.getIndexStatus).not.toHaveBeenCalled();
   });
 
-  it('labels the Corpus sub-sections as sources and index', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(areaTab('Corpus'));
-
-    const sections = screen.getByRole('tablist', { name: 'Corpus Sections' });
-    expect(within(sections).getByRole('tab', { name: 'Sources' })).toHaveAttribute('aria-selected', 'true');
-    expect(within(sections).getByRole('tab', { name: 'Index & Storage' })).toBeInTheDocument();
-  });
-
-  it('mounts only the selected Corpus sub-section', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(areaTab('Corpus'));
-    await waitFor(() => expect(api.getDocuments).toHaveBeenCalled());
-    expect(api.getIndexStatus).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole('tab', { name: 'Index & Storage' }));
-    await waitFor(() => expect(api.getIndexStatus).toHaveBeenCalled());
-    // The sources sub-section unmounts rather than merely hiding.
-    expect(screen.queryByRole('tab', { name: /^Document Catalog/ })).toBeNull();
-  });
-
-  it('switches between the three Operate sub-sections', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    // Guardrails is input-driven: it fetches nothing until you evaluate, so we
-    // identify it by its own panel rather than by a call.
-    await user.click(areaTab('Operate'));
-    expect(await screen.findByText('Input Guardrails & Threat Evaluation')).toBeInTheDocument();
-    expect(api.listReviewItems).not.toHaveBeenCalled();
-    expect(api.getMetrics).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole('tab', { name: 'Review Queue' }));
-    await waitFor(() => expect(api.listReviewItems).toHaveBeenCalled());
-    expect(screen.queryByText('Input Guardrails & Threat Evaluation')).toBeNull();
-    expect(api.getMetrics).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole('tab', { name: 'Metrics' }));
-    await waitFor(() => expect(api.getMetrics).toHaveBeenCalled());
-    expect(screen.queryByText('Input Guardrails & Threat Evaluation')).toBeNull();
-  });
-
-  it('remembers the sub-section chosen in each area', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(areaTab('Corpus'));
-    await user.click(screen.getByRole('tab', { name: 'Index & Storage' }));
-    await waitFor(() => expect(api.getIndexStatus).toHaveBeenCalled());
-
-    await user.click(areaTab('Ask'));
-    expect(areaTab('Ask')).toHaveAttribute('aria-selected', 'true');
-
-    await user.click(areaTab('Corpus'));
-    expect(screen.getByRole('tab', { name: 'Index & Storage' })).toHaveAttribute('aria-selected', 'true');
-  });
-});
-
-// B5: the lazy-mount invariant. Only the ACTIVE area's content is mounted,
-// so inactive studios never fetch and unmounted DOM is really gone.
-describe('App B5: only the active area is mounted', () => {
-  it('unmounts the previous studio when switching areas', async () => {
+  it('unmounts the previous studio when switching lenses', async () => {
     const user = userEvent.setup();
     render(<App />);
 
     expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
 
-    await user.click(areaTab('Operate'));
-    await user.click(screen.getByRole('tab', { name: 'Metrics' }));
+    await user.click(lens('Operate'));
 
-    await waitFor(() => expect(api.getMetrics).toHaveBeenCalled());
+    expect(await screen.findByText('Input Guardrails & Threat Evaluation')).toBeInTheDocument();
     expect(screen.queryByText('Ask Agentic RAG Pipeline')).toBeNull();
   });
 
-  it('does not mount a guardrails or review studio while in Ask', async () => {
+  it('mounts the corpus studio when the Corpus lens is chosen', async () => {
+    const user = userEvent.setup();
     render(<App />);
 
-    expect(api.listReviewItems).not.toHaveBeenCalled();
+    await user.click(lens('Corpus'));
+
+    await waitFor(() => expect(api.getDocuments).toHaveBeenCalled());
     expect(api.getIndexStatus).not.toHaveBeenCalled();
-    expect(screen.queryByText('Input Guardrails & Threat Evaluation')).toBeNull();
   });
 
-  it('preserves the backend health poll', async () => {
+  it('mounts an overlay surface only while its overlay is open', async () => {
+    const user = userEvent.setup();
     render(<App />);
 
-    await waitFor(() => {
-      expect(api.checkHealth).toHaveBeenCalled();
-    });
+    await user.click(within(capabilityStrip()).getByRole('button', { name: 'Index & Storage' }));
+    await waitFor(() => expect(api.getIndexStatus).toHaveBeenCalled());
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(api.getIndexStatus).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
 
 // The connecting tissue: an answer must be able to reach the source that
-// produced it.
-describe('App: citation drill-through to Corpus', () => {
-  it('opens the citing document in Corpus with that chunk focused', async () => {
+// produced it, and the source is now an overlay over the canvas rather than a
+// neighbouring screen.
+describe('App: citation drill-through to the Corpus overlay', () => {
+  it('opens the citing document in the Corpus overlay with that chunk focused', async () => {
     const user = userEvent.setup();
     (api.getDocuments as ReturnType<typeof vi.fn>).mockResolvedValue({
       total_documents: 1,
@@ -276,13 +396,12 @@ describe('App: citation drill-through to Corpus', () => {
 
     await user.click(screen.getByRole('button', { name: /Chunk 1 • vector/ }));
 
-    // We moved to the Corpus area, on its sources sub-section...
-    await waitFor(() => expect(areaTab('Corpus')).toHaveAttribute('aria-selected', 'true'));
-    expect(screen.getByRole('tab', { name: 'Sources' })).toHaveAttribute('aria-selected', 'true');
-    // ...and the ask spine is gone (B5 still holds across the navigation).
-    expect(screen.queryByText('Ask Agentic RAG Pipeline')).toBeNull();
+    const dialog = await screen.findByRole('dialog', { name: 'Corpus' });
+    expect(dialog).toBeInTheDocument();
+    // The Ask canvas is still behind it — the citation is an overlay, not a
+    // change of screen.
+    expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
 
-    // The cited document is loaded and its chunk is the highlighted one.
     await waitFor(() => expect(api.getDocument).toHaveBeenCalledWith('doc-arch-1', 'default'));
     await waitFor(() => {
       expect(document.querySelector('[data-focused-document="doc-arch-1"]')).toBeInTheDocument();
@@ -290,7 +409,7 @@ describe('App: citation drill-through to Corpus', () => {
     expect(document.querySelector('[data-focused-chunk="chunk-b"]')).toBeInTheDocument();
   });
 
-  it('clears the focus when the user dismisses it', async () => {
+  it('clears the focus when the user dismisses it, keeping the overlay open', async () => {
     const user = userEvent.setup();
     (api.getDocuments as ReturnType<typeof vi.fn>).mockResolvedValue({
       total_documents: 1,
@@ -305,6 +424,7 @@ describe('App: citation drill-through to Corpus', () => {
     await user.click(screen.getByRole('button', { name: /Run Agent/i }));
     await waitFor(() => expect(screen.getByText('Retrieved Chunks & Citations')).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /Chunk 1 • vector/ }));
+    await screen.findByRole('dialog', { name: 'Corpus' });
 
     await waitFor(() => expect(document.querySelector('[data-focused-chunk="chunk-b"]')).toBeInTheDocument());
 
@@ -314,36 +434,6 @@ describe('App: citation drill-through to Corpus', () => {
       expect(document.querySelector('[data-focused-chunk="chunk-b"]')).toBeNull();
     });
     expect(document.querySelector('[data-focused-document="doc-arch-1"]')).toBeNull();
-    // The area itself stays put — only the focus is cleared.
-    expect(areaTab('Corpus')).toHaveAttribute('aria-selected', 'true');
-  });
-});
-
-// Metrics is three numbers plus infra state: a status panel, not an area.
-describe('App: metrics status panel', () => {
-  it('opens from the header without leaving the current area', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(screen.getByRole('button', { name: /Open status panel/i }));
-
-    await waitFor(() => expect(api.getMetrics).toHaveBeenCalled());
-    // Still in Ask, with the workspace mounted behind the panel.
-    expect(areaTab('Ask')).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
-  });
-
-  it('unmounts the panel when dismissed', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(screen.getByRole('button', { name: /Open status panel/i }));
-    await waitFor(() => expect(api.getMetrics).toHaveBeenCalled());
-
-    await user.click(screen.getByRole('button', { name: /Close status panel/i }));
-
-    await waitFor(() => {
-      expect(screen.queryByText('LLMOps Observability & Tenant Economics')).toBeNull();
-    });
+    expect(screen.getByRole('dialog', { name: 'Corpus' })).toBeInTheDocument();
   });
 });

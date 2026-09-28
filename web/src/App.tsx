@@ -1,65 +1,44 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChartNoAxesColumn, Database, FileText, ListChecks, ShieldAlert } from 'lucide-react';
 import { GuardrailsStudio } from './components/GuardrailsStudio';
 import { IndexStorageStudio } from './components/IndexStorageStudio';
 import { IngestionStudio } from './components/IngestionStudio';
+import { LensRail, TopBar, type LensId } from './components/Navbar';
 import { MetricsDashboard } from './components/MetricsDashboard';
-import { Navbar } from './components/Navbar';
+import { Overlay } from './components/Overlay';
 import { RagWorkspace } from './components/RagWorkspace';
 import { ReviewQueue } from './components/ReviewQueue';
+import { WorkbenchContext, type OpenOverlayOptions, type OverlayTarget } from './WorkbenchContext';
 import { api } from './services/api';
 
 export type BackendHealth = 'online' | 'degraded' | 'offline';
 
-/** The three primary workbench areas. */
-export type AreaId = 'ask' | 'corpus' | 'operate';
+/** Every non-lens capability, and where it is reachable from. */
+const CAPABILITIES: readonly { target: OverlayTarget; label: string; icon: React.ElementType }[] = [
+  { target: 'corpus', label: 'Corpus', icon: FileText },
+  { target: 'index', label: 'Index & Storage', icon: Database },
+  { target: 'guardrails', label: 'Guardrails', icon: ShieldAlert },
+  { target: 'review', label: 'Review Queue', icon: ListChecks },
+  { target: 'metrics', label: 'Metrics', icon: ChartNoAxesColumn },
+];
 
-/** The sub-sections the composite areas are split into. */
-export type SubSectionId = 'sources' | 'index' | 'guardrails' | 'review' | 'metrics';
-
-/**
- * Shared workbench context. The areas are connected, not merely adjacent:
- * `focusedDocumentId`/`focusedChunkId` carry an answer's citation over from the
- * Ask spine into the Corpus sources it came from.
- *
- * The sub-section is remembered per area, so leaving Corpus for Ask and coming
- * back returns you to the section you were reading. `ask` has no sub-sections.
- */
-export interface WorkbenchContext {
-  activeArea: AreaId;
-  subSection: {
-    ask: null;
-    corpus: SubSectionId;
-    operate: SubSectionId;
-  };
-  focusedDocumentId: string | null;
-  focusedChunkId: string | null;
-}
-
-/** The sub-section tabs shown under the header, per composite area. */
-const AREA_SECTIONS: Record<Exclude<AreaId, 'ask'>, { id: SubSectionId; label: string }[]> = {
-  corpus: [
-    { id: 'sources', label: 'Sources' },
-    { id: 'index', label: 'Index & Storage' },
-  ],
-  operate: [
-    { id: 'guardrails', label: 'Guardrails' },
-    { id: 'review', label: 'Review Queue' },
-    { id: 'metrics', label: 'Metrics' },
-  ],
+/** The dialog's accessible name for each destination. */
+const OVERLAY_TITLE: Record<OverlayTarget, string> = {
+  corpus: 'Corpus',
+  index: 'Index & Storage',
+  guardrails: 'Guardrails',
+  review: 'Review Queue',
+  metrics: 'Metrics',
+  settings: 'Settings',
 };
 
-const SECTION_AREA_LABEL: Record<Exclude<AreaId, 'ask'>, string> = {
-  corpus: 'Corpus Sections',
-  operate: 'Operate Sections',
-};
+/** Breadcrumb used when an overlay is opened without naming its origin. */
+const LENS_LABEL: Record<LensId, string> = { ask: 'ASK', corpus: 'CORPUS', operate: 'OPERATE' };
 
 export const App: React.FC = () => {
-  const [activeArea, setActiveArea] = useState<AreaId>('ask');
-  const [subSection, setSubSection] = useState<WorkbenchContext['subSection']>({
-    ask: null,
-    corpus: 'sources',
-    operate: 'guardrails',
-  });
+  const [activeLens, setActiveLens] = useState<LensId>('ask');
+  const [activeOverlay, setActiveOverlay] = useState<OverlayTarget | null>(null);
+  const [overlayOpts, setOverlayOpts] = useState<OpenOverlayOptions>({});
   const [focusedDocumentId, setFocusedDocumentId] = useState<string | null>(null);
   const [focusedChunkId, setFocusedChunkId] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState('default');
@@ -89,105 +68,138 @@ export const App: React.FC = () => {
     api.setApiKey(key);
   };
 
-  const selectArea = (area: AreaId) => setActiveArea(area);
-
-  const selectSection = (id: SubSectionId) =>
-    setSubSection((prev) => ({ ...prev, [activeArea]: id }));
-
-  // Drill-through: an answer's citation takes you to the exact source chunk
-  // that produced it, inside Corpus → Sources.
-  const focusCitation = (documentId: string, chunkId: string) => {
-    setFocusedDocumentId(documentId);
-    setFocusedChunkId(chunkId);
-    setSubSection((prev) => ({ ...prev, corpus: 'sources' }));
-    setActiveArea('corpus');
-  };
-
-  const clearCitationFocus = () => {
+  const clearCitationFocus = useCallback(() => {
     setFocusedDocumentId(null);
     setFocusedChunkId(null);
+  }, []);
+
+  const openOverlay = useCallback((target: OverlayTarget, opts?: OpenOverlayOptions) => {
+    if (opts?.documentId !== undefined) setFocusedDocumentId(opts.documentId);
+    if (opts?.chunkId !== undefined) setFocusedChunkId(opts.chunkId);
+    setOverlayOpts(opts ?? {});
+    setActiveOverlay(target);
+  }, []);
+
+  const closeOverlay = useCallback(() => {
+    setActiveOverlay(null);
+    setOverlayOpts({});
+    clearCitationFocus();
+  }, [clearCitationFocus]);
+
+  const workbench = useMemo(
+    () => ({ openOverlay, closeOverlay, activeOverlay }),
+    [openOverlay, closeOverlay, activeOverlay],
+  );
+
+  // Changing lens dismisses the overlay: the two hosts share a canvas, and
+  // leaving the surface underneath would mount it twice.
+  const selectLens = (lens: LensId) => {
+    setActiveLens(lens);
+    closeOverlay();
   };
 
-  const sectionArea = activeArea === 'ask' ? null : activeArea;
-  const sections = sectionArea ? AREA_SECTIONS[sectionArea] : null;
-  const activeSection = sectionArea ? subSection[sectionArea] : null;
+  // A citation is a jump, not a screen change: the canvas asks for the Corpus
+  // overlay and the canvas stays where it is underneath it.
+  const openCapability = (target: OverlayTarget) =>
+    openOverlay(target, { breadcrumb: LENS_LABEL[activeLens] });
 
-  return (
-    <div className="min-h-screen bg-meridian-bg text-meridian-text flex flex-col selection:bg-meridian-blossom selection:text-meridian-primary">
-      <Navbar
-        activeArea={activeArea}
-        onSelectArea={selectArea}
-        tenantId={tenantId}
-        setTenantId={setTenantId}
-        backendHealth={backendHealth}
-        apiKey={apiKey}
-        setApiKey={handleSetApiKey}
-      />
-
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8">
-        {/* Sub-section switcher — only for the composite areas */}
-        {sectionArea && sections && (
-          <div
-            role="tablist"
-            aria-label={SECTION_AREA_LABEL[sectionArea]}
-            className="flex items-center gap-2 mb-6 pb-3 border-b border-meridian-border"
-          >
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                role="tab"
-                aria-selected={activeSection === section.id}
-                onClick={() => selectSection(section.id)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none ${
-                  activeSection === section.id
-                    ? 'bg-meridian-primary text-white shadow-glow'
-                    : 'bg-white text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg border border-meridian-border'
-                }`}
-              >
-                {section.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* B5: only the active area's studio is mounted, so inactive studios
-            never fetch and their DOM is genuinely gone. */}
-        {activeArea === 'ask' && (
-          <RagWorkspace tenantId={tenantId} onCitationSelect={focusCitation} />
-        )}
-
-        {activeArea === 'corpus' && subSection.corpus === 'sources' && (
+  // B5: only the active lens's studio is mounted, so inactive studios never
+  // fetch and their DOM is genuinely gone. Same rule for the overlay host.
+  const canvas = (() => {
+    switch (activeLens) {
+      case 'corpus':
+        return (
           <IngestionStudio
             tenantId={tenantId}
             focusedDocumentId={focusedDocumentId}
             focusedChunkId={focusedChunkId}
             onDismissFocus={clearCitationFocus}
           />
-        )}
-        {activeArea === 'corpus' && subSection.corpus === 'index' && (
-          <IndexStorageStudio tenantId={tenantId} />
-        )}
+        );
+      case 'operate':
+        return <GuardrailsStudio tenantId={tenantId} />;
+      case 'ask':
+      default:
+        // The canvas drives the overlay through WorkbenchContext itself; the
+        // shell only hosts the surface it asks for.
+        return <RagWorkspace tenantId={tenantId} />;
+    }
+  })();
 
-        {activeArea === 'operate' && subSection.operate === 'guardrails' && (
-          <GuardrailsStudio tenantId={tenantId} />
-        )}
-        {activeArea === 'operate' && subSection.operate === 'review' && (
-          <ReviewQueue tenantId={tenantId} />
-        )}
-        {activeArea === 'operate' && subSection.operate === 'metrics' && (
-          <MetricsDashboard tenantId={tenantId} />
-        )}
-      </main>
+  const overlaySurface = (() => {
+    if (!activeOverlay) return null;
+    switch (activeOverlay) {
+      case 'corpus':
+        return (
+          <IngestionStudio
+            tenantId={tenantId}
+            focusedDocumentId={focusedDocumentId}
+            focusedChunkId={focusedChunkId}
+            onDismissFocus={clearCitationFocus}
+          />
+        );
+      case 'index':
+        return <IndexStorageStudio tenantId={tenantId} />;
+      case 'guardrails':
+        return <GuardrailsStudio tenantId={tenantId} />;
+      case 'review':
+        return <ReviewQueue tenantId={tenantId} />;
+      case 'metrics':
+        return <MetricsDashboard tenantId={tenantId} />;
+      default:
+        return null;
+    }
+  })();
 
-      <footer className="border-t border-meridian-border bg-white/60 backdrop-blur-sm py-4 px-6 text-center text-xs font-semibold text-meridian-textMuted">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <span className="text-meridian-text font-bold">Meridian Enterprise LLMOps Platform</span>
-          <span className="text-meridian-primary font-bold">
-            Self-Healing Agentic RAG • AI Gateway • Continuous Eval
-          </span>
+  return (
+    <WorkbenchContext.Provider value={workbench}>
+      <div className="flex min-h-screen flex-col bg-surface text-ink">
+        <TopBar
+          tenantId={tenantId}
+          setTenantId={setTenantId}
+          backendHealth={backendHealth}
+          apiKey={apiKey}
+          setApiKey={handleSetApiKey}
+        />
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+          <LensRail activeLens={activeLens} onSelectLens={selectLens} />
+
+          <main className="min-w-0 flex-1 overflow-y-auto bg-surface p-4 md:p-6">
+            {/* Capability destinations. These are the rail's second tier: the
+                lenses change the canvas, these slide a surface over it. */}
+            <nav
+              aria-label="Capability overlays"
+              className="mb-4 flex flex-wrap items-center gap-1.5 border-b border-hairline pb-3"
+            >
+              {CAPABILITIES.map(({ target, label, icon: Icon }) => (
+                <button
+                  key={target}
+                  type="button"
+                  onClick={() => openCapability(target)}
+                  className="label-section flex items-center gap-1.5 rounded-sm border border-hairline px-2 py-1 text-muted transition-colors hover:border-hairline-strong hover:bg-accent-wash hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <Icon className="size-3.5" aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </nav>
+
+            {canvas}
+          </main>
         </div>
-      </footer>
-    </div>
+
+        {/* The single overlay host: one sheet at a time, over the canvas. */}
+        <Overlay
+          open={activeOverlay !== null}
+          onClose={closeOverlay}
+          title={activeOverlay ? OVERLAY_TITLE[activeOverlay] : ''}
+          breadcrumb={overlayOpts.breadcrumb ?? (activeOverlay ? LENS_LABEL[activeLens] : undefined)}
+        >
+          {overlaySurface}
+        </Overlay>
+      </div>
+    </WorkbenchContext.Provider>
   );
 };
 
