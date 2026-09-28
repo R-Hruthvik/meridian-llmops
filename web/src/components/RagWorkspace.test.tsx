@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RagWorkspace } from './RagWorkspace';
 import { api, ApiError } from '../services/api';
+import { WorkbenchContext } from '../WorkbenchContext';
 
 // Mock the api module
 vi.mock('../services/api', () => ({
@@ -19,13 +20,33 @@ vi.mock('../services/api', () => ({
   },
 }));
 
-describe('RagWorkspace', () => {
-  const mockSettings = {
-    active_provider: 'openai',
-    default_model: 'gpt-4o-mini',
-    litellm_base_url: 'http://localhost:4000',
-  };
+const mockSettings = {
+  active_provider: 'openai',
+  default_model: 'gpt-4o-mini',
+  litellm_base_url: 'http://localhost:4000',
+};
 
+/** The canvas is a layer inside the shell: render it with a real provider. */
+const openOverlay = vi.fn();
+const renderCanvas = () =>
+  render(
+    <WorkbenchContext.Provider
+      value={{ openOverlay, closeOverlay: vi.fn(), activeOverlay: null }}
+    >
+      <RagWorkspace tenantId="default" />
+    </WorkbenchContext.Provider>,
+  );
+
+const run = async (user: ReturnType<typeof userEvent.setup>, response: object) => {
+  (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(response);
+
+  renderCanvas();
+
+  await user.type(screen.getByPlaceholderText(/Type your question/i), 'test query');
+  await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+};
+
+describe('RagWorkspace', () => {
   const mockQueryResponse = {
     query: 'test query',
     answer: 'test answer',
@@ -45,7 +66,7 @@ describe('RagWorkspace', () => {
   });
 
   it('renders without crashing', () => {
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
     expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
   });
 
@@ -53,7 +74,7 @@ describe('RagWorkspace', () => {
     const user = userEvent.setup();
     (api.query as ReturnType<typeof vi.fn>).mockResolvedValue(mockQueryResponse);
 
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
 
     const textarea = screen.getByPlaceholderText(/Type your question/i);
     await user.type(textarea, 'What is Meridian?');
@@ -82,7 +103,7 @@ describe('RagWorkspace', () => {
     );
     (api.query as ReturnType<typeof vi.fn>).mockRejectedValueOnce(rateLimitError);
 
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
 
     const textarea = screen.getByPlaceholderText(/Type your question/i);
     await user.type(textarea, 'test query');
@@ -104,7 +125,7 @@ describe('RagWorkspace', () => {
     );
     (api.query as ReturnType<typeof vi.fn>).mockRejectedValueOnce(authError);
 
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
 
     const textarea = screen.getByPlaceholderText(/Type your question/i);
     await user.type(textarea, 'test query');
@@ -126,7 +147,7 @@ describe('RagWorkspace', () => {
     );
     (api.query as ReturnType<typeof vi.fn>).mockRejectedValueOnce(badRequestError);
 
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
 
     const textarea = screen.getByPlaceholderText(/Type your question/i);
     await user.type(textarea, 'test query');
@@ -142,7 +163,7 @@ describe('RagWorkspace', () => {
   });
 
   it('disables Run button when query is empty', () => {
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
     const runButton = screen.getByRole('button', { name: /Run Agent/i });
     expect(runButton).toBeDisabled();
   });
@@ -156,7 +177,7 @@ describe('RagWorkspace', () => {
     );
     (api.query as ReturnType<typeof vi.fn>).mockRejectedValueOnce(validationError);
 
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
 
     const textarea = screen.getByPlaceholderText(/Type your question/i);
     await user.type(textarea, 'test query');
@@ -170,7 +191,7 @@ describe('RagWorkspace', () => {
     expect(screen.getByText(/less than or equal to 50/)).toBeInTheDocument();
   });
 
-  it('prefers Degraded badge over Verified when both are set', async () => {
+  it('prefers Degraded state over Verified when both are set', async () => {
     const user = userEvent.setup();
     (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ...mockQueryResponse,
@@ -178,7 +199,7 @@ describe('RagWorkspace', () => {
       degraded_reason: 'LLM generation failed, served fallback',
     });
 
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
 
     const textarea = screen.getByPlaceholderText(/Type your question/i);
     await user.type(textarea, 'test query');
@@ -187,9 +208,9 @@ describe('RagWorkspace', () => {
     await user.click(runButton);
 
     await waitFor(() => {
-      expect(screen.getByText('Degraded Response')).toBeInTheDocument();
+      expect(screen.getByText('DEGRADED')).toBeInTheDocument();
     });
-    expect(screen.queryByText('Critic Verified Grounded')).toBeNull();
+    expect(screen.queryByText('VERIFIED GROUNDED')).toBeNull();
   });
 
   it('renders empty-answer fallback on degraded empty responses', async () => {
@@ -201,7 +222,7 @@ describe('RagWorkspace', () => {
       degraded_reason: 'LLM generation failed, served fallback',
     });
 
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
 
     const textarea = screen.getByPlaceholderText(/Type your question/i);
     await user.type(textarea, 'test query');
@@ -215,7 +236,7 @@ describe('RagWorkspace', () => {
   });
 
   it('does not write provider API keys to localStorage', () => {
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
 
     // Verify no provider API keys in localStorage
     expect(localStorage.getItem('meridian_openai_key')).toBeNull();
@@ -223,52 +244,43 @@ describe('RagWorkspace', () => {
     expect(localStorage.getItem('meridian_groq_key')).toBeNull();
   });
 
-  it('G1: chunk cards surface chunk_id and document_id', async () => {
+  it('G1: the chunk table surfaces chunk_id and document_id', async () => {
     const user = userEvent.setup();
-    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockQueryResponse);
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...mockQueryResponse,
+      source_chunks: [
+        { chunk_id: 'chunk-abc123', document_id: 'doc-xyz789', text: 'chunk text', score: 0.95, retrieval_method: 'vector' },
+      ],
+    });
 
-    render(<RagWorkspace tenantId="default" />);
+    renderCanvas();
 
     const textarea = screen.getByPlaceholderText(/Type your question/i);
     await user.type(textarea, 'test query');
     await user.click(screen.getByRole('button', { name: /Run Agent/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/id: 1 • doc: doc1/)).toBeInTheDocument();
+      expect(screen.getByText('doc-xyz789')).toBeInTheDocument();
     });
+    expect(screen.getByText('chunk-abc123')).toBeInTheDocument();
   });
 });
 
-// B3: the answer panel header must not contradict the answer body.
-// A degraded / refused answer may not be labelled as a
-// "self-healing verified response" synthesis.
-describe('RagWorkspace B3: answer header matches answer state', () => {
-  const run = async (user: ReturnType<typeof userEvent.setup>, response: object) => {
-    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(response);
-
-    render(<RagWorkspace tenantId="default" />);
-
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'test query');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
-  };
-
+// §7 — the verdict bar. One dense strip: a state chip on the left, monospace
+// readouts on the right. The state may never contradict the answer body.
+describe('RagWorkspace verdict bar', () => {
   const baseResponse = {
     query: 'test query',
     answer: 'test answer',
-    source_chunks: [],
-    entities: [],
+    source_chunks: [
+      { chunk_id: 'chunk-a', document_id: 'doc-a', text: 'alpha', score: 0.36, retrieval_method: 'HYBRID_RRF' },
+    ],
+    entities: [{ name: 'TestEntity', entity_type: 'concept' }],
     cycle_count: 1,
     verified: false,
     refusal: false,
     execution_time_ms: 1234,
-    serving_provider: 'openai',
-    serving_model: 'gpt-4o-mini',
-  };
-
-  const mockSettings = {
-    active_provider: 'openai',
-    default_model: 'gpt-4o-mini',
-    litellm_base_url: 'http://localhost:4000',
+    serving: { provider: 'anthropic', model: 'claude-3-5-haiku-20241022', fresh: true },
   };
 
   beforeEach(() => {
@@ -276,30 +288,27 @@ describe('RagWorkspace B3: answer header matches answer state', () => {
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
   });
 
-  it('grounded verified answer: header claims verified synthesis', async () => {
+  const variantOf = (state: string) =>
+    screen.getByText(state).closest('[data-variant]');
+
+  it('VERIFIED GROUNDED in ok when the critic verified the answer', async () => {
     const user = userEvent.setup();
     await run(user, { ...baseResponse, verified: true });
 
-    await waitFor(() => {
-      expect(screen.getByText('AI Agent Synthesis Output')).toBeInTheDocument();
-    });
-    expect(screen.getByText(/self-healing verified response/i)).toBeInTheDocument();
-    expect(screen.queryByText('Refusal Response')).toBeNull();
+    await waitFor(() => expect(screen.getByText('VERIFIED GROUNDED')).toBeInTheDocument());
+    expect(variantOf('VERIFIED GROUNDED')).toHaveAttribute('data-variant', 'ok');
   });
 
-  it('refusal: header must not claim a verified synthesis', async () => {
+  it('REFUSED in fail when the pipeline declined', async () => {
     const user = userEvent.setup();
     await run(user, { ...baseResponse, refusal: true, answer: 'I cannot answer that.' });
 
-    await waitFor(() => {
-      expect(screen.getByText('Safe Refusal Fallback')).toBeInTheDocument();
-    });
-    expect(screen.queryByText(/self-healing verified response/i)).toBeNull();
-    expect(screen.queryByText('AI Agent Synthesis Output')).toBeNull();
-    expect(screen.getByText('Refusal Response')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('REFUSED')).toBeInTheDocument());
+    expect(variantOf('REFUSED')).toHaveAttribute('data-variant', 'fail');
+    expect(screen.queryByText('VERIFIED GROUNDED')).toBeNull();
   });
 
-  it('degraded: header must not claim a verified synthesis and wins over verified', async () => {
+  it('DEGRADED in warn, and it wins over verified', async () => {
     const user = userEvent.setup();
     await run(user, {
       ...baseResponse,
@@ -307,41 +316,59 @@ describe('RagWorkspace B3: answer header matches answer state', () => {
       degraded_reason: 'LLM generation failed, served fallback',
     });
 
-    await waitFor(() => {
-      expect(screen.getByText('Degraded Response')).toBeInTheDocument();
-    });
-    expect(screen.queryByText(/self-healing verified response/i)).toBeNull();
-    expect(screen.queryByText('AI Agent Synthesis Output')).toBeNull();
-    expect(screen.getByText('Degraded Pipeline Output')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('DEGRADED')).toBeInTheDocument());
+    expect(variantOf('DEGRADED')).toHaveAttribute('data-variant', 'warn');
+    expect(screen.queryByText('VERIFIED GROUNDED')).toBeNull();
+    // The reason is stated, not just implied by the colour.
     expect(screen.getByText(/LLM generation failed, served fallback/)).toBeInTheDocument();
   });
 
-  it('unverified non-degraded answer: header does not claim verification', async () => {
+  it('UNVERIFIED in faint for a plain generated answer', async () => {
     const user = userEvent.setup();
-    await run(user, { ...baseResponse, verified: false });
+    await run(user, { ...baseResponse });
 
-    await waitFor(() => {
-      expect(screen.getByText('Generated Response')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('UNVERIFIED')).toBeInTheDocument());
+    expect(variantOf('UNVERIFIED')).toHaveAttribute('data-variant', 'faint');
+  });
+
+  it('NO MODEL SERVED in faint when serving reports a stale answer', async () => {
+    const user = userEvent.setup();
+    await run(user, {
+      ...baseResponse,
+      verified: false,
+      serving: { provider: null, model: null, fresh: false },
     });
-    expect(screen.queryByText(/self-healing verified response/i)).toBeNull();
-    expect(screen.getByText('AI Agent Output')).toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText('NO MODEL SERVED')).toBeInTheDocument());
+    expect(variantOf('NO MODEL SERVED')).toHaveAttribute('data-variant', 'faint');
+    expect(screen.queryByText('UNVERIFIED')).toBeNull();
+  });
+
+  it('reads out cycle, execution ms, chunk count and entity count', async () => {
+    const user = userEvent.setup();
+    await run(user, { ...baseResponse, cycle_count: 2 });
+
+    await waitFor(() => expect(screen.getByText('2/3')).toBeInTheDocument());
+    expect(screen.getByText('1234')).toBeInTheDocument();
+    expect(screen.getByText('chunks')).toBeInTheDocument();
+    expect(screen.getByText('entities')).toBeInTheDocument();
+  });
+
+  it('the hero card framing is gone', async () => {
+    const user = userEvent.setup();
+    await run(user, { ...baseResponse, verified: true });
+
+    await waitFor(() => expect(screen.getByText('test answer')).toBeInTheDocument());
+    expect(screen.queryByText('AI Agent Synthesis Output')).toBeNull();
+    expect(screen.queryByText('Hero Output')).toBeNull();
   });
 });
 
-// Issue #35 display side: the badge must name the model that ACTUALLY served
+// Issue #35 display side: the bar must name the model that ACTUALLY served
 // the request. The config echo (`serving_provider`/`serving_model`) may claim a
 // model that never ran — a greeting/bypass, a refusal, a generation failure or
 // an empty completion all answer with `serving.fresh === false`.
-describe('RagWorkspace serving provenance badge', () => {
-  const run = async (user: ReturnType<typeof userEvent.setup>, response: object) => {
-    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(response);
-
-    render(<RagWorkspace tenantId="default" />);
-
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'test query');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
-  };
-
+describe('RagWorkspace serving provenance readout', () => {
   // Legacy config echo: what the OLD UI would have shown, and the lie this
   // change has to stop telling.
   const baseResponse = {
@@ -355,12 +382,6 @@ describe('RagWorkspace serving provenance badge', () => {
     execution_time_ms: 1234,
     serving_provider: 'openai',
     serving_model: 'gpt-4o-mini',
-  };
-
-  const mockSettings = {
-    active_provider: 'openai',
-    default_model: 'gpt-4o-mini',
-    litellm_base_url: 'http://localhost:4000',
   };
 
   beforeEach(() => {
@@ -383,7 +404,7 @@ describe('RagWorkspace serving provenance badge', () => {
     expect(screen.queryByText('openai')).toBeNull();
   });
 
-  it('not fresh: says no model served this instead of naming a model that never ran', async () => {
+  it('not fresh: says no model served instead of naming a model that never ran', async () => {
     const user = userEvent.setup();
     await run(user, {
       ...baseResponse,
@@ -391,7 +412,7 @@ describe('RagWorkspace serving provenance badge', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/no model served this/i)).toBeInTheDocument();
+      expect(screen.getByText('— no model served')).toBeInTheDocument();
     });
     expect(screen.queryByText('gpt-4o-mini')).toBeNull();
     expect(screen.queryByText('openai')).toBeNull();
@@ -408,36 +429,34 @@ describe('RagWorkspace serving provenance badge', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/no model served this/i)).toBeInTheDocument();
+      expect(screen.getByText('— no model served')).toBeInTheDocument();
     });
     expect(screen.queryByText('gpt-4o-mini')).toBeNull();
-    // B3 header precedence must survive the provenance change.
-    expect(screen.getByText('Refusal Response')).toBeInTheDocument();
+    // B3 precedence must survive the provenance change.
+    expect(screen.getByText('REFUSED')).toBeInTheDocument();
   });
 
-  it('serving absent: falls back to the legacy serving_provider/serving_model fields', async () => {
+  it('serving absent: never names the deprecated config echo', async () => {
     const user = userEvent.setup();
     await run(user, { ...baseResponse });
 
-    await waitFor(() => {
-      expect(screen.getByText('gpt-4o-mini')).toBeInTheDocument();
-    });
-    expect(screen.getByText('openai')).toBeInTheDocument();
-    expect(screen.queryByText(/no model served this/i)).toBeNull();
+    await waitFor(() => expect(screen.getByText('test answer')).toBeInTheDocument());
+    expect(screen.queryByText('gpt-4o-mini')).toBeNull();
+    expect(screen.queryByText('openai')).toBeNull();
+    expect(screen.queryByText('— no model served')).toBeNull();
   });
 
-  it('serving absent and legacy fields null: renders no badge at all', async () => {
+  it('serving absent and legacy fields null: names no model either', async () => {
     const user = userEvent.setup();
     await run(user, { ...baseResponse, serving_provider: null, serving_model: null });
 
     await waitFor(() => {
       expect(screen.getByText('test answer')).toBeInTheDocument();
     });
-    expect(screen.queryByText(/no model served this/i)).toBeNull();
-    expect(screen.queryByText('gpt-4o-mini')).toBeNull();
+    expect(screen.queryByText('— no model served')).toBeNull();
   });
 
-  it('degraded header precedence is unchanged when serving reports a stale answer', async () => {
+  it('degraded precedence is unchanged when serving reports a stale answer', async () => {
     const user = userEvent.setup();
     await run(user, {
       ...baseResponse,
@@ -447,72 +466,107 @@ describe('RagWorkspace serving provenance badge', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Degraded Response')).toBeInTheDocument();
+      expect(screen.getByText('DEGRADED')).toBeInTheDocument();
     });
-    expect(screen.getByText('Degraded Pipeline Output')).toBeInTheDocument();
-    expect(screen.getByText(/no model served this/i)).toBeInTheDocument();
+    expect(screen.queryByText('VERIFIED GROUNDED')).toBeNull();
+    expect(screen.getByText(/LLM generation failed, served fallback/)).toBeInTheDocument();
+    expect(screen.getByText('— no model served')).toBeInTheDocument();
   });
 });
 
-// An answer must be able to reach the source that produced it: the citation
-// hands the document and chunk ids up to the shared workbench context.
-describe('RagWorkspace citation drill-through', () => {
+// §8 — the ranked chunk table. Ranked rows, hairline dividers, no card boxes,
+// and the whole row opens the source in the Corpus overlay.
+describe('RagWorkspace chunk table', () => {
+  const chunks = [
+    { chunk_id: '98cd9ff5c7874c6', document_id: 'doc-c2bd07cc', text: 'first passage', score: 0.36, retrieval_method: 'HYBRID_RRF' },
+    { chunk_id: '02ec848c94974f36', document_id: 'doc-e23a17ed', text: 'second passage', score: 0.28, retrieval_method: 'HYBRID_RRF' },
+  ];
+
+  const response = {
+    query: 'q',
+    answer: 'a',
+    source_chunks: chunks,
+    entities: [],
+    cycle_count: 1,
+    verified: true,
+    refusal: false,
+    execution_time_ms: 10,
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
-    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
-      active_provider: 'openai',
-      default_model: 'gpt-4o-mini',
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
+  });
+
+  it('renders the ranked columns in order', async () => {
+    const user = userEvent.setup();
+    await run(user, response);
+
+    await waitFor(() => expect(screen.getByText('SOURCE')).toBeInTheDocument());
+
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers).toEqual(['#', 'SOURCE', 'SCORE', 'METHOD', 'ID']);
+  });
+
+  it('renders scores as percentages and ids in the row', async () => {
+    const user = userEvent.setup();
+    await run(user, response);
+
+    await waitFor(() => expect(screen.getByText('36%')).toBeInTheDocument());
+    expect(screen.getByText('28%')).toBeInTheDocument();
+    expect(screen.getByText('doc-c2bd07cc')).toBeInTheDocument();
+    expect(screen.getByText('98cd9ff5c7874c6')).toBeInTheDocument();
+    expect(screen.getByText('doc-e23a17ed')).toBeInTheDocument();
+    expect(screen.getByText('02ec848c94974f36')).toBeInTheDocument();
+  });
+
+  it('marks up every numeric cell with the monospace token class', async () => {
+    const user = userEvent.setup();
+    await run(user, response);
+
+    await waitFor(() => expect(screen.getByText('36%')).toBeInTheDocument());
+
+    expect(screen.getByText('36%').className).toContain('num');
+    expect(screen.getByText('98cd9ff5c7874c6').className).toContain('id-mono');
+  });
+
+  it('is a real table with no card boxes', async () => {
+    const user = userEvent.setup();
+    await run(user, response);
+
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument());
+    expect(document.querySelector('.rounded-3xl')).toBeNull();
+  });
+
+  it('opens the chunk in the Corpus overlay when a row is activated', async () => {
+    const user = userEvent.setup();
+    await run(user, response);
+
+    const row = await screen.findByRole('button', { name: /chunk 1/i });
+    await user.click(row);
+
+    expect(openOverlay).toHaveBeenCalledWith('corpus', {
+      breadcrumb: 'Ask · chunk 1',
+      documentId: 'doc-c2bd07cc',
+      chunkId: '98cd9ff5c7874c6',
     });
   });
 
-  it('reports the cited document and chunk when a citation is clicked', async () => {
+  it('breadcrumbs the row that was actually activated', async () => {
     const user = userEvent.setup();
-    (api.query as ReturnType<typeof vi.fn>).mockResolvedValue({
-      query: 'q',
-      answer: 'a',
-      source_chunks: [
-        { chunk_id: 'chunk-1', document_id: 'doc-7', text: 'cited body', score: 0.8, retrieval_method: 'bm25' },
-      ],
-      entities: [],
-      cycle_count: 1,
-      verified: false,
-      refusal: false,
-      execution_time_ms: 10,
+    await run(user, response);
+
+    await user.click(await screen.findByRole('button', { name: /chunk 2/i }));
+
+    expect(openOverlay).toHaveBeenCalledWith('corpus', {
+      breadcrumb: 'Ask · chunk 2',
+      documentId: 'doc-e23a17ed',
+      chunkId: '02ec848c94974f36',
     });
-    const onCitationSelect = vi.fn();
-
-    render(<RagWorkspace tenantId="default" onCitationSelect={onCitationSelect} />);
-
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'what is this');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
-
-    await user.click(await screen.findByRole('button', { name: /Chunk 1 • bm25/ }));
-
-    expect(onCitationSelect).toHaveBeenCalledWith('doc-7', 'chunk-1');
   });
 
-  it('leaves the citation callback unused when the prop is not supplied', async () => {
-    const user = userEvent.setup();
-    (api.query as ReturnType<typeof vi.fn>).mockResolvedValue({
-      query: 'q',
-      answer: 'a',
-      source_chunks: [
-        { chunk_id: 'chunk-1', document_id: 'doc-7', text: 'cited body', score: 0.8, retrieval_method: 'bm25' },
-      ],
-      entities: [],
-      cycle_count: 1,
-      verified: false,
-      refusal: false,
-      execution_time_ms: 10,
-    });
-
-    render(<RagWorkspace tenantId="default" />);
-
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'what is this');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
-    await user.click(await screen.findByRole('button', { name: /Chunk 1 • bm25/ }));
-
-    // The studio stays usable on its own; nothing is required of the caller.
-    expect(screen.getByText('Retrieved Chunks & Citations')).toBeInTheDocument();
+  it('keeps the chunk table usable when nothing has been retrieved', () => {
+    renderCanvas();
+    expect(screen.getByText('No query context retrieved yet')).toBeInTheDocument();
   });
 });
