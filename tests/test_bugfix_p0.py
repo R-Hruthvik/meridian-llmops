@@ -93,13 +93,26 @@ class TestFix3ConfigSecrets:
     """Verify Settings no longer has hardcoded secret defaults."""
 
     def test_no_hardcoded_api_key_secret(self):
-        """api_key_secret must come from env, not be a baked-in literal in config.py."""
+        """api_key_secret must come from env, not be a baked-in literal.
+
+        Single owner is packages/core/settings.py; packages/core/config.py
+        is only a re-export shim, so the env-read assertion targets settings.py.
+        """
         config_path = Path(__file__).parent.parent / "packages" / "core" / "config.py"
-        content = config_path.read_text()
-        assert "meridian-test-secret-key-2026" not in content, \
+        settings_path = Path(__file__).parent.parent / "packages" / "core" / "settings.py"
+        config_content = config_path.read_text()
+        settings_content = settings_path.read_text()
+        assert "meridian-test-secret-key-2026" not in config_content, \
             "config.py must not contain the old hardcoded default"
-        assert "os.environ.get(\"API_KEY_SECRET\"" in content or "os.environ.get('API_KEY_SECRET'" in content, \
-            "api_key_secret must read from environment"
+        assert settings_content.count("meridian-test-secret-key-2026") == 1, \
+            "settings.py must reference the old test secret only in the production blocklist"
+        assert "_FORBIDDEN_PRODUCTION_SECRETS" in settings_content, \
+            "settings.py must define the production blocklist"
+        assert "os.environ.get(\"API_KEY_SECRET\"" in settings_content or "os.environ.get('API_KEY_SECRET'" in settings_content, \
+            "api_key_secret must read from environment in settings.py"
+        # Re-export shim smoke: existing imports keep working
+        from packages.core.config import Settings
+        assert Settings is not None
 
     def test_no_hardcoded_litellm_master_key(self):
         config_path = Path(__file__).parent.parent / "packages" / "core" / "config.py"
