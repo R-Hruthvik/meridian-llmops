@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from packages.core.db import init_db
 from packages.core.models import (
     DocumentFormat,
+    GuardrailResult,
     IngestDocumentRequest,
     QueryRequest,
     QueryResponse,
@@ -332,12 +333,38 @@ agent_graph = build_rag_agent_graph(
 )
 
 
+class GuardrailCheckRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+
+
+@app.get("/v1/guardrails/check", response_model=GuardrailResult)
+async def check_guardrails_get(
+    text: str,
+    tenant_id: str = Depends(verify_api_key),
+):
+    """Evaluates text against the same input rails the gateway applies.
+
+    Served here too because the browser reaches the rag engine directly.
+    """
+    return input_guardrails.evaluate(text)
+
+
+@app.post("/v1/guardrails/check", response_model=GuardrailResult, include_in_schema=False)
+async def check_guardrails_post(
+    payload: GuardrailCheckRequest,
+    tenant_id: str = Depends(verify_api_key),
+):
+    """Deprecated alias for GET /v1/guardrails/check. Use query parameter instead."""
+    return input_guardrails.evaluate(payload.text)
+
+
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
         "service": "meridian-rag-engine",
-        "storage_documents": _docs_loaded,
+        # Live count, same source as /v1/documents - a boot-time snapshot went stale on ingest.
+        "storage_documents": len(ingestion_pipeline.get_documents()),
         "vector_chunks": len(vector_store.get_all_chunks()),
         "services": _service_status,
     }
@@ -397,7 +424,11 @@ async def query_endpoint(
                 "is_refusal": False,
                 "tenant_id": tenant_id,
             }
-            final_state = await agent_graph.ainvoke(initial_state)
+            # The graph derives its own recall breadth from top_k (see resolve_retrieval_breadth).
+            final_state = await agent_graph.ainvoke(
+                initial_state,
+                config={"configurable": {"top_k": req.top_k}},
+            )
             span.set_attribute("cycle_count", final_state["cycle_count"])
             span.set_attribute("is_grounded", final_state["is_grounded"])
 
