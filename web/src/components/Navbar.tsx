@@ -3,6 +3,7 @@ import {
   Bot,
   ClipboardCheck,
   Database,
+  HardDrive,
   Layers,
   LineChart,
   Settings,
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'ingest', label: 'Ingestion Studio', icon: Database },
   { id: 'guardrails', label: 'Guardrails Security', icon: ShieldAlert },
   { id: 'review', label: 'Review Queue', icon: ClipboardCheck },
+  { id: 'index', label: 'Index & Storage', icon: HardDrive },
   { id: 'metrics', label: 'Observability & Costs', icon: LineChart },
 ];
 

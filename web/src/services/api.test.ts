@@ -270,6 +270,29 @@ describe('MeridianApiClient', () => {
     });
   });
 
+  describe('getIndexStatus()', () => {
+    it('GETs /v1/index/status with the tenant header', async () => {
+      const status = {
+        vector: { collections: [], points_per_collection: {}, total_points: null, vector_dimension: null, is_fallback: true, detail: 'd' },
+        graph: { node_count: null, relationship_count: null, entity_index_size: null, is_fallback: true, detail: 'd' },
+        lexical: { corpus_size: null, document_count: null, is_fallback: true, detail: 'd' },
+        relational: { dialect: null, tables: [], total_rows: 0, is_fallback: true, detail: 'd' },
+        backends: {},
+      };
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse(status, 200) as unknown as Response);
+
+      const result = await api.getIndexStatus('acme');
+
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/v1/index/status');
+      expect(init.method).toBe('GET');
+      expect(init.body).toBeUndefined();
+      expect((init.headers as Record<string, string>)['X-Tenant-Id']).toBe('acme');
+      expect(result.vector.is_fallback).toBe(true);
+      expect(result.relational.tables).toEqual([]);
+    });
+  });
+
   describe('review queue calls', () => {
     it('lists pending items with tenant header', async () => {
       const items = [

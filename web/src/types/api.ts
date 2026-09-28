@@ -263,3 +263,74 @@ export interface ReviewItemActionPayload {
   corrected_value?: string;
   notes?: string;
 }
+
+/** Live reachability of one storage subsystem, as observed by a real read. */
+export interface IndexBackendHealth {
+  /** True only when the real backend answered a live query. */
+  reachable: boolean;
+  /** True when the subsystem is served by an in-process fallback. */
+  is_fallback: boolean;
+  /** Configured endpoint for this subsystem. */
+  endpoint: string;
+  /** Human-readable explanation of the observed state. */
+  detail: string;
+}
+
+/** Dense vector index state (Qdrant, or the in-memory fallback cache). */
+export interface VectorIndexStatus {
+  collections: string[];
+  points_per_collection: Record<string, number>;
+  /** Total live points, or in-process chunk count when falling back; null when neither. */
+  total_points: number | null;
+  /** Embedding dimension reported by the live collection; null when unknown. */
+  vector_dimension: number | null;
+  is_fallback: boolean;
+  detail: string;
+}
+
+/** Knowledge graph state (Neo4j, or the in-memory fallback graph). */
+export interface GraphIndexStatus {
+  /** Null when Neo4j is unreachable — never rendered as zero. */
+  node_count: number | null;
+  relationship_count: number | null;
+  entity_index_size: number | null;
+  is_fallback: boolean;
+  detail: string;
+}
+
+/** BM25 sparse index state, read from the live retriever. */
+export interface LexicalIndexStatus {
+  corpus_size: number | null;
+  document_count: number | null;
+  is_fallback: boolean;
+  detail: string;
+}
+
+/** One live relational table and its row count. */
+export interface TableRowCount {
+  name: string;
+  row_count: number;
+}
+
+/** Relational storage state (SQLite/SQLAlchemy), read live. */
+export interface RelationalIndexStatus {
+  /** SQL dialect reported by the live connection; null when unreachable. */
+  dialect: string | null;
+  tables: TableRowCount[];
+  total_rows: number;
+  is_fallback: boolean;
+  detail: string;
+}
+
+/**
+ * GET /v1/index/status. Always answers 200 with valid auth: a down backend is
+ * reported as `is_fallback: true` plus a human `detail`, never as an HTTP error.
+ * Every count is nullable so the UI can show "unavailable" instead of a fake 0.
+ */
+export interface IndexStatusResponse {
+  vector: VectorIndexStatus;
+  graph: GraphIndexStatus;
+  lexical: LexicalIndexStatus;
+  relational: RelationalIndexStatus;
+  backends: Record<string, IndexBackendHealth>;
+}

@@ -5,6 +5,7 @@ import type {
   HealthStatus,
   IngestRequest,
   IngestResponse,
+  IndexStatusResponse,
   LLMPingResponse,
   LLMSettingsGet,
   MaskedLLMSettings,
@@ -147,6 +148,23 @@ class MeridianApiClient {
         headers: this.getHeaders(tenantId),
       },
       'Guardrail check failed',
+    );
+  }
+
+  /**
+   * GET /v1/index/status — read-only live inspection of every storage subsystem.
+   * Non-throwing by contract: a down backend arrives as is_fallback + detail,
+   * so a 200 here does NOT mean the data is persisted. Only auth/transport
+   * failures (401, 500, network) throw.
+   */
+  async getIndexStatus(tenantId: string = 'default'): Promise<IndexStatusResponse> {
+    return this.requestJSON<IndexStatusResponse>(
+      `${this.baseUrl}/v1/index/status`,
+      {
+        method: 'GET',
+        headers: this.getHeaders(tenantId),
+      },
+      'Index status fetch failed',
     );
   }
 

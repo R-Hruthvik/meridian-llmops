@@ -22,6 +22,7 @@ vi.mock('./services/api', () => ({
     listReviewItems: vi.fn(),
     reviewItemAction: vi.fn(),
     getMetrics: vi.fn(),
+    getIndexStatus: vi.fn(),
     groq: {},
   },
   ApiError: class ApiError extends Error {},
@@ -61,6 +62,7 @@ describe('App B5: only the active studio is mounted', () => {
     });
     (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (api.checkGuardrails as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue({});
   });
 
   it('mounts the RAG workspace and no other studio on first paint', () => {
@@ -103,6 +105,21 @@ describe('App B5: only the active studio is mounted', () => {
 
     await user.click(screen.getByRole('tab', { name: /Agentic RAG/i }));
     expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
+  });
+
+  it('mounts the index studio on demand, like every other tab', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(api.getIndexStatus).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('tab', { name: /Index & Storage/i }));
+
+    await waitFor(() => {
+      expect(api.getIndexStatus).toHaveBeenCalled();
+    });
+    // B5 pattern: the RAG workspace is unmounted, not hidden.
+    expect(screen.queryByText('Ask Agentic RAG Pipeline')).toBeNull();
   });
 
   it('preserves the backend health poll', async () => {

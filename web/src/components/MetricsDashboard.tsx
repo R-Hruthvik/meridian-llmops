@@ -12,7 +12,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { api } from '../services/api';
-import type { HealthServiceStatus, TenantMetrics } from '../types/api';
+import type { HealthServiceStatus, IndexStatusResponse, TenantMetrics } from '../types/api';
 
 interface MetricsDashboardProps {
   tenantId: string;
@@ -20,57 +20,64 @@ interface MetricsDashboardProps {
 
 interface InfraService {
   name: string;
-  port: string;
-  status: string;
   type: string;
   icon: typeof Cpu;
-  healthKey?: string;
-  // Displayed when no live /health endpoint backs this card.
-  dataSource?: string;
+  /**
+   * Where this card's status actually comes from. Every card names a live
+   * source; only cards with `kind: 'static'` have none, and those say so
+   * on their face rather than asserting a fabricated Ready/Online.
+   */
+  source:
+    /** The health poll itself answering proves the RAG engine is up. */
+    | { kind: 'self' }
+    /** Live reachability from the /health services map. */
+    | { kind: 'health-map'; key: string }
+    /** Live reachability observed by an actual index read. */
+    | { kind: 'index'; key: 'vector' | 'graph' }
+    /** No probe exists for this service — the card admits it. */
+    | { kind: 'static'; note: string };
 }
 
 const INFRASTRUCTURE_SERVICES: InfraService[] = [
   {
     name: 'Meridian RAG Engine (FastAPI)',
-    port: ':8000',
-    status: 'Online',
     type: 'Core App',
     icon: Cpu,
+    source: { kind: 'self' },
   },
   {
     name: 'LiteLLM AI Gateway',
-    port: ':4000',
-    status: 'Ready',
     type: 'Ingress Proxy',
     icon: Server,
-    healthKey: 'litellm',
+    source: { kind: 'health-map', key: 'litellm' },
   },
   {
     name: 'Qdrant Vector Database',
-    port: ':6333',
-    status: 'Ready',
     type: 'Dense Storage',
     icon: Database,
-    healthKey: 'qdrant',
+    source: { kind: 'index', key: 'vector' },
   },
   {
     name: 'Neo4j Knowledge Graph',
-    port: ':7474',
-    status: 'Ready',
     type: 'Entity Graph',
     icon: Network,
-    healthKey: 'neo4j',
+    source: { kind: 'index', key: 'graph' },
   },
   {
     name: 'Langfuse Tracing',
-    port: ':3000',
-    status: 'Ready',
     type: 'OpenTelemetry',
     icon: Activity,
-    // No /health endpoint exposes Langfuse — label the source explicitly.
-    dataSource: 'Static config — no live /health probe',
+    // No endpoint exposes Langfuse — label the source explicitly.
+    source: { kind: 'static', note: 'Static config — no live /health probe' },
   },
 ];
+
+const STATIC_LABELS = {
+  selfOffline: 'Offline',
+  unreached: 'Unprobed',
+  staticUnknown: 'Unknown',
+  staticNote: 'Static config — no live /health probe',
+} as const;
 export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) => {
   const [metrics, setMetrics] = useState<TenantMetrics | null>(null);
   const [loading, setLoading] = useState(false);
@@ -81,6 +88,9 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
   // Storage counters surfaced from /health where returned.
   const [storageDocuments, setStorageDocuments] = useState<number | null>(null);
   const [vectorChunks, setVectorChunks] = useState<number | null>(null);
+  // Live /v1/index/status; null means the probe itself failed, so no card
+  // sourced from it may claim to be Ready.
+  const [indexStatus, setIndexStatus] = useState<IndexStatusResponse | null>(null);
 
   const fetchMetrics = async () => {
     setLoading(true);
@@ -107,6 +117,11 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
       setHealthReachable(false);
       setStorageDocuments(null);
       setVectorChunks(null);
+    }
+    try {
+      setIndexStatus(await api.getIndexStatus(tenantId));
+    } catch {
+      setIndexStatus(null);
     }
   };
 
@@ -210,25 +225,45 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {INFRASTRUCTURE_SERVICES.map((svc) => {
             const Icon = svc.icon;
-            // Resolve live status from /health services map; fall back to the
-            // static label when health is unreachable or the service has no key.
-            // RAG engine card reflects the health fetch itself (same-origin backend).
-            let label = svc.status;
-            let tone: 'ok' | 'warn' | 'bad' = 'ok';
-            if (svc.name.startsWith('Meridian RAG Engine')) {
-              if (!healthReachable) {
-                label = 'Offline';
-                tone = 'bad';
-              }
-            } else if (svc.healthKey && serviceHealth) {
-              const live = serviceHealth[svc.healthKey];
-              if (live && !live.reachable) {
-                label = 'Degraded';
+            // Resolve every card from a live source. When a source is missing
+            // or failed, the card says so instead of asserting Ready/Online.
+            let label: string;
+            let tone: 'ok' | 'warn' | 'bad';
+            let endpoint: string | null = null;
+            let sourceNote: string | null = null;
+            if (svc.source.kind === 'self') {
+              label = healthReachable ? 'Online' : STATIC_LABELS.selfOffline;
+              tone = healthReachable ? 'ok' : 'bad';
+            } else if (svc.source.kind === 'health-map') {
+              const live = serviceHealth?.[svc.source.key];
+              if (!serviceHealth) {
+                label = STATIC_LABELS.unreached;
                 tone = 'warn';
+              } else if (!live) {
+                label = STATIC_LABELS.unreached;
+                tone = 'warn';
+              } else {
+                label = live.reachable ? 'Online' : 'Degraded';
+                tone = live.reachable ? 'ok' : 'warn';
+                endpoint = live.endpoint;
               }
-            } else if (!healthReachable && !svc.healthKey) {
-              label = 'Unknown';
+            } else if (svc.source.kind === 'index') {
+              const live = indexStatus?.backends?.[svc.source.key];
+              if (!live) {
+                label = STATIC_LABELS.unreached;
+                tone = 'warn';
+              } else {
+                // Fallback strictly implies the persisted store is not being
+                // used, so it is the more specific (and more alarming) truth
+                // than a bare Offline when a backend is down.
+                label = live.is_fallback ? 'Fallback' : live.reachable ? 'Online' : 'Offline';
+                tone = live.is_fallback ? 'warn' : live.reachable ? 'ok' : 'bad';
+                endpoint = live.endpoint;
+              }
+            } else {
+              label = STATIC_LABELS.staticUnknown;
               tone = 'warn';
+              sourceNote = svc.source.note;
             }
             const badgeClass =
               tone === 'ok'
@@ -250,11 +285,17 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
                   <div>
                     <h4 className="text-xs font-bold text-meridian-text">{svc.name}</h4>
                     <p className="text-[11px] text-meridian-textMuted font-medium">
-                      {svc.type} • <code className="text-meridian-primary font-bold">{svc.port}</code>
+                      {svc.type}
+                      {endpoint && (
+                        <>
+                          {' • '}
+                          <code className="text-meridian-primary font-bold break-all">{endpoint}</code>
+                        </>
+                      )}
                     </p>
-                    {svc.dataSource && (
+                    {sourceNote && (
                       <p className="text-[10px] text-meridian-textMuted font-medium mt-0.5">
-                        Source: {svc.dataSource}
+                        Source: {sourceNote}
                       </p>
                     )}
                   </div>

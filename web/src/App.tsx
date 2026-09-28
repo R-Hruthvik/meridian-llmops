@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { GuardrailsStudio } from './components/GuardrailsStudio';
+import { IndexStorageStudio } from './components/IndexStorageStudio';
 import { IngestionStudio } from './components/IngestionStudio';
 import { MetricsDashboard } from './components/MetricsDashboard';
 import { Navbar } from './components/Navbar';
@@ -55,6 +56,7 @@ export const App: React.FC = () => {
         {activeTab === 'ingest' && <IngestionStudio tenantId={tenantId} />}
         {activeTab === 'guardrails' && <GuardrailsStudio tenantId={tenantId} />}
         {activeTab === 'review' && <ReviewQueue tenantId={tenantId} />}
+        {activeTab === 'index' && <IndexStorageStudio tenantId={tenantId} />}
         {activeTab === 'metrics' && <MetricsDashboard tenantId={tenantId} />}
       </main>
 
