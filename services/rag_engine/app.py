@@ -14,8 +14,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from packages.core.db import init_db
-from packages.core.settings import get_settings as _core_get_settings
-from packages.core.settings import validate_production as _validate_production
 from packages.core.models import (
     DocumentFormat,
     IngestDocumentRequest,
@@ -24,6 +22,9 @@ from packages.core.models import (
     SearchResult,
     UpdateLLMSettingsRequest,
 )
+from packages.core.secrets_store import SECRET_SUFFIX
+from packages.core.settings import get_settings as _core_get_settings
+from packages.core.settings import validate_production as _validate_production
 from services.gateway.auth import verify_api_key
 from services.gateway.client import LiteLLMClient
 from services.gateway.guardrails.input_rails import InputGuardrails
@@ -189,8 +190,13 @@ def _merge_preserving_saved(base: dict[str, Any], incoming: dict[str, Any]) -> d
 def masked_llm_view(d: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for k, v in d.items():
-        if k.endswith("_api_key") and isinstance(v, str) and v:
-            out[k] = {"configured": True, "hint": v[-4:]}
+        if k.endswith(SECRET_SUFFIX):
+            if not v:
+                out[k] = {"configured": False}
+            elif isinstance(v, str) and len(v) > 4:
+                out[k] = {"configured": True, "hint": v[-4:]}
+            else:
+                out[k] = {"configured": True, "hint": "****"}
         else:
             out[k] = v
     return out
