@@ -206,6 +206,7 @@ def _save_persisted_settings(settings: dict[str, Any]) -> None:
     try:
         with open(settings_file, "w", encoding="utf-8") as f:
             json.dump(merged, f, indent=2)
+        os.chmod(settings_file, 0o600)
     except (OSError, ValueError, TypeError) as e:
         logger.warning(f"Could not save settings file: {e}")
 
