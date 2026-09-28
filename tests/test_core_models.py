@@ -95,3 +95,10 @@ def test_settings():
     settings = get_settings()
     assert settings.api_port == 8000
     assert settings.qdrant_collection == "meridian_documents"
+
+
+def test_chunk_dim_mismatch():
+    import pytest
+    from packages.core.models import Chunk
+    with pytest.raises(ValueError):
+        Chunk(id="c", document_id="d", text="t", embedding=[0.1] * 3).validate_dim(1024)

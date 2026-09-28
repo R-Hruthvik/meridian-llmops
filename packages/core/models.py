@@ -34,6 +34,11 @@ class Chunk(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Metadata payload")
     embedding: list[float] | None = Field(default=None, description="Dense vector embedding")
 
+    def validate_dim(self, expected: int) -> "Chunk":
+        if self.embedding is not None and len(self.embedding) != expected:
+            raise ValueError(f"embedding dim {len(self.embedding)} != {expected}")
+        return self
+
 
 class Entity(BaseModel):
     """An entity node extracted for the Knowledge Graph."""
