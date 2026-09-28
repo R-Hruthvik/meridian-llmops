@@ -2,16 +2,13 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   CheckCircle2,
-  Clock,
   Database,
   Eye,
   FileCheck,
   FileCode,
   FileText,
   FileUp,
-  HardDrive,
   Layers,
-  Network,
   Plus,
   Quote,
   RefreshCw,
@@ -20,6 +17,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { StatusChip } from './StatusChip';
 import { api } from '../services/api';
 import type { DocumentDetail, DocumentListResponse, DocumentSummary, IngestResponse } from '../types/api';
 
@@ -38,6 +36,14 @@ The Distributed Cache Layer uses Redis Cluster with multi-region replication.
 Cache invalidation is handled via Kafka events emitted by write operations.
 Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 `;
+
+/** §9 — one cell of a dense readout strip: label on top, value in mono below. */
+const Readout: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div data-slot="readout" className="border-l border-hairline pl-3 first:border-l-0 first:pl-0">
+    <div className="label-section text-faint">{label}</div>
+    <div className="num text-readout font-semibold text-ink">{value}</div>
+  </div>
+);
 
 export const isBinaryLike = (content: string): boolean => {
   if (!content) return false;
@@ -82,8 +88,17 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [focusError, setFocusError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  const focusedDocRef = useRef<HTMLDivElement | null>(null);
-  const focusedChunkRef = useRef<HTMLDivElement | null>(null);
+  const focusedDocRef = useRef<HTMLElement | null>(null);
+  const focusedChunkRef = useRef<HTMLElement | null>(null);
+
+  // The citation markers now live on table rows / chunk rows, so the refs are
+  // typed as plain elements and attached through stable callbacks.
+  const attachFocusedDoc = useCallback((el: HTMLElement | null) => {
+    focusedDocRef.current = el;
+  }, []);
+  const attachFocusedChunk = useCallback((el: HTMLElement | null) => {
+    focusedChunkRef.current = el;
+  }, []);
 
   const fetchDocuments = async (retry = true) => {
     setLoadingDocs(true);
@@ -271,19 +286,19 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-4">
       {/* Toast Notification */}
       {toastMessage && (
         <div
           role="alert"
           aria-live="polite"
-          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl shadow-2xl text-xs font-bold flex items-center space-x-2 animate-in fade-in slide-in-from-bottom-4 duration-200 ${
+          className={`fixed bottom-6 right-6 z-[60] flex items-center gap-2 rounded px-3 py-2 text-label font-semibold shadow-overlay ${
             toastMessage.type === 'success'
-              ? 'bg-emerald-600 text-white border border-emerald-500'
-              : 'bg-rose-600 text-white border border-rose-500'
+              ? 'border border-hairline bg-ok-wash text-ok'
+              : 'border border-hairline bg-fail-wash text-fail'
           }`}
         >
-          <CheckCircle2 className="w-4 h-4" />
+          <CheckCircle2 className="size-3.5" />
           <span>{toastMessage.text}</span>
         </div>
       )}
@@ -293,26 +308,25 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
         <div
           role="status"
           aria-live="polite"
-          className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-meridian-blossom/60 border border-meridian-lavender shadow-sm"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-hairline bg-accent-wash px-3 py-2"
         >
-          <div className="flex items-center space-x-2 min-w-0">
-            <Quote className="w-4 h-4 text-meridian-primary shrink-0" />
-            <p className="text-xs text-meridian-text font-semibold min-w-0 truncate">
+          <div className="flex min-w-0 items-center gap-2">
+            <Quote className="size-3.5 shrink-0 text-accent-ink" />
+            <p className="min-w-0 truncate text-label font-semibold text-ink">
               Opened from a citation
               {focusedChunkId ? (
                 <>
-                  {' '}— chunk{' '}
-                  <code className="font-mono text-[11px] text-meridian-primary">{focusedChunkId}</code>
+                  {' '}— chunk <span className="id-mono text-accent-ink">{focusedChunkId}</span>
                 </>
               ) : null}{' '}
               of document{' '}
-              <code className="font-mono text-[11px] text-meridian-primary">{focusedDocumentId}</code>
+              <span className="id-mono text-accent-ink">{focusedDocumentId}</span>
             </p>
           </div>
           <button
             onClick={handleDismissFocus}
             aria-label="Dismiss source focus"
-            className="px-3 py-1.5 rounded-xl bg-white border border-meridian-border text-meridian-text text-xs font-bold hover:bg-meridian-lavenderLight transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+            className="rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Dismiss
           </button>
@@ -320,124 +334,75 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
       )}
 
       {focusError && (
-        <div role="alert" aria-live="polite" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+        <div
+          role="alert"
+          aria-live="polite"
+          className="rounded border border-hairline bg-fail-wash p-3 text-label text-fail"
+        >
           {focusError}
         </div>
       )}
 
-      {/* Top Banner & Overview Statistics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-meridian-textMuted uppercase tracking-wider block mb-1">
-              Knowledge Base Documents
-            </span>
-            <div className="text-2xl font-black text-meridian-text">
-              {docList.total_documents}
-            </div>
-            <span className="text-[10px] font-medium text-emerald-600 flex items-center space-x-1 mt-0.5">
-              <HardDrive className="w-3 h-3" />
-              <span>Persisted Permanently</span>
-            </span>
-          </div>
-          <div className="w-11 h-11 rounded-2xl bg-meridian-blossom border border-meridian-lavender flex items-center justify-center text-meridian-primary shadow-sm">
-            <BookOpen className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-meridian-textMuted uppercase tracking-wider block mb-1">
-              Vector Chunks (Qdrant)
-            </span>
-            <div className="text-2xl font-black text-meridian-text">
-              {docList.total_chunks}
-            </div>
-            <span className="text-[10px] font-medium text-meridian-textMuted mt-0.5 block">
-              1024-dim dense embeddings
-            </span>
-          </div>
-          <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
-            <Database className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-meridian-textMuted uppercase tracking-wider block mb-1">
-              Graph Entities (Neo4j)
-            </span>
-            <div className="text-2xl font-black text-meridian-text">
-              {docList.total_entities}
-            </div>
-            <span className="text-[10px] font-medium text-meridian-textMuted mt-0.5 block">
-              Dual-memory Knowledge Graph
-            </span>
-          </div>
-          <div className="w-11 h-11 rounded-2xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shadow-sm">
-            <Network className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-5 shadow-card flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-meridian-textMuted uppercase tracking-wider block mb-1">
-              Storage Engine
-            </span>
-            <div className="text-sm font-bold text-meridian-text">
-              Dual In-Memory + Disk
-            </div>
-            <span className="text-[10px] font-medium text-meridian-textMuted mt-0.5 block">
-              File: <code className="font-mono text-[9px] bg-meridian-bg px-1 py-0.5 rounded">.meridian_knowledge_base.json</code>
-            </span>
-          </div>
-          <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shadow-sm">
-            <Layers className="w-5 h-5" />
-          </div>
-        </div>
+      {/* §4/§9 readout strip — replaces the four stat cards */}
+      <div
+        data-testid="corpus-readout-strip"
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded border border-hairline bg-surface-raised px-3 py-2"
+      >
+        <h2 className="label-section text-muted">Corpus Readout</h2>
+        <Readout label="Documents" value={docList.total_documents.toLocaleString()} />
+        <Readout label="Chunks" value={docList.total_chunks.toLocaleString()} />
+        <Readout label="Entities" value={docList.total_entities.toLocaleString()} />
+        <p className="ml-auto text-micro text-faint">
+          Dual in-memory + disk ·{' '}
+          <span className="id-mono">.meridian_knowledge_base.json</span>
+        </p>
       </div>
 
       {/* Navigation Tabs Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-meridian-border pb-3">
-        <div role="tablist" aria-label="Ingestion Studio Navigation" className="flex space-x-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline pb-2">
+        <div role="tablist" aria-label="Ingestion Studio Navigation" className="flex items-center gap-1">
           <button
             role="tab"
             aria-selected={activeTab === 'catalog'}
             onClick={() => setActiveTab('catalog')}
-            className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none ${
+            className={`flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-label font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
               activeTab === 'catalog'
-                ? 'bg-meridian-primary text-white shadow-glow'
-                : 'bg-white text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg border border-meridian-border'
+                ? 'bg-accent-wash text-accent-ink'
+                : 'text-muted hover:bg-surface-sunken hover:text-ink'
             }`}
           >
-            <BookOpen className="w-4 h-4" />
-            <span>Document Catalog ({docList.total_documents})</span>
+            <BookOpen className="size-3.5" />
+            <span>Document Catalog</span>
+            <span className="num text-micro text-faint">
+              <span className="sr-only">document count </span>
+              {docList.total_documents}
+            </span>
           </button>
 
           <button
             role="tab"
             aria-selected={activeTab === 'upload'}
             onClick={() => setActiveTab('upload')}
-            className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none ${
+            className={`flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-label font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
               activeTab === 'upload'
-                ? 'bg-meridian-primary text-white shadow-glow'
-                : 'bg-white text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg border border-meridian-border'
+                ? 'bg-accent-wash text-accent-ink'
+                : 'text-muted hover:bg-surface-sunken hover:text-ink'
             }`}
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="size-3.5" />
             <span>Ingest New Document</span>
           </button>
         </div>
 
-        <div className="flex items-center space-x-2">
-            <button
-              onClick={() => void fetchDocuments(false)}
-              disabled={loadingDocs}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => void fetchDocuments(false)}
+            disabled={loadingDocs}
             aria-label="Refresh document catalog"
-            className="p-2 rounded-xl bg-white border border-meridian-border text-meridian-textMuted hover:text-meridian-primary hover:bg-meridian-bg transition-all text-xs font-semibold flex items-center space-x-1.5 shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+            className="flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
             title="Refresh Knowledge Base"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingDocs ? 'animate-spin text-meridian-primary' : ''}`} />
+            <RefreshCw className={`size-3.5 ${loadingDocs ? 'animate-spin text-accent-ink' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
           </button>
 
@@ -452,10 +417,10 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                 showToast(msg, 'error');
               }
             }}
-            className="px-3 py-2 rounded-xl bg-white border border-meridian-border text-meridian-textMuted hover:text-meridian-primary hover:bg-meridian-bg transition-all text-xs font-semibold flex items-center space-x-1.5 shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+            className="flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             title="Seed sample architecture documents"
           >
-            <Sparkles className="w-3.5 h-3.5 text-meridian-secondary" />
+            <Sparkles className="size-3.5" />
             <span className="hidden md:inline">Seed Samples</span>
           </button>
 
@@ -474,10 +439,10 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                   showToast(msg, 'error');
                 }
               }}
-              className="px-3 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition-all text-xs font-semibold flex items-center space-x-1.5 shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+              className="flex items-center gap-1.5 rounded-sm border border-hairline bg-fail-wash px-2.5 py-1 text-label text-fail transition-colors hover:border-fail focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               title="Clear entire Knowledge Base"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className="size-3.5" />
               <span className="hidden md:inline">Clear All</span>
             </button>
           )}
@@ -486,26 +451,28 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
 
       {/* TAB 1: Document Catalog View */}
       {activeTab === 'catalog' && (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-3">
           {/* Search & Filter Bar */}
-          <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-4 shadow-card flex flex-wrap items-center justify-between gap-3">
-            <div className="relative flex-1 min-w-[260px]">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-meridian-textMuted" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="relative min-w-[220px] flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search documents by title, source, or content..."
                 aria-label="Search documents catalog"
-                className="w-full bg-meridian-bg border border-meridian-border rounded-xl pl-9 pr-3.5 py-2 text-xs text-meridian-text outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white transition-all font-medium"
+                className="w-full rounded-sm border border-hairline bg-surface py-1.5 pl-8 pr-2.5 text-body text-ink outline-none transition-colors placeholder:text-faint focus:border-hairline-strong focus:bg-surface-raised focus-visible:ring-2 focus-visible:ring-accent"
               />
             </div>
-            <div className="text-[11px] font-semibold text-meridian-textMuted flex items-center space-x-2">
-              <span>
-                Showing {filteredDocs.length} of {docList.total_documents} documents
+            <div className="flex items-center gap-2">
+              <span className="num text-micro text-muted">
+                <span className="sr-only">showing </span>
+                {filteredDocs.length} <span className="text-faint">of</span> {docList.total_documents}{' '}
+                <span className="font-sans text-faint">documents</span>
               </span>
               <span
-                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-meridian-lavenderLight border border-meridian-border text-meridian-primary"
+                className="rounded-pill bg-surface-sunken px-2 py-0.5 text-micro font-semibold text-muted"
                 title="The document catalog is shared across tenants"
               >
                 Global
@@ -514,19 +481,23 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
           </div>
 
           {catalogError && (
-            <div role="alert" aria-live="polite" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+            <div
+              role="alert"
+              aria-live="polite"
+              className="rounded border border-hairline bg-fail-wash p-3 text-label text-fail"
+            >
               {catalogError}
             </div>
           )}
 
-          {/* Document Table / Card Grid */}
+          {/* Document catalog — §8 table language, matching the chunk table */}
           {filteredDocs.length === 0 ? (
-            <div className="text-center py-16 bg-white/80 backdrop-blur-md border border-dashed border-meridian-border rounded-3xl shadow-card">
-              <FileText className="w-10 h-10 mx-auto mb-2 text-meridian-secondary/50" />
-              <h4 className="text-sm font-bold text-meridian-text">
+            <div className="rounded border border-dashed border-hairline px-3 py-10 text-center">
+              <FileText className="mx-auto mb-2 size-6 text-faint" />
+              <h3 className="text-body font-semibold text-ink">
                 {searchQuery ? 'No matching documents found' : 'No documents in Knowledge Base'}
-              </h4>
-              <p className="text-xs text-meridian-textMuted mt-1 max-w-md mx-auto">
+              </h3>
+              <p className="mx-auto mt-1 max-w-md text-micro text-muted">
                 {searchQuery
                   ? 'Try searching with different keywords or reset your filter.'
                   : 'Start by ingesting your first document to enable dual-memory search and semantic retrieval.'}
@@ -534,116 +505,139 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
               {searchQuery ? (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="mt-4 px-4 py-2 rounded-xl bg-meridian-lavenderLight text-meridian-primary text-xs font-bold border border-meridian-border hover:bg-meridian-blossom transition-all inline-flex items-center space-x-1.5 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 text-label font-semibold text-ink transition-colors hover:bg-accent-wash focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
+                  <RefreshCw className="size-3.5" />
                   <span>Reset Search</span>
                 </button>
               ) : (
                 <button
                   onClick={() => setActiveTab('upload')}
-                  className="mt-4 px-4 py-2 rounded-xl bg-meridian-primary text-white text-xs font-bold shadow-glow hover:bg-meridian-primaryHover transition-all inline-flex items-center space-x-1.5 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-label font-semibold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="size-3.5" />
                   <span>Ingest Your First Document</span>
                 </button>
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredDocs.map((doc) => (
-                <div
-                  key={doc.id}
-                  ref={doc.id === focusedDocumentId ? focusedDocRef : undefined}
-                  data-focused-document={doc.id === focusedDocumentId ? doc.id : undefined}
-                  className={`bg-white/80 backdrop-blur-md border rounded-3xl p-5 shadow-card hover:shadow-cardHover transition-all flex flex-col justify-between space-y-4 group overflow-hidden ${
-                    doc.id === focusedDocumentId
-                      ? 'border-meridian-primary ring-2 ring-meridian-primary/40'
-                      : 'border-meridian-border'
-                  }`}
-                >
-                  <div className="space-y-2.5 min-w-0">
-                    <div className="flex items-start justify-between gap-2 min-w-0">
-                      <div className="flex items-center space-x-2 min-w-0 flex-1">
-                        <span className="w-8 h-8 rounded-xl bg-meridian-blossom border border-meridian-lavender flex items-center justify-center text-meridian-text font-extrabold text-[10px] uppercase shrink-0">
-                          {doc.format || 'MD'}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <h4
-                            className="text-xs font-bold text-meridian-text group-hover:text-meridian-primary transition-colors truncate"
-                            title={doc.title}
-                          >
+            <div className="rounded border border-hairline bg-surface-raised">
+              <table className="w-full border-collapse text-left">
+                <caption className="sr-only">Indexed documents with chunk, entity and relationship counts</caption>
+                <thead>
+                  <tr className="border-b border-hairline-strong">
+                    <th scope="col" className="label-section w-8 px-3 py-1.5 font-normal text-faint">
+                      #
+                    </th>
+                    <th scope="col" className="label-section px-2 py-1.5 font-normal text-faint">
+                      TITLE
+                    </th>
+                    <th
+                      scope="col"
+                      className="label-section w-16 px-2 py-1.5 text-right font-normal text-faint"
+                    >
+                      CHUNKS
+                    </th>
+                    <th
+                      scope="col"
+                      className="label-section w-14 px-2 py-1.5 text-right font-normal text-faint"
+                    >
+                      ENTS
+                    </th>
+                    <th
+                      scope="col"
+                      className="label-section w-14 px-2 py-1.5 text-right font-normal text-faint"
+                    >
+                      RELS
+                    </th>
+                    <th scope="col" className="label-section w-24 px-2 py-1.5 font-normal text-faint">
+                      SOURCE
+                    </th>
+                    <th scope="col" className="label-section w-16 px-2 py-1.5 font-normal text-faint">
+                      FORMAT
+                    </th>
+                    <th scope="col" className="label-section w-32 px-2 py-1.5 font-normal text-faint">
+                      ADDED
+                    </th>
+                    <th scope="col" className="label-section w-24 px-3 py-1.5 text-right font-normal text-faint">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDocs.map((doc, idx) => {
+                    const added = doc.created_at
+                      ? new Date(doc.created_at).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })
+                      : 'Pre-seeded';
+                    return (
+                      <tr
+                        key={doc.id}
+                        ref={doc.id === focusedDocumentId ? attachFocusedDoc : undefined}
+                        data-focused-document={doc.id === focusedDocumentId ? doc.id : undefined}
+                        className={`group border-b border-hairline last:border-b-0 hover:bg-accent-wash ${
+                          doc.id === focusedDocumentId ? 'bg-accent-wash' : ''
+                        }`}
+                      >
+                        <td className="border-l-2 border-transparent px-3 py-1.5 group-hover:border-accent">
+                          <span className="num text-micro text-faint">{idx + 1}</span>
+                        </td>
+                        <td className="max-w-[220px] px-2 py-1.5">
+                          <div className="truncate text-body font-semibold text-ink" title={doc.title}>
                             {doc.title}
-                          </h4>
-                          <span className="text-[10px] font-medium text-meridian-textMuted flex items-center space-x-1 mt-0.5">
-                            <Clock className="w-2.5 h-2.5 shrink-0" />
-                            <span className="truncate">
-                              {doc.created_at
-                                ? new Date(doc.created_at).toLocaleDateString(undefined, {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })
-                                : 'Pre-seeded'}
-                            </span>
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-meridian-lavenderLight border border-meridian-border text-meridian-primary uppercase shrink-0 ml-1">
-                        {doc.source}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-meridian-textMuted leading-relaxed line-clamp-3 bg-meridian-bg/50 p-2.5 rounded-xl border border-meridian-border/60">
-                      {doc.snippet}
-                    </p>
-                  </div>
-
-                  <div className="space-y-3 pt-2 border-t border-meridian-border/60">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-meridian-textMuted">
-                      <span className="flex items-center space-x-1">
-                        <Database className="w-3 h-3 text-meridian-primary" />
-                        <span className="font-bold text-meridian-text">{doc.chunk_count}</span>
-                        <span>chunks</span>
-                      </span>
-                      <span className="flex items-center space-x-1">
-                        <Network className="w-3 h-3 text-purple-600" />
-                        <span className="font-bold text-meridian-text">{doc.entities_count}</span>
-                        <span>entities</span>
-                      </span>
-                      <span className="flex items-center space-x-1">
-                        <span className="font-bold text-meridian-text">{doc.relationships_count}</span>
-                        <span>relationships</span>
-                      </span>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleViewDetails(doc)}
-                        className="flex-1 px-3 py-1.5 rounded-xl bg-meridian-lavenderLight hover:bg-meridian-blossom border border-meridian-border text-meridian-primary text-xs font-bold flex items-center justify-center space-x-1.5 transition-all shadow-sm focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Inspect Chunks</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleDelete(doc.id, doc.title)}
-                        disabled={deletingId === doc.id}
-                        aria-label={`Delete ${doc.title}`}
-                        className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 transition-all text-xs focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
-                        title="Delete document and chunks"
-                      >
-                        {deletingId === doc.id ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                          </div>
+                          <div className="truncate text-micro text-faint" title={doc.snippet}>
+                            {doc.snippet}
+                          </div>
+                        </td>
+                        <td className="num px-2 py-1.5 text-right text-readout font-semibold text-ink">
+                          {doc.chunk_count.toLocaleString()}
+                        </td>
+                        <td className="num px-2 py-1.5 text-right text-readout text-muted">
+                          {doc.entities_count.toLocaleString()}
+                        </td>
+                        <td className="num px-2 py-1.5 text-right text-readout text-muted">
+                          {doc.relationships_count.toLocaleString()}
+                        </td>
+                        <td className="id-mono truncate px-2 text-muted" title={doc.source}>
+                          {doc.source}
+                        </td>
+                        <td className="id-mono truncate px-2 text-muted">{doc.format || 'MD'}</td>
+                        <td className="id-mono truncate px-2 text-faint" title={doc.created_at ?? undefined}>
+                          {added}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleViewDetails(doc)}
+                              className="flex items-center gap-1.5 rounded-sm border border-hairline px-2 py-1 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                            >
+                              <Eye className="size-3.5" />
+                              <span>Inspect Chunks</span>
+                            </button>
+                            <button
+                              onClick={() => handleDelete(doc.id, doc.title)}
+                              disabled={deletingId === doc.id}
+                              aria-label={`Delete ${doc.title}`}
+                              className="rounded-sm border border-hairline p-1.5 text-fail transition-colors hover:bg-fail-wash focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
+                              title="Delete document and chunks"
+                            >
+                              {deletingId === doc.id ? (
+                                <RefreshCw className="size-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="size-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -651,14 +645,14 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
 
       {/* TAB 2: Upload / Ingest Form View */}
       {activeTab === 'upload' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           {/* Left: Input Form (7 cols) */}
-          <div className="lg:col-span-7 space-y-5">
-            <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card hover:shadow-cardHover transition-all space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-meridian-text flex items-center space-x-1.5">
-                  <Database className="w-4 h-4 text-meridian-primary" />
-                  <span>Document Ingestion & Structural Chunking</span>
+          <div className="flex flex-col gap-4 lg:col-span-7">
+            <div className="flex flex-col gap-3 rounded border border-hairline bg-surface-raised p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="label-section flex items-center gap-1.5 text-muted">
+                  <Database className="size-3.5" />
+                  <span>Document Ingestion &amp; Structural Chunking</span>
                 </h3>
                 <button
                   disabled={loading}
@@ -666,16 +660,16 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                     setTitle('Distributed Caching Architecture');
                     setText(SAMPLE_DOC);
                   }}
-                  className="text-xs text-meridian-primary font-semibold hover:text-meridian-primaryHover flex items-center space-x-1 bg-meridian-lavenderLight px-3 py-1 rounded-full border border-meridian-border disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+                  className="flex items-center gap-1.5 rounded-sm border border-hairline px-2.5 py-1 text-label font-semibold text-ink transition-colors hover:bg-accent-wash disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-meridian-secondary" />
+                  <Sparkles className="size-3.5" />
                   <span>Load Sample Doc</span>
                 </button>
               </div>
 
               {/* Document Title */}
               <div>
-                <label htmlFor="doc-title-input" className="block text-xs font-semibold text-meridian-text mb-1">
+                <label htmlFor="doc-title-input" className="label-section mb-1 block text-muted">
                   Document Title
                 </label>
                 <input
@@ -684,29 +678,30 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g. Enterprise Security Policy 2026"
-                  className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-medium outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white transition-all"
+                  className="w-full rounded-sm border border-hairline bg-surface px-3 py-1.5 text-body text-ink outline-none transition-colors placeholder:text-faint focus:border-hairline-strong focus:bg-surface-raised focus-visible:ring-2 focus-visible:ring-accent"
                 />
               </div>
 
               {/* File Upload Trigger */}
-              <div className="border-2 border-dashed border-meridian-lavender rounded-2xl p-6 text-center bg-meridian-lavenderLight/40 hover:bg-meridian-blossom/50 transition-all relative">
+              <div className="relative rounded-sm border border-dashed border-hairline-strong bg-surface p-5 text-center transition-colors hover:bg-accent-wash">
                 <input
                   type="file"
                   onChange={handleFileUpload}
                   disabled={loading}
                   accept=".txt,.md,.markdown,.json,.html,.csv,.yaml,.yml,.xml,.log,text/plain,text/markdown,text/html,application/json"
                   aria-label="Upload document file"
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full disabled:cursor-not-allowed"
+                  className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
                 />
-                <FileUp className="w-7 h-7 mx-auto mb-1 text-meridian-primary" />
-                <p className="text-xs font-bold text-meridian-text">
-                  Click or drag file to upload
-                </p>
-                <p className="text-[11px] text-meridian-textMuted mt-0.5 font-medium">
+                <FileUp className="mx-auto mb-1 size-5 text-accent-ink" />
+                <p className="text-body font-semibold text-ink">Click or drag file to upload</p>
+                <p className="mt-0.5 text-micro text-muted">
                   Text only: Markdown, Text, HTML, JSON, CSV, YAML (binary PDF/DOCX are not supported)
                 </p>
                 {fileWarning && (
-                  <p role="alert" className="mt-2 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  <p
+                    role="alert"
+                    className="mt-2 rounded-sm border border-hairline bg-warn-wash px-2.5 py-1.5 text-micro font-semibold text-warn"
+                  >
                     {fileWarning}
                   </p>
                 )}
@@ -714,7 +709,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
 
               {/* Document Body Textarea */}
               <div>
-                <label htmlFor="doc-body-input" className="block text-xs font-semibold text-meridian-text mb-1">
+                <label htmlFor="doc-body-input" className="label-section mb-1 block text-muted">
                   Document Content (Markdown / Text)
                 </label>
                 <textarea
@@ -722,26 +717,26 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   placeholder="Paste or write structured documentation with # headings, sections, and paragraphs..."
-                  className="w-full h-48 bg-meridian-bg border border-meridian-border rounded-2xl p-4 text-xs text-meridian-text font-mono placeholder-meridian-textMuted outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white resize-none transition-all leading-relaxed"
+                  className="h-48 w-full resize-none rounded-sm border border-hairline bg-surface-sunken p-3 text-body text-ink outline-none transition-colors placeholder:text-faint focus:border-hairline-strong focus:bg-surface-raised focus-visible:ring-2 focus-visible:ring-accent"
                 />
               </div>
 
               {/* Action Button */}
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-end pt-1">
                 <button
                   onClick={handleIngest}
                   disabled={loading || !text.trim() || !title.trim()}
-                  className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-meridian-primary hover:bg-meridian-primaryHover text-white text-xs font-bold shadow-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+                  className="flex items-center gap-2 rounded bg-accent px-4 py-1.5 text-label font-bold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Processing & Indexing...</span>
+                      <RefreshCw className="size-3.5 animate-spin" />
+                      <span>Processing &amp; Indexing...</span>
                     </>
                   ) : (
                     <>
-                      <FileCheck className="w-4 h-4" />
-                      <span>Index & Store Permanently</span>
+                      <FileCheck className="size-3.5" />
+                      <span>Index &amp; Store Permanently</span>
                     </>
                   )}
                 </button>
@@ -749,92 +744,79 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
             </div>
 
             {error && (
-              <div role="alert" aria-live="polite" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+              <div
+                role="alert"
+                aria-live="polite"
+                className="rounded border border-hairline bg-fail-wash p-3 text-label text-fail"
+              >
                 {error}
               </div>
             )}
           </div>
 
           {/* Right: Ingestion Status & Statistics (5 cols) */}
-          <div className="lg:col-span-5 space-y-5">
-            <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card space-y-4">
-              <h3 className="text-xs font-bold text-meridian-text flex items-center space-x-1.5">
-                <Layers className="w-4 h-4 text-meridian-primary" />
+          <div className="flex flex-col gap-4 lg:col-span-5">
+            <div className="flex flex-col gap-3 rounded border border-hairline bg-surface-raised p-4">
+              <h3 className="label-section flex items-center gap-1.5 text-muted">
+                <Layers className="size-3.5" />
                 <span>Dual-Memory Ingestion Pipeline</span>
               </h3>
 
               {loading ? (
-                <div className="p-6 rounded-2xl border border-meridian-primary/40 bg-meridian-bg/50 animate-pulse space-y-3 text-center">
-                  <RefreshCw className="w-8 h-8 mx-auto text-meridian-primary animate-spin" />
-                  <p className="text-xs font-bold text-meridian-text">Parsing & Splitting Document Chunks...</p>
-                  <p className="text-[11px] text-meridian-textMuted">Generating dense vector embeddings & extracting Neo4j entities</p>
+                <div className="animate-pulse rounded-sm border border-hairline bg-surface p-4 text-center">
+                  <RefreshCw className="mx-auto size-5 animate-spin text-accent-ink" />
+                  <p className="text-body font-semibold text-ink">Parsing &amp; Splitting Document Chunks...</p>
+                  <p className="mt-0.5 text-micro text-muted">
+                    Generating dense vector embeddings &amp; extracting Neo4j entities
+                  </p>
                 </div>
               ) : !result ? (
-                <div className="text-center py-14 text-meridian-textMuted text-xs border border-dashed border-meridian-border rounded-2xl bg-meridian-bg/50">
-                  <FileCode className="w-8 h-8 mx-auto mb-2 text-meridian-secondary/60" />
-                  <p className="font-semibold text-meridian-text">Ready for Document Upload</p>
-                  <p className="text-[11px] text-meridian-textMuted mt-1 px-4">
-                    Uploaded documents are parsed, split by markdown structural headers, embedded as 1024-dim dense vectors, and persisted to disk catalog.
+                <div className="rounded-sm border border-dashed border-hairline bg-surface px-3 py-8 text-center">
+                  <FileCode className="mx-auto mb-2 size-6 text-faint" />
+                  <p className="text-body font-semibold text-ink">Ready for Document Upload</p>
+                  <p className="mx-auto mt-1 max-w-sm text-micro text-muted">
+                    Uploaded documents are parsed, split by markdown structural headers, embedded as 1024-dim
+                    dense vectors, and persisted to disk catalog.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 flex items-center space-x-3">
-                    <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600" />
-                    <div>
-                      <h4 className="text-xs font-bold text-emerald-950">
-                        Ingestion Successfully Completed
-                      </h4>
-                      <p className="text-[11px] text-emerald-800 mt-0.5">
-                        Doc ID: <code className="font-mono bg-white px-2 py-0.5 rounded border border-emerald-200">{result.document_id}</code>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-start gap-2.5 rounded-sm border border-hairline bg-ok-wash p-3">
+                    <StatusChip variant="ok">Indexed</StatusChip>
+                    <div className="min-w-0">
+                      <p className="text-label font-bold text-ink">Ingestion Successfully Completed</p>
+                      <p className="mt-0.5 text-micro text-muted">
+                        Doc ID: <span className="id-mono text-ink">{result.document_id}</span>
                       </p>
                       {result.filename && (
-                        <p className="text-[11px] text-emerald-800 mt-0.5">
-                          File: <code className="font-mono bg-white px-2 py-0.5 rounded border border-emerald-200">{result.filename}</code>
+                        <p className="mt-0.5 text-micro text-muted">
+                          File: <span className="id-mono text-ink">{result.filename}</span>
                         </p>
                       )}
                       {result.created_at && (
-                        <p className="text-[11px] text-emerald-800 mt-0.5">
-                          Created: {new Date(result.created_at).toLocaleString()}
+                        <p className="mt-0.5 text-micro text-muted">
+                          Created:{' '}
+                          <span className="num">{new Date(result.created_at).toLocaleString()}</span>
                         </p>
                       )}
                     </div>
                   </div>
 
                   {/* Statistics Breakdown */}
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <div className="p-4 rounded-2xl bg-meridian-lavenderLight/60 border border-meridian-border">
-                      <div className="flex items-center space-x-2 text-meridian-textMuted text-[11px] font-semibold mb-1">
-                        <Database className="w-3.5 h-3.5 text-meridian-primary" />
-                        <span>Qdrant Vectors</span>
-                      </div>
-                      <div className="text-2xl font-black text-meridian-text">
-                        {result.chunks_indexed}
-                      </div>
-                      <span className="text-[10px] font-medium text-meridian-textMuted">
-                        Structural Chunks
-                      </span>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-meridian-blossom/60 border border-meridian-lavender">
-                      <div className="flex items-center space-x-2 text-meridian-textMuted text-[11px] font-semibold mb-1">
-                        <Network className="w-3.5 h-3.5 text-meridian-primary" />
-                        <span>Neo4j Entities</span>
-                      </div>
-                      <div className="text-2xl font-black text-meridian-text">
-                        {result.entities_extracted}
-                      </div>
-                      <span className="text-[10px] font-medium text-meridian-textMuted">
-                        {result.relationships_extracted} Relationships
-                      </span>
-                    </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-sm border border-hairline bg-surface px-3 py-2">
+                    <Readout label="Qdrant Vectors" value={result.chunks_indexed.toLocaleString()} />
+                    <Readout label="Neo4j Entities" value={result.entities_extracted.toLocaleString()} />
+                    <Readout
+                      label="Relationships"
+                      value={result.relationships_extracted.toLocaleString()}
+                    />
                   </div>
 
                   <button
                     onClick={() => setActiveTab('catalog')}
-                    className="w-full py-2.5 rounded-xl bg-meridian-lavenderLight border border-meridian-border text-xs font-bold text-meridian-primary hover:bg-meridian-blossom transition-all flex items-center justify-center space-x-1.5 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-sm border border-hairline px-3 py-1.5 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
-                    <BookOpen className="w-4 h-4" />
+                    <BookOpen className="size-3.5" />
                     <span>View in Document Catalog</span>
                   </button>
                 </div>
@@ -847,79 +829,88 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
       {/* Chunk Inspector Modal */}
       {selectedDocDetail && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1E2050]/50 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(22,21,15,0.32)] p-4"
           onClick={closeInspector}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="chunk-inspector-modal-title"
-            className="bg-white border border-meridian-border rounded-3xl w-full max-w-3xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden"
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded border border-hairline bg-surface-raised shadow-overlay"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="p-5 border-b border-meridian-border flex items-center justify-between bg-white shrink-0">
+            <div className="flex shrink-0 items-center justify-between border-b border-hairline px-4 py-2.5">
               <div className="min-w-0 flex-1 pr-4">
-                <h3 id="chunk-inspector-modal-title" className="text-sm font-bold text-meridian-text flex items-center space-x-2 truncate">
-                  <Database className="w-4 h-4 text-meridian-primary shrink-0" />
-                  <span className="truncate">Document Chunk Inspector: {selectedDocDetail.title}</span>
+                <h3 id="chunk-inspector-modal-title" className="flex items-center gap-1.5 text-body font-bold text-ink">
+                  <FileText className="size-3.5 shrink-0 text-accent-ink" />
+                  <span className="truncate">
+                    Document Chunk Inspector: {selectedDocDetail.title}
+                  </span>
                 </h3>
-                <p className="text-[11px] text-meridian-textMuted mt-0.5 font-medium">
-                  ID: <code className="font-mono text-[10px]">{selectedDocDetail.id}</code> • {selectedDocDetail.chunks.length} structural chunks • {selectedDocDetail.char_count} characters
+                <p className="mt-0.5 text-micro text-muted">
+                  <span className="id-mono">{selectedDocDetail.id}</span>
+                  <span className="text-faint"> · </span>
+                  <span className="num">{selectedDocDetail.chunks.length}</span>{' '}
+                  <span>structural chunks</span>
+                  <span className="text-faint"> · </span>
+                  <span className="num">{selectedDocDetail.char_count.toLocaleString()}</span>{' '}
+                  <span>characters</span>
                 </p>
               </div>
               <button
                 onClick={closeInspector}
                 aria-label="Close Chunk Inspector"
-                className="p-1.5 rounded-xl text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg transition-all shrink-0 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+                className="shrink-0 rounded-sm p-1.5 text-muted transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 title="Close Inspector"
               >
-                <X className="w-5 h-5" />
+                <X className="size-4" />
               </button>
             </div>
 
-            {/* Modal Body: Chunk Stream */}
-            <div className="p-5 overflow-y-auto space-y-4 flex-1 bg-meridian-bg/40">
+            {/* Modal Body: chunk rows */}
+            <div className="flex-1 overflow-y-auto">
               {selectedDocDetail.chunks.map((chunk, idx) => (
                 <div
                   key={chunk.id}
-                  ref={chunk.id === focusedChunkId ? focusedChunkRef : undefined}
+                  ref={chunk.id === focusedChunkId ? attachFocusedChunk : undefined}
                   data-focused-chunk={chunk.id === focusedChunkId ? chunk.id : undefined}
-                  className={`border rounded-2xl p-4 shadow-sm space-y-2.5 bg-white ${
-                    chunk.id === focusedChunkId
-                      ? 'border-meridian-primary ring-2 ring-meridian-primary/40'
-                      : 'border-meridian-border'
+                  className={`border-b border-hairline px-4 py-2.5 last:border-b-0 ${
+                    chunk.id === focusedChunkId ? 'bg-accent-wash' : ''
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-meridian-text">
-                    <span className="px-2.5 py-0.5 rounded-full bg-meridian-lavenderLight text-meridian-primary border border-meridian-border shrink-0">
-                      Chunk #{idx + 1}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="num text-micro font-semibold text-faint">
+                      #{idx + 1}
                     </span>
                     {chunk.section_heading && (
-                      <span className="text-meridian-textMuted font-mono text-[10px] truncate max-w-[280px]" title={chunk.section_heading}>
-                        Section: {chunk.section_heading}
+                      <span
+                        className="truncate text-label font-semibold text-ink"
+                        title={chunk.section_heading}
+                      >
+                        {chunk.section_heading}
                       </span>
                     )}
-                    <span className="text-[10px] text-meridian-textMuted font-mono shrink-0">
-                      ID: {chunk.id.slice(0, 8)}...
+                    <span className="id-mono shrink-0 text-faint" title={chunk.id}>
+                      {chunk.id.slice(0, 8)}…
                     </span>
                   </div>
-
-                  <div className="p-3 bg-meridian-bg rounded-xl border border-meridian-border/60 text-xs font-mono text-meridian-text whitespace-pre-wrap leading-relaxed">
+                  <p className="mt-1.5 whitespace-pre-wrap rounded-sm border border-hairline bg-surface-sunken p-2.5 text-body text-ink">
                     {chunk.text}
-                  </div>
+                  </p>
                 </div>
               ))}
             </div>
 
             {/* Modal Footer (Streamlined single close section) */}
-            <div className="px-5 py-3 border-t border-meridian-border/60 flex items-center justify-between bg-white shrink-0 text-xs text-meridian-textMuted">
-              <span className="font-medium text-[11px]">
-                Showing {selectedDocDetail.chunks.length} structural chunks from vector store
+            <div className="flex shrink-0 items-center justify-between border-t border-hairline px-4 py-2">
+              <span className="text-micro text-muted">
+                <span className="num text-ink">{selectedDocDetail.chunks.length}</span> structural chunks
+                from vector store
               </span>
               <button
                 onClick={closeInspector}
-                className="px-4 py-1.5 rounded-xl bg-meridian-lavenderLight hover:bg-meridian-blossom text-meridian-primary text-xs font-bold border border-meridian-border transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+                className="rounded-sm border border-hairline px-3 py-1 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 Close Inspector
               </button>
@@ -930,4 +921,3 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
     </div>
   );
 };
-

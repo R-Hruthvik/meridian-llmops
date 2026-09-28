@@ -93,7 +93,10 @@ describe('IndexStorageStudio', () => {
     render(<IndexStorageStudio tenantId="acme" />);
 
     expect(api.getIndexStatus).toHaveBeenCalledWith('acme');
-    expect(await screen.findByText('Index & Storage')).toBeInTheDocument();
+    // The surface name is the shared Overlay's title; the body states the read
+    // it is making and the tenant it is scoped to.
+    expect(await screen.findByText(/Live read of every backing store/)).toBeInTheDocument();
+    expect(screen.getByText('acme')).toHaveClass('id-mono');
   });
 
   it('renders the live vector numbers', async () => {
@@ -224,5 +227,84 @@ describe('IndexStorageStudio', () => {
     await user.click(screen.getByRole('button', { name: /refresh/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/in-process fallback cache/);
+  });
+});
+
+// §4/§9 — the per-subsystem cards become dense readout blocks: label + mono
+// value, endpoint as an identifier, and the state as a shared StatusChip.
+describe('IndexStorageStudio instrument language', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue(LIVE);
+  });
+
+  it('renders each subsystem as readout cells, not card boxes', async () => {
+    render(<IndexStorageStudio tenantId="default" />);
+
+    const vector = await screen.findByRole('region', { name: /vector index/i });
+    expect(vector.querySelectorAll('[data-slot="readout"]')).toHaveLength(2);
+    // §9 — the retired shadow-card chrome does not come back.
+    expect(document.querySelectorAll('.shadow-card')).toHaveLength(0);
+  });
+
+  it('renders every count as a mono tabular readout', async () => {
+    render(<IndexStorageStudio tenantId="default" />);
+
+    const vector = await screen.findByRole('region', { name: /vector index/i });
+    const graph = screen.getByRole('region', { name: /knowledge graph/i });
+
+    for (const region of [vector, graph]) {
+      const readouts = region.querySelectorAll('[data-slot="readout"]');
+      expect(readouts.length).toBeGreaterThan(0);
+      for (const readout of Array.from(readouts)) {
+        expect(readout.querySelector('.num')).not.toBeNull();
+        expect(readout.querySelector('.label-section')).not.toBeNull();
+      }
+    }
+    // Collection point counts are numbers too.
+    expect(within(vector).getAllByText('42')[0]).toHaveClass('num');
+  });
+
+  it('renders endpoints as identifiers, not prose', async () => {
+    render(<IndexStorageStudio tenantId="default" />);
+
+    const vector = await screen.findByRole('region', { name: /vector index/i });
+    const graph = screen.getByRole('region', { name: /knowledge graph/i });
+
+    expect(within(vector).getByText('http://localhost:6333')).toHaveClass('id-mono');
+    expect(within(graph).getByText('bolt://localhost:7687')).toHaveClass('id-mono');
+  });
+
+  it('carries the is_fallback state as a StatusChip on every subsystem', async () => {
+    render(<IndexStorageStudio tenantId="default" />);
+
+    const vector = await screen.findByRole('region', { name: /vector index/i });
+    expect(vector.querySelector('[data-variant="ok"]')).not.toBeNull();
+  });
+
+  it('flags every falling-back subsystem with a warn chip while live ones stay ok', async () => {
+    (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue(FALLBACKING);
+    render(<IndexStorageStudio tenantId="default" />);
+
+    const graph = await screen.findByRole('region', { name: /knowledge graph/i });
+    expect(graph.querySelector('[data-variant="warn"]')).not.toBeNull();
+    expect(graph.querySelector('[data-variant="ok"]')).toBeNull();
+
+    const lexical = screen.getByRole('region', { name: /lexical index/i });
+    expect(lexical.querySelector('[data-variant="ok"]')).not.toBeNull();
+    expect(lexical.querySelector('[data-variant="warn"]')).toBeNull();
+  });
+
+  it('keeps the honest fallback banner intact while restyling', async () => {
+    (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue(FALLBACKING);
+    render(<IndexStorageStudio tenantId="default" />);
+
+    const banner = await screen.findByRole('alert');
+    expect(banner).toHaveTextContent(/Fallback data — 3 of 4 subsystems are not persisted state/);
+    expect(banner).toHaveTextContent(/They vanish on restart/);
+    expect(banner).toHaveTextContent('Qdrant unreachable, so these counts are the in-process fallback cache.');
+    // §9 — the degraded/fallback counts in the banner are mono too.
+    expect(within(banner).getByText('3')).toHaveClass('num');
+    expect(within(banner).getByText('4')).toHaveClass('num');
   });
 });

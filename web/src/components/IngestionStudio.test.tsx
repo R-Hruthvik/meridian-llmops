@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IngestionStudio, isBinaryLike } from './IngestionStudio';
 import { api } from '../services/api';
@@ -10,7 +10,7 @@ describe('IngestionStudio Component', () => {
     vi.clearAllMocks();
   });
 
-  it('renders Document Catalog tab with document cards and statistics', async () => {
+  it('renders Document Catalog tab with document rows and a readout strip', async () => {
     vi.spyOn(api, 'getDocuments').mockResolvedValueOnce({
       total_documents: 1,
       total_chunks: 3,
@@ -34,8 +34,137 @@ describe('IngestionStudio Component', () => {
     render(<IngestionStudio tenantId="default" />);
 
     expect(await screen.findByText('Meridian Architecture Overview')).toBeInTheDocument();
-    expect(screen.getByText('Knowledge Base Documents')).toBeInTheDocument();
-    expect(screen.getAllByText('3').length).toBeGreaterThanOrEqual(1); // chunks count in stat and doc card
+    expect(screen.getByText('Documents')).toBeInTheDocument();
+    expect(screen.getAllByText('3').length).toBeGreaterThanOrEqual(1); // chunks count in strip and row
+  });
+
+  // §4/§9 — the four "KNOWLEDGE BASE DOCUMENTS / 8 / Persisted Permanently"
+  // cards collapse into one hairline-separated strip of label + mono value.
+  it('reads the corpus counts as a dense readout strip, not stat cards', async () => {
+    vi.spyOn(api, 'getDocuments').mockResolvedValue({
+      total_documents: 8,
+      total_chunks: 21,
+      total_entities: 14,
+      documents: [],
+    });
+
+    render(<IngestionStudio tenantId="default" />);
+
+    const strip = await screen.findByTestId('corpus-readout-strip');
+    const cells = strip.querySelectorAll('[data-slot="readout"]');
+    expect(cells).toHaveLength(3);
+
+    const readout = (label: string) =>
+      within(strip).getByText(label).closest('[data-slot="readout"]') as HTMLElement;
+
+    expect(readout('Documents')).toHaveTextContent('8');
+    expect(readout('Chunks')).toHaveTextContent('21');
+    expect(readout('Entities')).toHaveTextContent('14');
+    // §9 — every count is monospace tabular.
+    for (const cell of Array.from(cells)) {
+      expect(cell.querySelector('.num')).not.toBeNull();
+      expect(cell.querySelector('.label-section')).not.toBeNull();
+    }
+    // The retired card chrome must not come back.
+    expect(document.querySelectorAll('.shadow-card')).toHaveLength(0);
+  });
+
+  // §8/§9 — the catalog grid of rounded cards becomes a ranked table.
+  it('renders the document catalog as a ranked table of hairline rows', async () => {
+    vi.spyOn(api, 'getDocuments').mockResolvedValueOnce({
+      total_documents: 2,
+      total_chunks: 5,
+      total_entities: 6,
+      documents: [
+        {
+          id: 'doc-a',
+          title: 'Alpha Doc',
+          format: 'md',
+          source: 'manual',
+          created_at: '2026-08-18T10:00:00Z',
+          char_count: 500,
+          chunk_count: 2,
+          entities_count: 3,
+          relationships_count: 7,
+          snippet: 'alpha snippet',
+        },
+        {
+          id: 'doc-b',
+          title: 'Beta Doc',
+          format: 'pdf',
+          source: 'seed',
+          created_at: '2026-08-19T10:00:00Z',
+          char_count: 800,
+          chunk_count: 3,
+          entities_count: 3,
+          relationships_count: 1,
+          snippet: 'beta snippet',
+        },
+      ],
+    });
+
+    render(<IngestionStudio tenantId="default" />);
+
+    const table = await screen.findByRole('table');
+    for (const header of ['#', 'TITLE', 'CHUNKS', 'ENTS', 'RELS', 'SOURCE', 'FORMAT', 'ADDED']) {
+      expect(within(table).getByRole('columnheader', { name: header })).toBeInTheDocument();
+    }
+
+    // Rows are table rows, not cards.
+    const alpha = within(table).getByText('Alpha Doc').closest('tr') as HTMLElement;
+    expect(alpha).not.toBeNull();
+    expect(within(alpha).getByText('md')).toBeInTheDocument();
+    expect(within(alpha).getByText('manual')).toBeInTheDocument();
+    // Every count in the row is mono.
+    for (const value of ['2', '3', '7']) {
+      expect(within(alpha).getByText(value)).toHaveClass('num');
+    }
+    expect(within(table).getByText('pdf')).toBeInTheDocument();
+  });
+
+  it('Inspect Chunks still opens the chunk inspector from a catalog row', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'getDocuments').mockResolvedValue({
+      total_documents: 1,
+      total_chunks: 1,
+      total_entities: 0,
+      documents: [
+        {
+          id: 'doc-inspect-1',
+          title: 'Inspectable Doc',
+          format: 'md',
+          source: 'manual',
+          created_at: '2026-08-18T10:00:00Z',
+          char_count: 500,
+          chunk_count: 1,
+          entities_count: 0,
+          relationships_count: 0,
+          snippet: 'snippet',
+        },
+      ],
+    });
+    vi.spyOn(api, 'getDocument').mockResolvedValue({
+      id: 'doc-inspect-1',
+      title: 'Inspectable Doc',
+      format: 'md',
+      source: 'manual',
+      created_at: '2026-08-18T10:00:00Z',
+      char_count: 500,
+      chunk_count: 1,
+      entities_count: 0,
+      relationships_count: 0,
+      snippet: 'snippet',
+      text: 'body',
+      chunks: [{ id: 'chunk-1', chunk_index: 0, section_heading: 'S', text: 'body text' }],
+    });
+
+    render(<IngestionStudio tenantId="default" />);
+
+    const user_ = await screen.findByRole('button', { name: /inspect chunks/i });
+    await user.click(user_);
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(api.getDocument).toHaveBeenCalledWith('doc-inspect-1', 'default');
   });
 
   it('switches to Ingest New Document tab and submits text', async () => {    const user = userEvent.setup();
@@ -74,7 +203,7 @@ describe('IngestionStudio Component', () => {
     });
   });
 
-  it('G3: doc cards show relationships_count footer', async () => {
+  it('G3: catalog rows show the relationships_count in mono', async () => {
     vi.spyOn(api, 'getDocuments').mockResolvedValueOnce({
       total_documents: 1,
       total_chunks: 3,
@@ -97,9 +226,9 @@ describe('IngestionStudio Component', () => {
 
     render(<IngestionStudio tenantId="default" />);
 
-    expect(await screen.findByText('Rel Doc')).toBeInTheDocument();
-    expect(screen.getByText('relationships')).toBeInTheDocument();
-    expect(screen.getByText('7')).toBeInTheDocument();
+    const row = (await screen.findByText('Rel Doc')).closest('tr') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(within(row).getByText('7')).toHaveClass('num');
   });
 
   it('G2: file picker accepts text types only (no PDF/DOCX)', async () => {
@@ -248,7 +377,10 @@ describe('IngestionStudio focused source (citation drill-through)', () => {
 
     expect(await screen.findByText(/Document Chunk Inspector: Meridian Architecture Overview/)).toBeInTheDocument();
     expect(api.getDocument).toHaveBeenCalledWith('doc-arch-1', 'default');
-    expect(document.querySelector('[data-focused-document="doc-arch-1"]')).toBeInTheDocument();
+    const focusedDoc = document.querySelector('[data-focused-document="doc-arch-1"]');
+    expect(focusedDoc).toBeInTheDocument();
+    // The marker lives on a catalog table row, not a card.
+    expect(focusedDoc?.tagName).toBe('TR');
     expect(document.querySelector('[data-focused-chunk="chunk-b"]')).toBeInTheDocument();
     expect(document.querySelector('[data-focused-chunk="chunk-a"]')).toBeNull();
   });
