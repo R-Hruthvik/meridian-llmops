@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { IngestionStudio } from './IngestionStudio';
+import { IngestionStudio, isBinaryLike } from './IngestionStudio';
 import { api } from '../services/api';
 
 describe('IngestionStudio Component', () => {
@@ -138,6 +138,31 @@ describe('IngestionStudio Component', () => {
     fireEvent.change(fileInput, { target: { files: [binaryFile] } });
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/looks like a binary file/i);
+  });
+
+  it('G2: %PDF signature without NUL still warns as binary', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'getDocuments').mockResolvedValue({
+      total_documents: 0,
+      total_chunks: 0,
+      total_entities: 0,
+      documents: [],
+    });
+
+    render(<IngestionStudio tenantId="default" />);
+    await user.click(screen.getByText('Ingest New Document'));
+
+    const fileInput = screen.getByLabelText('Upload document file') as HTMLInputElement;
+    const pdfText = new File(['%PDF-1.4 fake binary garble \x01\x02\x03\x04 obj stream'], 'doc.pdf', { type: 'application/pdf' });
+    fireEvent.change(fileInput, { target: { files: [pdfText] } });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/looks like a binary file/i);
+  });
+
+  it('G2: isBinaryLike flags signatures/garble but passes plain text', () => {
+    expect(isBinaryLike('%PDF-1.4 binary content')).toBe(true);
+    expect(isBinaryLike('PK\x03\x04 zip content')).toBe(true);
+    expect(isBinaryLike('# Hello\nPlain markdown text.')).toBe(false);
   });
 
   it('G3: success card shows filename and created_at from the backend', async () => {

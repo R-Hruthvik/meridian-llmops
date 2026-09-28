@@ -87,4 +87,17 @@ describe('ReviewQueue', () => {
 
     expect(await screen.findByText('Review queue is clear')).toBeInTheDocument();
   });
+
+  it('toast uses past tense (corrected, not correctd)', async () => {
+    const user = userEvent.setup();
+    render(<ReviewQueue tenantId="default" />);
+
+    await screen.findByText('invoice_total');
+    await user.click(screen.getByText('Correct'));
+    await user.clear(screen.getByLabelText('Corrected value'));
+    await user.type(screen.getByLabelText('Corrected value'), '120');
+    await user.click(screen.getByText('Submit correction'));
+
+    expect(await screen.findByText('Item corrected successfully.')).toBeInTheDocument();
+  });
 });

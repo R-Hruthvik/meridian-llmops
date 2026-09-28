@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ClipboardCheck, RefreshCw, XCircle } from 'lucide-react';
 import { api } from '../services/api';
 import type { ReviewItem } from '../types/api';
@@ -16,6 +16,20 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
   const [correctedValue, setCorrectedValue] = useState('');
   const [notes, setNotes] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (toastTimer.current !== null) {
+      clearTimeout(toastTimer.current);
+      toastTimer.current = null;
+    }
+  }, []);
+
+  const actionPastTense: Record<string, string> = {
+    approve: 'approved',
+    reject: 'rejected',
+    correct: 'corrected',
+  };
 
   const fetchItems = async () => {
     setLoading(true);
@@ -43,7 +57,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
         { action, corrected_value: corrected, notes: note },
         tenantId,
       );
-      setToast(`Item ${action}d successfully.`);
+      setToast(`Item ${actionPastTense[action] ?? `${action}d`} successfully.`);
       setCorrectingId(null);
       setCorrectedValue('');
       setNotes('');
@@ -52,7 +66,8 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
       setToast(err instanceof Error ? err.message : 'Review action failed');
     } finally {
       setActingId(null);
-      setTimeout(() => setToast(null), 3500);
+      if (toastTimer.current !== null) clearTimeout(toastTimer.current);
+      toastTimer.current = window.setTimeout(() => setToast(null), 3500);
     }
   };
 

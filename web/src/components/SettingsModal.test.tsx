@@ -461,6 +461,38 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
     const payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(payload).not.toHaveProperty('timeout_seconds');
     expect(payload).not.toHaveProperty('max_cycles');
+    expect(payload).not.toHaveProperty('enforce_guardrails');
+  });
+
+  it('G4: default save omits enforce_guardrails while interacted Advanced includes it', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    // Default save (Advanced never opened): guardrails must be omitted.
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalledTimes(1);
+    });
+    let payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).not.toHaveProperty('enforce_guardrails');
+
+    // Interacted Advanced (opened, checkbox toggled): guardrails included.
+    await waitFor(() => expect(screen.getByRole('button', { name: /Save & Apply/i })).not.toBeDisabled(), { timeout: 2000 });
+    await user.click(screen.getByRole('button', { name: /Advanced: timeout, guardrails/i }));
+    const guardrailsCheckbox = screen.getByRole('checkbox') as HTMLInputElement;
+    await user.click(guardrailsCheckbox);
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalledTimes(2);
+    });
+    payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[1][0];
+    expect(payload).toHaveProperty('enforce_guardrails', false);
   });
 
   it('G5: Quick ping calls testLLMConnection and shows latency inline', async () => {

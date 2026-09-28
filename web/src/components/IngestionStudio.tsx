@@ -32,6 +32,21 @@ Cache invalidation is handled via Kafka events emitted by write operations.
 Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 `;
 
+export const isBinaryLike = (content: string): boolean => {
+  if (!content) return false;
+  if (content.includes('\0')) return true;
+  if (content.startsWith('%PDF') || content.startsWith('PK')) return true;
+  // FileReader.readAsText on PDF/DOCX often yields garble without NUL:
+  // flag a high non-printable / replacement-char ratio in the head sample.
+  const sample = content.slice(0, 4000);
+  let bad = 0;
+  for (const ch of sample) {
+    const code = ch.charCodeAt(0);
+    if (ch === '�' || code < 9 || (code >= 14 && code < 32) || code === 127) bad++;
+  }
+  return sample.length > 0 && bad / sample.length > 0.1;
+};
+
 export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) => {
   const [activeTab, setActiveTab] = useState<'catalog' | 'upload'>('catalog');
   const [title, setTitle] = useState('');
@@ -140,7 +155,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
       // Backend /v1/ingest accepts text JSON only (no file endpoint) —
       // binary files (PDF/DOCX) read as text garble. Warn when content
       // looks binary so the user pastes extracted text instead.
-      if (content.includes('\0')) {
+      if (isBinaryLike(content)) {
         setFileWarning(
           `"${file.name}" looks like a binary file (PDF/DOCX are not supported). The ingest API accepts text only — please paste extracted text instead.`,
         );
