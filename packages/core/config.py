@@ -39,8 +39,8 @@ class Settings(BaseSettings):
 
     # Langfuse Observability
     langfuse_host: str = "http://localhost:3000"
-    langfuse_public_key: str | None = "pk-lf-test"
-    langfuse_secret_key: str | None = "sk-lf-test"
+    langfuse_public_key: str | None = Field(default_factory=lambda: os.environ.get("LANGFUSE_PUBLIC_KEY"))
+    langfuse_secret_key: str | None = Field(default_factory=lambda: os.environ.get("LANGFUSE_SECRET_KEY"))
     enable_langfuse: bool = False
 
     # Guardrails
@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     # Relational Database & Human-in-the-Loop Review Queue
     database_url: str = Field(default_factory=lambda: os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./verified_rag.db"))
     confidence_threshold: float = 0.85
+
+
+def validate_production(s: Settings) -> None:
+    if s.app_env == "production" and not s.api_key_secret:
+        raise RuntimeError("missing required secret: API_KEY_SECRET")
+    if s.app_env == "production" and not s.litellm_master_key:
+        raise RuntimeError("missing required secret: LITELLM_MASTER_KEY")
 
 
 @lru_cache
