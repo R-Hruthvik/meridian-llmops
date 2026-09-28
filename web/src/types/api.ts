@@ -44,9 +44,11 @@ export interface IngestRequest {
 export interface IngestResponse {
   document_id: string;
   title: string;
+  filename?: string;
   chunks_indexed: number;
   entities_extracted: number;
   relationships_extracted: number;
+  created_at?: string;
 }
 
 export interface GuardrailCheckRequest {
@@ -218,4 +220,29 @@ export interface ProviderInfo {
 export interface ProvidersResponse {
   active_provider: string;
   providers: ProviderInfo[];
+}
+
+export interface LLMPingResponse {
+  status: string;
+  message: string;
+  latency_ms: number;
+}
+
+export interface ReviewItem {
+  id: string;
+  extracted_field_id: string;
+  document_id: string;
+  field_name: string;
+  value: string;
+  confidence: number;
+  provenance_page: number;
+  status: string;
+  corrected_value?: string | null;
+  notes?: string | null;
+}
+
+export interface ReviewItemActionPayload {
+  action: string;
+  corrected_value?: string;
+  notes?: string;
 }

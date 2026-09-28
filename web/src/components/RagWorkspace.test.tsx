@@ -222,4 +222,19 @@ describe('RagWorkspace', () => {
     expect(localStorage.getItem('meridian_anthropic_key')).toBeNull();
     expect(localStorage.getItem('meridian_groq_key')).toBeNull();
   });
+
+  it('G1: chunk cards surface chunk_id and document_id', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockQueryResponse);
+
+    render(<RagWorkspace tenantId="default" />);
+
+    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    await user.type(textarea, 'test query');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/id: 1 • doc: doc1/)).toBeInTheDocument();
+    });
+  });
 });

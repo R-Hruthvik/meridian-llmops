@@ -193,6 +193,10 @@ export const GuardrailsStudio: React.FC<GuardrailsStudioProps> = ({ tenantId }) 
                   </h4>
                   <p className="text-[11px] opacity-85 mt-0.5 font-medium">
                     Action Taken: <span className="font-bold uppercase">{result.action_taken}</span>
+                    {' • '}Allowed:{' '}
+                    <span className={`font-bold uppercase px-1.5 py-0.5 rounded ${result.allowed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                      {result.allowed ? 'Yes' : 'No'}
+                    </span>
                   </p>
                 </div>
               </div>

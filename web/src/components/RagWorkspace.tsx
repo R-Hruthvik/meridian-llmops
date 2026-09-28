@@ -402,6 +402,12 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                   <p className="text-xs text-meridian-text leading-relaxed font-mono text-[11px] bg-white/70 p-2.5 rounded-xl border border-meridian-border">
                     {chunk.text}
                   </p>
+                  <p
+                    className="mt-1.5 text-[10px] font-mono text-meridian-textMuted truncate"
+                    title={`chunk_id: ${chunk.chunk_id} • document_id: ${chunk.document_id}`}
+                  >
+                    id: {chunk.chunk_id} • doc: {chunk.document_id}
+                  </p>
                 </div>
               ))}
             </div>

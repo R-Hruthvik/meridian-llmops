@@ -56,6 +56,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // Pipeline execution tuning (UpdateLLMSettingsRequest: timeout 1-300s,
+  // max_cycles 1-10, enforce_guardrails bool). Blank numeric inputs are
+  // omitted so saved values are preserved server-side.
+  const [showPipelineSettings, setShowPipelineSettings] = useState(false);
+  const [timeoutSeconds, setTimeoutSeconds] = useState('');
+  const [maxCycles, setMaxCycles] = useState('');
+  const [enforceGuardrails, setEnforceGuardrails] = useState(true);
+  const [pinging, setPinging] = useState(false);
+  const [pingResult, setPingResult] = useState<{ success: boolean; message: string } | null>(null);
   // Per-provider key status from providers_configured (GET booleans) merged
   // with POST masked-view hints. Never written into password inputs.
   const [keyStatus, setKeyStatus] = useState<Record<string, MaskedKeyStatus>>({});
@@ -257,6 +266,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } else if (isCustomFamily && customBaseUrl) {
       payload.custom_base_url = customBaseUrl;
     }
+    // Advanced pipeline settings — only send when the user provided a value.
+    const parsedTimeout = Number(timeoutSeconds);
+    if (timeoutSeconds.trim() && Number.isFinite(parsedTimeout)) {
+      payload.timeout_seconds = Math.min(300, Math.max(1, Math.round(parsedTimeout)));
+    }
+    const parsedCycles = Number(maxCycles);
+    if (maxCycles.trim() && Number.isFinite(parsedCycles)) {
+      payload.max_cycles = Math.min(10, Math.max(1, Math.round(parsedCycles)));
+    }
+    payload.enforce_guardrails = enforceGuardrails;
 
     try {
       const saved = await api.updateLLMSettings(payload);
@@ -611,6 +630,111 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <p className="text-[11px] text-meridian-textMuted mt-1">
               💡 Tip: Click <strong>"Test Connection & Fetch Models"</strong> below to validate endpoint and auto-populate available models.
             </p>
+          </div>
+
+          {/* Section 4: Advanced pipeline settings (timeout, guardrails, cycles) */}
+          <div className="pt-2 border-t border-meridian-border">
+            <button
+              type="button"
+              onClick={() => setShowPipelineSettings(!showPipelineSettings)}
+              aria-expanded={showPipelineSettings}
+              className="flex items-center justify-between w-full text-xs font-bold text-meridian-primary hover:text-meridian-primaryHover py-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+            >
+              <span className="flex items-center space-x-1.5">
+                <Zap className="w-4 h-4 text-meridian-secondary" />
+                <span>Advanced: timeout, guardrails & agent cycles</span>
+              </span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${showPipelineSettings ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showPipelineSettings && (
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-4 rounded-2xl bg-meridian-lavenderLight/50 border border-meridian-border">
+                <div>
+                  <label htmlFor="timeout-seconds-input" className="block text-[10px] font-semibold text-meridian-textMuted mb-1">
+                    Timeout (seconds, 1–300):
+                  </label>
+                  <input
+                    id="timeout-seconds-input"
+                    type="number"
+                    min={1}
+                    max={300}
+                    value={timeoutSeconds}
+                    onChange={(e) => setTimeoutSeconds(e.target.value)}
+                    placeholder="e.g. 60"
+                    className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="max-cycles-setting-input" className="block text-[10px] font-semibold text-meridian-textMuted mb-1">
+                    Max cycles (1–10):
+                  </label>
+                  <input
+                    id="max-cycles-setting-input"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={maxCycles}
+                    onChange={(e) => setMaxCycles(e.target.value)}
+                    placeholder="e.g. 3"
+                    className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
+                  />
+                </div>
+                <div className="flex items-end pb-1">
+                  <label className="text-[11px] font-semibold text-meridian-text flex items-center space-x-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={enforceGuardrails}
+                      onChange={(e) => setEnforceGuardrails(e.target.checked)}
+                      className="rounded text-meridian-primary focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none cursor-pointer"
+                    />
+                    <span>Enforce guardrails</span>
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Section 5: Quick ping against the saved provider config */}
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={async () => {
+                setPinging(true);
+                setPingResult(null);
+                try {
+                  const res = await api.testLLMConnection();
+                  setPingResult({
+                    success: res.status === 'success',
+                    message: `${res.message} (${res.latency_ms.toFixed(0)} ms)`,
+                  });
+                } catch (err: unknown) {
+                  setPingResult({
+                    success: false,
+                    message: err instanceof Error ? err.message : 'Ping failed.',
+                  });
+                } finally {
+                  setPinging(false);
+                }
+              }}
+              disabled={pinging}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-meridian-primary bg-white hover:bg-meridian-blossom border border-meridian-border flex items-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+            >
+              {pinging ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Zap className="w-3.5 h-3.5 text-meridian-primary" />
+              )}
+              <span>Quick ping</span>
+            </button>
+            {pingResult && (
+              <span
+                role="status"
+                aria-live="polite"
+                className={`text-[11px] font-semibold ${pingResult.success ? 'text-emerald-700' : 'text-rose-700'}`}
+              >
+                {pingResult.message}
+              </span>
+            )}
           </div>
 
           {/* Test Result Banner */}

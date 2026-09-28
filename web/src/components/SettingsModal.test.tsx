@@ -9,6 +9,7 @@ vi.mock('../services/api', () => ({
     getLLMSettings: vi.fn(),
     updateLLMSettings: vi.fn(),
     testAndFetchModels: vi.fn(),
+    testLLMConnection: vi.fn(),
     getProviders: vi.fn(),
   },
   ApiError: class ApiError extends Error {
@@ -392,5 +393,91 @@ describe('SettingsModal - masked settings contract (F1/F2/F3/F5)', () => {
     await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
 
     expect(await screen.findByText(/Extra inputs are not permitted/)).toBeInTheDocument();
+  });
+});
+
+describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
+  const mockGet = {
+    active_provider: 'openai',
+    default_model: 'gpt-4o-mini',
+    providers_configured: { openai: true, ollama: true },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
+    (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'success',
+      message: 'Successfully connected to gpt-4o-mini via openai',
+      latency_ms: 87.4,
+    });
+  });
+
+  it('G4: advanced collapsible wires timeout/max_cycles/guardrails into the save payload', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Advanced: timeout, guardrails/i }));
+    await user.type(screen.getByLabelText(/Timeout \(seconds/i), '60');
+    await user.type(screen.getByLabelText(/Max cycles/i), '5');
+
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timeout_seconds: 60,
+          max_cycles: 5,
+          enforce_guardrails: true,
+        }),
+      );
+    });
+  });
+
+  it('G4: blank advanced fields are omitted from the save payload', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalled();
+    });
+    const payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).not.toHaveProperty('timeout_seconds');
+    expect(payload).not.toHaveProperty('max_cycles');
+  });
+
+  it('G5: Quick ping calls testLLMConnection and shows latency inline', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Quick ping/i }));
+
+    await waitFor(() => {
+      expect(api.testLLMConnection).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByText(/Successfully connected.*87 ms/)).toBeInTheDocument();
   });
 });

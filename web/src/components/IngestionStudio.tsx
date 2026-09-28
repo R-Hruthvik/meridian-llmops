@@ -39,6 +39,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<IngestResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fileWarning, setFileWarning] = useState<string | null>(null);
 
   // Catalog State
   const [docList, setDocList] = useState<DocumentListResponse>({
@@ -131,11 +132,20 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setFileWarning(null);
     setTitle(file.name.replace(/\.[^/.]+$/, ''));
     const reader = new FileReader();
     reader.onload = (event) => {
-      const content = event.target?.result as string;
-      setText(content || '');
+      const content = (event.target?.result as string) || '';
+      // Backend /v1/ingest accepts text JSON only (no file endpoint) —
+      // binary files (PDF/DOCX) read as text garble. Warn when content
+      // looks binary so the user pastes extracted text instead.
+      if (content.includes('\0')) {
+        setFileWarning(
+          `"${file.name}" looks like a binary file (PDF/DOCX are not supported). The ingest API accepts text only — please paste extracted text instead.`,
+        );
+      }
+      setText(content);
     };
     reader.readAsText(file);
   };
@@ -477,6 +487,10 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
                         <span className="font-bold text-meridian-text">{doc.entities_count}</span>
                         <span>entities</span>
                       </span>
+                      <span className="flex items-center space-x-1">
+                        <span className="font-bold text-meridian-text">{doc.relationships_count}</span>
+                        <span>relationships</span>
+                      </span>
                     </div>
 
                     <div className="flex items-center space-x-2">
@@ -555,7 +569,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
                   type="file"
                   onChange={handleFileUpload}
                   disabled={loading}
-                  accept=".txt,.md,.markdown,.json,.html,.pdf,.docx"
+                  accept=".txt,.md,.markdown,.json,.html,.csv,.yaml,.yml,.xml,.log,text/plain,text/markdown,text/html,application/json"
                   aria-label="Upload document file"
                   className="absolute inset-0 opacity-0 cursor-pointer w-full h-full disabled:cursor-not-allowed"
                 />
@@ -564,8 +578,13 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
                   Click or drag file to upload
                 </p>
                 <p className="text-[11px] text-meridian-textMuted mt-0.5 font-medium">
-                  Supports Markdown, Text, HTML, JSON, PDF, DOCX
+                  Text only: Markdown, Text, HTML, JSON, CSV, YAML (binary PDF/DOCX are not supported)
                 </p>
+                {fileWarning && (
+                  <p role="alert" className="mt-2 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                    {fileWarning}
+                  </p>
+                )}
               </div>
 
               {/* Document Body Textarea */}
@@ -644,6 +663,16 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
                       <p className="text-[11px] text-emerald-800 mt-0.5">
                         Doc ID: <code className="font-mono bg-white px-2 py-0.5 rounded border border-emerald-200">{result.document_id}</code>
                       </p>
+                      {result.filename && (
+                        <p className="text-[11px] text-emerald-800 mt-0.5">
+                          File: <code className="font-mono bg-white px-2 py-0.5 rounded border border-emerald-200">{result.filename}</code>
+                        </p>
+                      )}
+                      {result.created_at && (
+                        <p className="text-[11px] text-emerald-800 mt-0.5">
+                          Created: {new Date(result.created_at).toLocaleString()}
+                        </p>
+                      )}
                     </div>
                   </div>
 

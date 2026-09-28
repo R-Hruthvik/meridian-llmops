@@ -25,6 +25,8 @@ interface InfraService {
   type: string;
   icon: typeof Cpu;
   healthKey?: string;
+  // Displayed when no live /health endpoint backs this card.
+  dataSource?: string;
 }
 
 const INFRASTRUCTURE_SERVICES: InfraService[] = [
@@ -65,6 +67,8 @@ const INFRASTRUCTURE_SERVICES: InfraService[] = [
     status: 'Ready',
     type: 'OpenTelemetry',
     icon: Activity,
+    // No /health endpoint exposes Langfuse — label the source explicitly.
+    dataSource: 'Static config — no live /health probe',
   },
 ];
 export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) => {
@@ -74,6 +78,9 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
   // Live /health services map; null = unreachable (sane static fallback).
   const [serviceHealth, setServiceHealth] = useState<Record<string, HealthServiceStatus> | null>(null);
   const [healthReachable, setHealthReachable] = useState(true);
+  // Storage counters surfaced from /health where returned.
+  const [storageDocuments, setStorageDocuments] = useState<number | null>(null);
+  const [vectorChunks, setVectorChunks] = useState<number | null>(null);
 
   const fetchMetrics = async () => {
     setLoading(true);
@@ -93,9 +100,13 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
       const h = await api.checkHealth();
       setServiceHealth(h.services ?? {});
       setHealthReachable(true);
+      setStorageDocuments(typeof h.storage_documents === 'number' ? h.storage_documents : null);
+      setVectorChunks(typeof h.vector_chunks === 'number' ? h.vector_chunks : null);
     } catch {
       setServiceHealth(null);
       setHealthReachable(false);
+      setStorageDocuments(null);
+      setVectorChunks(null);
     }
   };
 
@@ -181,10 +192,20 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
 
       {/* Multi-Container Infrastructure Status */}
       <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card">
-        <h3 className="text-xs font-bold text-meridian-text flex items-center space-x-2 mb-4">
-          <Server className="w-4 h-4 text-meridian-primary" />
-          <span>Multi-Container Infrastructure Topology</span>
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h3 className="text-xs font-bold text-meridian-text flex items-center space-x-2">
+            <Server className="w-4 h-4 text-meridian-primary" />
+            <span>Multi-Container Infrastructure Topology</span>
+          </h3>
+          {(storageDocuments !== null || vectorChunks !== null) && (
+            <span className="text-[11px] font-semibold text-meridian-textMuted">
+              Storage (from /health):{' '}
+              <span className="font-bold text-meridian-text">{storageDocuments ?? '—'} docs</span>
+              {' • '}
+              <span className="font-bold text-meridian-text">{vectorChunks ?? '—'} chunks</span>
+            </span>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {INFRASTRUCTURE_SERVICES.map((svc) => {
@@ -231,6 +252,11 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
                     <p className="text-[11px] text-meridian-textMuted font-medium">
                       {svc.type} • <code className="text-meridian-primary font-bold">{svc.port}</code>
                     </p>
+                    {svc.dataSource && (
+                      <p className="text-[10px] text-meridian-textMuted font-medium mt-0.5">
+                        Source: {svc.dataSource}
+                      </p>
+                    )}
                   </div>
                 </div>
 

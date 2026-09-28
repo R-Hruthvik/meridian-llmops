@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Bot,
+  ClipboardCheck,
   Database,
   Layers,
   LineChart,
@@ -27,6 +28,7 @@ const TABS = [
   { id: 'rag', label: 'Agentic RAG', icon: Bot },
   { id: 'ingest', label: 'Ingestion Studio', icon: Database },
   { id: 'guardrails', label: 'Guardrails Security', icon: ShieldAlert },
+  { id: 'review', label: 'Review Queue', icon: ClipboardCheck },
   { id: 'metrics', label: 'Observability & Costs', icon: LineChart },
 ];
 

@@ -5,6 +5,7 @@ import type {
   HealthStatus,
   IngestRequest,
   IngestResponse,
+  LLMPingResponse,
   LLMSettingsGet,
   MaskedLLMSettings,
   LLMTestAndFetchRequest,
@@ -12,6 +13,8 @@ import type {
   ProvidersResponse,
   QueryRequest,
   QueryResponse,
+  ReviewItem,
+  ReviewItemActionPayload,
   TenantMetrics,
   UpdateLLMSettingsPayload,
 } from '../types/api';
@@ -245,6 +248,40 @@ class MeridianApiClient {
       `${this.baseUrl}/v1/documents/seed-samples`,
       { method: 'POST', headers: this.getHeaders(tenantId) },
       'Seed sample documents failed',
+    );
+  }
+
+  async testLLMConnection(): Promise<LLMPingResponse> {
+    // Quick ping against the saved provider config (empty body — server
+    // resolves active provider/model from runtime settings).
+    return this.requestJSON<LLMPingResponse>(
+      `${this.baseUrl}/v1/settings/llm/test`,
+      { method: 'POST', headers: this.getHeaders() },
+      'LLM connection test failed',
+    );
+  }
+
+  async listReviewItems(tenantId: string = 'default'): Promise<ReviewItem[]> {
+    return this.requestJSON<ReviewItem[]>(
+      `${this.baseUrl}/v1/review/items`,
+      { method: 'GET', headers: this.getHeaders(tenantId) },
+      'Review queue fetch failed',
+    );
+  }
+
+  async reviewItemAction(
+    itemId: string,
+    action: ReviewItemActionPayload,
+    tenantId: string = 'default',
+  ): Promise<ReviewItem> {
+    return this.requestJSON<ReviewItem>(
+      `${this.baseUrl}/v1/review/items/${encodeURIComponent(itemId)}/action`,
+      {
+        method: 'POST',
+        headers: this.getHeaders(tenantId),
+        body: JSON.stringify(action),
+      },
+      'Review action failed',
     );
   }
 }

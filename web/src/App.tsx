@@ -4,6 +4,7 @@ import { IngestionStudio } from './components/IngestionStudio';
 import { MetricsDashboard } from './components/MetricsDashboard';
 import { Navbar } from './components/Navbar';
 import { RagWorkspace } from './components/RagWorkspace';
+import { ReviewQueue } from './components/ReviewQueue';
 import { api } from './services/api';
 
 export type BackendHealth = 'online' | 'degraded' | 'offline';
@@ -58,6 +59,9 @@ export const App: React.FC = () => {
         </div>
         <div className={activeTab === 'guardrails' ? 'block' : 'hidden'}>
           <GuardrailsStudio tenantId={tenantId} />
+        </div>
+        <div className={activeTab === 'review' ? 'block' : 'hidden'}>
+          <ReviewQueue tenantId={tenantId} />
         </div>
         <div className={activeTab === 'metrics' ? 'block' : 'hidden'}>
           <MetricsDashboard tenantId={tenantId} />

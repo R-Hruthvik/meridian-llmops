@@ -253,4 +253,62 @@ describe('MeridianApiClient', () => {
       expect(result.providers[0].configured).toBe(true);
     });
   });
+
+  describe('testLLMConnection() quick ping', () => {
+    it('POSTs empty body to /v1/settings/llm/test and returns latency', async () => {
+      const ping = { status: 'success', message: 'Successfully connected', latency_ms: 42.5 };
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse(ping, 200) as unknown as Response);
+
+      const result = await api.testLLMConnection();
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/v1/settings/llm/test');
+      expect(init.method).toBe('POST');
+      expect(init.body).toBeUndefined();
+      expect(result.latency_ms).toBe(42.5);
+    });
+  });
+
+  describe('review queue calls', () => {
+    it('lists pending items with tenant header', async () => {
+      const items = [
+        { id: 'r1', extracted_field_id: 'f1', document_id: 'd1', field_name: 'invoice_total', value: '100', confidence: 0.4, provenance_page: 1, status: 'pending', corrected_value: null, notes: null },
+      ];
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse(items, 200) as unknown as Response);
+
+      const result = await api.listReviewItems('acme');
+
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/v1/review/items');
+      expect(init.method).toBe('GET');
+      expect((init.headers as Record<string, string>)['X-Tenant-Id']).toBe('acme');
+      expect(result).toHaveLength(1);
+      expect(result[0].field_name).toBe('invoice_total');
+    });
+
+    it('posts approve action with tenant header', async () => {
+      const updated = { id: 'r1', extracted_field_id: 'f1', document_id: 'd1', field_name: 'invoice_total', value: '100', confidence: 0.4, provenance_page: 1, status: 'approved', corrected_value: null, notes: null };
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse(updated, 200) as unknown as Response);
+
+      const result = await api.reviewItemAction('r1', { action: 'approve' }, 'acme');
+
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/v1/review/items/r1/action');
+      expect(init.method).toBe('POST');
+      expect((init.headers as Record<string, string>)['X-Tenant-Id']).toBe('acme');
+      expect(JSON.parse(init.body as string)).toEqual({ action: 'approve' });
+      expect(result.status).toBe('approved');
+    });
+
+    it('posts correct action with corrected value and notes', async () => {
+      const updated = { id: 'r1', extracted_field_id: 'f1', document_id: 'd1', field_name: 'invoice_total', value: '120', confidence: 0.4, provenance_page: 1, status: 'corrected', corrected_value: '120', notes: 'verified' };
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse(updated, 200) as unknown as Response);
+
+      const result = await api.reviewItemAction('r1', { action: 'correct', corrected_value: '120', notes: 'verified' });
+
+      expect(result.status).toBe('corrected');
+      expect(result.corrected_value).toBe('120');
+    });
+  });
 });
