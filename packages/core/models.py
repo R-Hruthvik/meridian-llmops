@@ -3,7 +3,7 @@
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class DocumentFormat(str, Enum):
@@ -74,6 +74,48 @@ class GuardrailResult(BaseModel):
     sanitized_text: str = Field(..., description="Sanitized/redacted text")
     policy_violations: list[str] = Field(default_factory=list, description="List of triggered violations")
     action_taken: str = Field("pass", description="pass, blocked, redacted, or transformed")
+
+
+class IngestDocumentRequest(BaseModel):
+    """Payload for the /v1/ingest endpoint."""
+    text: str = Field(..., min_length=1, description="Document text content")
+    title: str | None = Field(None, min_length=1, max_length=500, description="Optional document title")
+    source: str | None = Field(None, description="Optional source identifier")
+    metadata: dict[str, str] | None = Field(None, description="Optional key-value metadata")
+    chunk_size: int | None = Field(None, ge=100, le=10000, description="Override default chunk size")
+    chunk_overlap: int | None = Field(None, ge=0, le=1000, description="Override default chunk overlap")
+
+
+class UpdateLLMSettingsRequest(BaseModel):
+    """Payload for the /v1/settings/llm endpoint. Unknown fields are rejected."""
+    provider: str | None = Field(None, pattern=r"^[a-z0-9_-]+$", description="LLM provider identifier")
+    api_key: str | None = None
+    custom_api_key: str | None = None
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    groq_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    deepseek_api_key: str | None = None
+    active_provider: str | None = None
+    openai_org_id: str | None = None
+    default_model: str | None = None
+    custom_base_url: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    timeout_seconds: int | None = Field(None, ge=1, le=300, description="Request timeout")
+    enforce_guardrails: bool | None = None
+    max_cycles: int | None = Field(None, ge=1, le=10, description="Maximum agent cycles")
+    model_config = {"extra": "forbid"}
+
+    @field_validator("provider", "api_key", "custom_api_key", "openai_api_key", "anthropic_api_key",
+                     "groq_api_key", "openrouter_api_key", "deepseek_api_key", "model", "base_url",
+                     "active_provider", "openai_org_id", "default_model", "custom_base_url",
+                     mode="before")
+    @classmethod
+    def empty_string_to_none(cls, v):
+        if v == "":
+            return None
+        return v
 
 
 class QueryRequest(BaseModel):
