@@ -14,6 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from packages.core.db import init_db
+from packages.core.settings import get_settings as _core_get_settings
+from packages.core.settings import validate_production as _validate_production
 from packages.core.models import (
     DocumentFormat,
     IngestDocumentRequest,
@@ -45,7 +47,8 @@ app.include_router(review_router)
 
 @app.on_event("startup")
 async def on_startup():
-    """Initializes relational database schema on application startup."""
+    """Fail-fast secret check, then initializes relational database schema."""
+    _validate_production(_core_get_settings())
     try:
         await init_db()
     except Exception as e:  # noqa: BLE001 - startup must never crash on DB hiccups

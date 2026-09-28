@@ -69,8 +69,18 @@ fi
 PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
 VITE_PORT="${VITE_PORT:-5173}"
-export API_KEY_SECRET="${API_KEY_SECRET:-meridian-test-secret-key-2026}"
-export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-sk-litellm-master-key}"
+# Secrets: no shared test defaults. Production requires explicit secrets
+# (app boot also fails closed via validate_production); local dev gets an
+# ephemeral generated value per run unless already exported (dev-only).
+if [ "${APP_ENV:-development}" = "production" ]; then
+    if [ -z "${API_KEY_SECRET:-}" ] || [ -z "${LITELLM_MASTER_KEY:-}" ]; then
+        echo -e "${RED}Error: API_KEY_SECRET and LITELLM_MASTER_KEY must be set in production.${NC}"
+        exit 1
+    fi
+else
+    export API_KEY_SECRET="${API_KEY_SECRET:-$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')}"
+    export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-sk-dev-$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')}"
+fi
 export VITE_MERIDIAN_API_KEY="${VITE_MERIDIAN_API_KEY:-$API_KEY_SECRET}"
 
 MODE="dev"

@@ -64,10 +64,31 @@ class Settings(BaseSettings):
     confidence_threshold: float = 0.85
 
 
+_FORBIDDEN_PRODUCTION_SECRETS = frozenset({
+    "meridian-test-secret-key-2026",
+    "sk-litellm-master-key",
+    "changeme",
+})
+
+
+def _is_forbidden_production_secret(value: str | None) -> bool:
+    """Fail-closed check: empty, blank, or known test-default secrets."""
+    if value is None:
+        return True
+    stripped = value.strip()
+    if not stripped:
+        return True
+    if stripped in _FORBIDDEN_PRODUCTION_SECRETS:
+        return True
+    return stripped.lower() == "changeme"
+
+
 def validate_production(s: Settings) -> None:
-    if s.app_env == "production" and not s.api_key_secret:
+    if s.app_env != "production":
+        return
+    if _is_forbidden_production_secret(s.api_key_secret):
         raise RuntimeError("missing required secret: API_KEY_SECRET")
-    if s.app_env == "production" and not s.litellm_master_key:
+    if _is_forbidden_production_secret(s.litellm_master_key):
         raise RuntimeError("missing required secret: LITELLM_MASTER_KEY")
 
 

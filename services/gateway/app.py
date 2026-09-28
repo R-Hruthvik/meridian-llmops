@@ -4,7 +4,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 
-from packages.core.config import get_settings
+from packages.core.config import get_settings, validate_production
 from packages.core.models import GuardrailResult
 from services.gateway.auth import verify_api_key
 from services.gateway.client import LiteLLMClient
@@ -18,6 +18,12 @@ app = FastAPI(
 
 guardrails = InputGuardrails()
 litellm_client = LiteLLMClient()
+
+
+@app.on_event("startup")
+async def on_startup():
+    """Fail-fast: refuse to boot in production with empty/test-default secrets."""
+    validate_production(get_settings())
 
 
 class ChatCompletionRequest(BaseModel):
@@ -36,12 +42,21 @@ async def health_check():
     return {"status": "healthy", "service": "meridian-gateway"}
 
 
-@app.post("/v1/guardrails/check", response_model=GuardrailResult)
-async def check_guardrails(
-    payload: GuardrailCheckRequest,
+@app.get("/v1/guardrails/check", response_model=GuardrailResult)
+async def check_guardrails_get(
+    text: str,
     tenant_id: str = Depends(verify_api_key),
 ):
     """Explicit endpoint to evaluate text against input guardrails."""
+    return guardrails.evaluate(text)
+
+
+@app.post("/v1/guardrails/check", response_model=GuardrailResult, include_in_schema=False)
+async def check_guardrails_post(
+    payload: GuardrailCheckRequest,
+    tenant_id: str = Depends(verify_api_key),
+):
+    """Deprecated alias for GET /v1/guardrails/check. Use query parameter instead."""
     return guardrails.evaluate(payload.text)
 
 
