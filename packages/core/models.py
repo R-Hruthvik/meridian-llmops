@@ -156,6 +156,72 @@ class QueryResponse(BaseModel):
     serving: ServingProvenance = Field(default_factory=ServingProvenance, description="Explicit serving provenance; the authoritative signal for issue #35")
 
 
+class BackendHealth(BaseModel):
+    """Live reachability of one storage subsystem, as observed by a real query."""
+
+    reachable: bool = Field(..., description="True only when the real backend answered a live query")
+    is_fallback: bool = Field(..., description="True when the subsystem is served by an in-process fallback")
+    endpoint: str = Field(..., description="Configured endpoint for this subsystem")
+    detail: str = Field(..., description="Human-readable explanation of the observed state")
+
+
+class VectorIndexStatus(BaseModel):
+    """Dense vector index state (Qdrant, or the in-memory fallback cache)."""
+
+    collections: list[str] = Field(default_factory=list, description="Collection names read live; empty when no live client is in use")
+    points_per_collection: dict[str, int] = Field(default_factory=dict, description="Live point count per collection")
+    total_points: int | None = Field(None, description="Total live points, or in-process chunk count when falling back")
+    vector_dimension: int | None = Field(None, description="Embedding dimension reported by the live collection")
+    is_fallback: bool = Field(False, description="True when no live Qdrant client is in use")
+    detail: str = Field("", description="How these numbers were obtained")
+
+
+class GraphIndexStatus(BaseModel):
+    """Knowledge graph state (Neo4j, or the in-memory fallback graph)."""
+
+    node_count: int | None = Field(None, description="Node count read live; null when Neo4j is unreachable")
+    relationship_count: int | None = Field(None, description="Relationship count read live; null when Neo4j is unreachable")
+    entity_index_size: int | None = Field(None, description="Entities held by the live entity lookup index")
+    is_fallback: bool = Field(False, description="True when no live Neo4j driver is in use")
+    detail: str = Field("", description="How these numbers were obtained")
+
+
+class LexicalIndexStatus(BaseModel):
+    """BM25 sparse index state, read from the live retriever."""
+
+    corpus_size: int | None = Field(None, description="Chunks currently held by the BM25 index")
+    document_count: int | None = Field(None, description="Distinct documents represented in the BM25 corpus")
+    is_fallback: bool = Field(False, description="True when the lexical index could not be read")
+    detail: str = Field("", description="How these numbers were obtained")
+
+
+class TableRowCount(BaseModel):
+    """One live relational table and its row count."""
+
+    name: str = Field(..., description="Table name as reported by the live database")
+    row_count: int = Field(..., description="Rows counted with SELECT COUNT(*)")
+
+
+class RelationalIndexStatus(BaseModel):
+    """Relational storage state (SQLite/SQLAlchemy), read live."""
+
+    dialect: str | None = Field(None, description="SQL dialect reported by the live connection")
+    tables: list[TableRowCount] = Field(default_factory=list, description="Live tables and their row counts")
+    total_rows: int = Field(0, description="Sum of the listed table row counts")
+    is_fallback: bool = Field(False, description="True when the relational store could not be reached")
+    detail: str = Field("", description="How these numbers were obtained")
+
+
+class IndexStatusResponse(BaseModel):
+    """Live Index & Storage inspection across every backing subsystem."""
+
+    vector: VectorIndexStatus = Field(..., description="Qdrant dense vector index")
+    graph: GraphIndexStatus = Field(..., description="Neo4j knowledge graph")
+    lexical: LexicalIndexStatus = Field(..., description="BM25 sparse index")
+    relational: RelationalIndexStatus = Field(..., description="SQLite/SQLAlchemy relational storage")
+    backends: dict[str, BackendHealth] = Field(default_factory=dict, description="Per-subsystem reachability for Online/Degraded/Offline rendering")
+
+
 # =====================================================================
 # SQLAlchemy 2.0 ORM Models for Persistence & Human-in-the-Loop Review
 # =====================================================================

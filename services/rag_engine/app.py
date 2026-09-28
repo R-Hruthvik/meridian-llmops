@@ -13,10 +13,11 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from packages.core.db import init_db
+from packages.core.db import AsyncSessionLocal, init_db
 from packages.core.models import (
     DocumentFormat,
     GuardrailResult,
+    IndexStatusResponse,
     IngestDocumentRequest,
     QueryRequest,
     QueryResponse,
@@ -35,6 +36,7 @@ from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.pipeline import IngestionPipeline
 from services.ingestion.vector_store import VectorStoreManager
 from services.rag_engine.agent.graph import build_rag_agent_graph
+from services.rag_engine.index_inspector import build_index_status
 from services.rag_engine.observability.langfuse_client import MeridianTracer
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 from services.rag_engine.routers.review import router as review_router
@@ -522,6 +524,23 @@ async def query_endpoint(
 async def get_metrics(tenant_id: str = Depends(verify_api_key)):
     """Returns aggregated token usage and cost metrics."""
     return tracer.get_tenant_metrics(tenant_id)
+
+
+@app.get("/v1/index/status", response_model=IndexStatusResponse)
+async def get_index_status(tenant_id: str = Depends(verify_api_key)):
+    """Inspects the live index and storage state behind every subsystem.
+
+    Always answers 200 (given valid auth) - a down backend is reported as a
+    degraded fallback, because describing degraded state is the point.
+    """
+    # Same session factory the rest of the platform uses; no new client is built.
+    async with AsyncSessionLocal() as db:
+        return await build_index_status(
+            vector_store=vector_store,
+            graph_store=graph_store,
+            retriever=retriever,
+            db=db,
+        )
 
 
 class TestAndFetchModelsRequest(BaseModel):
