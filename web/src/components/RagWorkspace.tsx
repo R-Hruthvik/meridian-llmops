@@ -359,14 +359,35 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                   <span>Cycle {response.cycle_count}/{maxCycles}</span>
                 </span>
 
-                {response.serving_model && (
+                {/* Serving provenance (issue #35): when the backend reports
+                    `serving`, it is authoritative — `fresh: false` means no
+                    model answered, so we must not name one. Older backends
+                    omit `serving` and we fall back to the legacy fields. */}
+                {response.serving ? (
+                  response.serving.fresh && response.serving.model ? (
+                    <span className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-white border border-meridian-border text-meridian-text shadow-sm">
+                      <Zap className="w-3.5 h-3.5 text-meridian-primary" />
+                      <span className="capitalize">{response.serving.provider}</span>
+                      <span className="text-meridian-textMuted">•</span>
+                      <span className="font-mono text-meridian-primary font-bold">{response.serving.model}</span>
+                    </span>
+                  ) : (
+                    <span
+                      className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-meridian-bg border border-meridian-border text-meridian-textMuted shadow-sm"
+                      title="No upstream LLM call returned content for this request (greeting/bypass, refusal, generation failure, or empty completion)"
+                    >
+                      <Zap className="w-3.5 h-3.5 text-meridian-textMuted" />
+                      <span>No model served this answer</span>
+                    </span>
+                  )
+                ) : response.serving_model ? (
                   <span className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-white border border-meridian-border text-meridian-text shadow-sm">
                     <Zap className="w-3.5 h-3.5 text-meridian-primary" />
                     <span className="capitalize">{response.serving_provider}</span>
                     <span className="text-meridian-textMuted">•</span>
                     <span className="font-mono text-meridian-primary font-bold">{response.serving_model}</span>
                   </span>
-                )}
+                ) : null}
               </div>
 
               <div className="flex items-center space-x-1.5 text-xs text-meridian-textMuted font-semibold px-2 py-0.5">

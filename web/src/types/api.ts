@@ -21,6 +21,19 @@ export interface QueryRequest {
   enforce_guardrails?: boolean;
 }
 
+/**
+ * Who actually served a query response. Nulls mean no LLM produced the answer.
+ * Mirrors the backend ServingProvenance model.
+ */
+export interface ServingProvenance {
+  /** Provider that actually served the request, or null when no LLM served it. */
+  provider: string | null;
+  /** Model the upstream reported it served, or null when no LLM served it. */
+  model: string | null;
+  /** True only when this request's own upstream call returned non-empty content. */
+  fresh: boolean;
+}
+
 export interface QueryResponse {
   query: string;
   answer: string;
@@ -30,8 +43,12 @@ export interface QueryResponse {
   verified: boolean;
   refusal: boolean;
   execution_time_ms: number;
-  serving_provider?: string;
-  serving_model?: string;
+  /** @deprecated Backward-compat config echo — use `serving` when present. */
+  serving_provider?: string | null;
+  /** @deprecated Backward-compat config echo — use `serving` when present. */
+  serving_model?: string | null;
+  /** Authoritative serving provenance. Optional: absent on older backends. */
+  serving?: ServingProvenance;
   degraded_reason?: string | null;
 }
 

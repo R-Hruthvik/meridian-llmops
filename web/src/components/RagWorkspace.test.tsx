@@ -327,3 +327,129 @@ describe('RagWorkspace B3: answer header matches answer state', () => {
     expect(screen.getByText('AI Agent Output')).toBeInTheDocument();
   });
 });
+
+// Issue #35 display side: the badge must name the model that ACTUALLY served
+// the request. The config echo (`serving_provider`/`serving_model`) may claim a
+// model that never ran — a greeting/bypass, a refusal, a generation failure or
+// an empty completion all answer with `serving.fresh === false`.
+describe('RagWorkspace serving provenance badge', () => {
+  const run = async (user: ReturnType<typeof userEvent.setup>, response: object) => {
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(response);
+
+    render(<RagWorkspace tenantId="default" />);
+
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'test query');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+  };
+
+  // Legacy config echo: what the OLD UI would have shown, and the lie this
+  // change has to stop telling.
+  const baseResponse = {
+    query: 'test query',
+    answer: 'test answer',
+    source_chunks: [],
+    entities: [],
+    cycle_count: 1,
+    verified: true,
+    refusal: false,
+    execution_time_ms: 1234,
+    serving_provider: 'openai',
+    serving_model: 'gpt-4o-mini',
+  };
+
+  const mockSettings = {
+    active_provider: 'openai',
+    default_model: 'gpt-4o-mini',
+    litellm_base_url: 'http://localhost:4000',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
+  });
+
+  it('fresh: shows the provider and model that actually served, not the config echo', async () => {
+    const user = userEvent.setup();
+    await run(user, {
+      ...baseResponse,
+      serving: { provider: 'anthropic', model: 'claude-3-5-haiku-20241022', fresh: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('claude-3-5-haiku-20241022')).toBeInTheDocument();
+    });
+    expect(screen.getByText('anthropic')).toBeInTheDocument();
+    expect(screen.queryByText('gpt-4o-mini')).toBeNull();
+    expect(screen.queryByText('openai')).toBeNull();
+  });
+
+  it('not fresh: says no model served this instead of naming a model that never ran', async () => {
+    const user = userEvent.setup();
+    await run(user, {
+      ...baseResponse,
+      serving: { provider: null, model: null, fresh: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/no model served this/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText('gpt-4o-mini')).toBeNull();
+    expect(screen.queryByText('openai')).toBeNull();
+  });
+
+  it('not fresh with a refusal: still reports that no model served the answer', async () => {
+    const user = userEvent.setup();
+    await run(user, {
+      ...baseResponse,
+      verified: false,
+      refusal: true,
+      answer: 'I cannot answer that.',
+      serving: { provider: null, model: null, fresh: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/no model served this/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText('gpt-4o-mini')).toBeNull();
+    // B3 header precedence must survive the provenance change.
+    expect(screen.getByText('Refusal Response')).toBeInTheDocument();
+  });
+
+  it('serving absent: falls back to the legacy serving_provider/serving_model fields', async () => {
+    const user = userEvent.setup();
+    await run(user, { ...baseResponse });
+
+    await waitFor(() => {
+      expect(screen.getByText('gpt-4o-mini')).toBeInTheDocument();
+    });
+    expect(screen.getByText('openai')).toBeInTheDocument();
+    expect(screen.queryByText(/no model served this/i)).toBeNull();
+  });
+
+  it('serving absent and legacy fields null: renders no badge at all', async () => {
+    const user = userEvent.setup();
+    await run(user, { ...baseResponse, serving_provider: null, serving_model: null });
+
+    await waitFor(() => {
+      expect(screen.getByText('test answer')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/no model served this/i)).toBeNull();
+    expect(screen.queryByText('gpt-4o-mini')).toBeNull();
+  });
+
+  it('degraded header precedence is unchanged when serving reports a stale answer', async () => {
+    const user = userEvent.setup();
+    await run(user, {
+      ...baseResponse,
+      verified: true,
+      degraded_reason: 'LLM generation failed, served fallback',
+      serving: { provider: null, model: null, fresh: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Degraded Response')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Degraded Pipeline Output')).toBeInTheDocument();
+    expect(screen.getByText(/no model served this/i)).toBeInTheDocument();
+  });
+});
