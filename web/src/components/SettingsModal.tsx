@@ -1,16 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  Activity,
   AlertCircle,
   CheckCircle2,
   ChevronDown,
   HelpCircle,
   Key,
   Layers,
+  Radio,
   RefreshCw,
   X,
   Zap,
 } from 'lucide-react';
+import { StatusChip } from './StatusChip';
 import { api, ApiError } from '../services/api';
 import { PROVIDER_DEFAULT_BASE_URLS, PROVIDER_MODELS } from '../constants/providerModels';
 import type { MaskedKeyStatus, ProviderInfo, ProvidersResponse, UpdateLLMSettingsPayload } from '../types/api';
@@ -192,6 +195,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     return '';
   };
 
+  // Latency is only meaningful when something actually answered. A failed
+  // check reports its reason alone — "(0 ms)" on a failure is noise.
+  const withLatency = (success: boolean, message: string, latencyMs: number) =>
+    success ? `${message} (${latencyMs.toFixed(0)} ms)` : message;
+
   const handleTestAndFetchModels = async () => {
     setTesting(true);
     setTestResult(null);
@@ -218,7 +226,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       setTestResult({
         success: res.success,
-        message: `${res.message} (${res.latency_ms.toFixed(0)} ms)`,
+        message: withLatency(res.success, res.message, res.latency_ms),
       });
 
       // Refresh providers registry
@@ -232,6 +240,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  // Checks the configuration already saved on the server — deliberately does
+  // not read any field in this form.
+  const handleCheckSavedConfig = async () => {
+    setPinging(true);
+    setPingResult(null);
+    try {
+      const res = await api.testLLMConnection();
+      const success = res.status === 'success';
+      setPingResult({
+        success,
+        message: withLatency(success, res.message, res.latency_ms),
+      });
+    } catch (err: unknown) {
+      setPingResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Ping failed.',
+      });
+    } finally {
+      setPinging(false);
     }
   };
 
@@ -352,51 +382,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   // Per-provider "Configured •••ab12" badge from providers_configured / POST hint.
+  // Rendered as a StatusChip: the state word and the masked hint both ride the
+  // chip's mono label, so the hint reads as a readout rather than prose.
   const renderKeyStatus = (providerId: string) => {
     const s = keyStatus[providerId];
     if (!s) return null;
     if (!s.configured) {
-      return (
-        <span className="text-[10px] font-bold text-meridian-textMuted bg-white border border-meridian-border px-2 py-0.5 rounded-full">
-          Not configured
-        </span>
-      );
+      return <StatusChip variant="faint">Not configured</StatusChip>;
     }
     const suffix = s.hint && s.hint !== '****' ? ` •••${s.hint}` : ' ••••';
-    return (
-      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-        Configured{suffix}
-      </span>
-    );
+    return <StatusChip variant="ok">{`Configured${suffix}`}</StatusChip>;
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 overflow-hidden">
-      {/* Absolute Backdrop covering entire viewport */}
-      <div
-        className="fixed inset-0 bg-[#1E2050]/40 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden p-3 sm:p-4">
+      {/* Scrim — token-backed, same layer as the shared overlay shell. */}
+      <div className="overlay-scrim backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
 
-      {/* Centered Modal Card */}
+      {/* Centered modal surface */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-modal-title"
-        className="relative z-10 w-full max-w-2xl bg-white border border-meridian-border rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="relative z-50 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded border border-hairline bg-surface-raised shadow-overlay"
       >
-        {/* Fixed Header */}
-        <div className="flex items-center justify-between p-5 pb-3 border-b border-meridian-border shrink-0 bg-white">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-meridian-primary to-meridian-secondary flex items-center justify-center shadow-glow shrink-0">
-              <Key className="w-4 h-4 text-white" />
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-hairline bg-surface-raised px-5 py-3.5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-sm border border-hairline bg-accent-wash">
+              <Key className="size-4 text-accent-ink" aria-hidden="true" />
             </div>
-            <div>
-              <h3 id="settings-modal-title" className="text-sm sm:text-base font-bold text-meridian-text">
-                LLM Provider & Platform Key Studio
+            <div className="min-w-0">
+              <h3 id="settings-modal-title" className="text-readout font-bold text-ink">
+                LLM Provider &amp; Platform Key Studio
               </h3>
-              <p className="text-[11px] text-meridian-textMuted font-medium">
+              <p className="text-micro text-muted">
                 Select provider, enter credentials, and test connection to auto-fetch models.
               </p>
             </div>
@@ -404,26 +424,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <button
             onClick={onClose}
             aria-label="Close settings modal"
-            className="p-1.5 rounded-xl text-meridian-textMuted hover:text-meridian-text hover:bg-meridian-bg transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+            className="shrink-0 rounded-sm p-1.5 text-muted transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <X className="w-5 h-5" />
+            <X className="size-5" aria-hidden="true" />
           </button>
         </div>
 
-        {/* Scrollable Modal Body */}
-        <div className="p-5 overflow-y-auto space-y-4 flex-1">
-          {/* Section 0: Configured Providers Quick-Selector Pills */}
+        {/* Body */}
+        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+          {/* Configured providers quick-selector */}
           {providersData && providersData.providers.length > 0 && (
-            <div className="p-3.5 rounded-2xl bg-meridian-bg/70 border border-meridian-border space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-meridian-text flex items-center space-x-1.5">
-                  <Layers className="w-3.5 h-3.5 text-meridian-primary" />
-                  <span>Configured Providers Status ({providersData.providers.filter((p) => p.configured).length} ready)</span>
+            <div className="space-y-2.5 rounded-sm border border-hairline bg-surface-sunken p-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="label-section flex items-center gap-1.5 text-ink">
+                  <Layers className="size-3.5 text-accent" aria-hidden="true" />
+                  <span>Configured providers</span>
+                </h3>
+                <span className="num text-readout font-semibold text-accent-ink">
+                  {providersData.providers.filter((p) => p.configured).length} ready
                 </span>
-                <span className="text-[10px] text-meridian-textMuted font-medium">Click to configure</span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                 {providersData.providers.map((p) => {
                   const isSelected = provider === p.id;
                   return (
@@ -431,25 +453,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       key={p.id}
                       type="button"
                       onClick={() => handleSelectProviderCard(p)}
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none ${
+                      aria-pressed={isSelected}
+                      className={`flex flex-col items-start justify-between gap-1.5 rounded-sm border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                         isSelected
-                          ? 'bg-meridian-blossom border-meridian-primary ring-2 ring-meridian-primary/20 shadow-sm'
+                          ? 'border-accent bg-accent-wash'
                           : p.configured
-                          ? 'bg-white border-meridian-border hover:border-meridian-lavender'
-                          : 'bg-white/60 border-meridian-border/60 opacity-70 hover:opacity-100'
+                            ? 'border-hairline bg-surface-raised hover:border-hairline-strong'
+                            : 'border-hairline bg-surface-raised opacity-70 hover:opacity-100'
                       }`}
                     >
-                      <div className="flex items-center justify-between w-full mb-1">
-                        <span className="text-[11px] font-bold text-meridian-text truncate">{p.name.split(' ')[0]}</span>
-                        {p.is_active ? (
-                          <span className="w-2 h-2 rounded-full bg-meridian-primary animate-pulse" />
-                        ) : p.configured ? (
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        ) : null}
-                      </div>
-                      <span className="text-[9px] text-meridian-textMuted font-mono truncate block">
-                        {p.is_active ? 'Active' : p.configured ? 'Configured' : 'Unconfigured'}
+                      <span className="w-full truncate text-label font-semibold text-ink">
+                        {p.name.split(' ')[0]}
                       </span>
+                      <StatusChip variant={p.is_active ? 'accent' : p.configured ? 'ok' : 'faint'}>
+                        {p.is_active ? 'Active' : p.configured ? 'Configured' : 'Unconfigured'}
+                      </StatusChip>
                     </button>
                   );
                 })}
@@ -457,17 +475,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* Section 1: LLM Provider Selection Dropdown */}
+          {/* 1 · Provider selection */}
           <div>
-            <label htmlFor="provider-select" className="block text-xs font-bold text-meridian-text mb-1">
-              1. Foundation LLM Provider:
+            <label htmlFor="provider-select" className="label-section mb-1.5 block text-muted">
+              1 · Foundation LLM provider
             </label>
             <div className="relative">
               <select
                 id="provider-select"
                 value={provider}
                 onChange={(e) => handleProviderChange(e.target.value)}
-                className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-bold outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white transition-all cursor-pointer"
+                className="w-full cursor-pointer rounded-sm border border-hairline bg-surface-raised px-3 py-2 text-body text-ink outline-none transition-colors focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
               >
                 <option value="openai">OpenAI (GPT-4o, GPT-4o-mini, o1, o3-mini)</option>
                 <option value="anthropic">Anthropic (Claude 3.7 Sonnet, Claude 3.5)</option>
@@ -480,52 +498,58 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Section 2: Dynamic Provider Credentials */}
-          <div className="p-4 rounded-2xl bg-meridian-bg/80 border border-meridian-border space-y-3">
+          {/* Credentials for the selected provider */}
+          <div className="space-y-3.5 rounded-sm border border-hairline bg-surface-sunken p-4">
             {/* OpenAI Configuration */}
             {provider === 'openai' && (
-              <div className="space-y-3">
+              <div className="space-y-3.5">
                 <div>
-                  <label className="block text-[11px] font-bold text-meridian-text mb-1 flex items-center justify-between">
-                    <span className="flex items-center space-x-2">
-                      <span>OpenAI API Key (<code className="text-meridian-primary">OPENAI_API_KEY</code>)</span>
+                  <label
+                    htmlFor="openai-key-input"
+                    className="mb-1.5 flex items-center justify-between gap-2 text-label font-semibold text-ink"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>OpenAI API Key (<code className="id-mono text-accent-ink">OPENAI_API_KEY</code>)</span>
                       {renderKeyStatus('openai')}
                     </span>
-                    <span className="text-[10px] text-meridian-textMuted font-normal">Leave blank to keep existing</span>
+                    <span className="shrink-0 text-micro font-normal text-faint">Leave blank to keep existing</span>
                   </label>
                   <input
+                    id="openai-key-input"
                     type="password"
                     value={openaiKey}
                     onChange={(e) => setOpenaiKey(e.target.value)}
                     placeholder="sk-proj-..."
-                    className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary transition-all"
+                    className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <div className="grid grid-cols-1 gap-2.5 border-t border-hairline pt-3 sm:grid-cols-2">
                   <div>
-                    <label className="block text-[10px] font-semibold text-meridian-textMuted mb-1">
-                      Organization ID (Optional):
+                    <label htmlFor="openai-org-input" className="mb-1.5 block text-label font-medium text-muted">
+                      Organization ID (optional)
                     </label>
                     <input
+                      id="openai-org-input"
                       type="text"
                       value={openaiOrgId}
                       onChange={(e) => setOpenaiOrgId(e.target.value)}
                       placeholder="org-..."
-                      className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
+                      className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-semibold text-meridian-textMuted mb-1">
-                      Project ID (Optional, test-call only — not saved):
+                    <label htmlFor="openai-proj-input" className="mb-1.5 block text-label font-medium text-muted">
+                      Project ID (optional, test-call only — not saved)
                     </label>
                     <input
+                      id="openai-proj-input"
                       type="text"
                       value={openaiProjId}
                       onChange={(e) => setOpenaiProjId(e.target.value)}
                       placeholder="proj-..."
-                      className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
+                      className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                     />
                   </div>
                 </div>
@@ -535,53 +559,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Anthropic Configuration */}
             {provider === 'anthropic' && (
               <div>
-                <label className="block text-[11px] font-bold text-meridian-text mb-1 flex items-center justify-between">
-                  <span className="flex items-center space-x-2">
-                    <span>Anthropic API Key (<code className="text-meridian-primary">ANTHROPIC_API_KEY</code>)</span>
+                <label
+                  htmlFor="anthropic-key-input"
+                  className="mb-1.5 flex items-center justify-between gap-2 text-label font-semibold text-ink"
+                >
+                  <span className="flex items-center gap-2">
+                    <span>Anthropic API Key (<code className="id-mono text-accent-ink">ANTHROPIC_API_KEY</code>)</span>
                     {renderKeyStatus('anthropic')}
                   </span>
-                  <span className="text-[10px] text-meridian-textMuted font-normal">Leave blank to keep existing</span>
+                  <span className="shrink-0 text-micro font-normal text-faint">Leave blank to keep existing</span>
                 </label>
                 <input
+                  id="anthropic-key-input"
                   type="password"
                   value={anthropicKey}
                   onChange={(e) => setAnthropicKey(e.target.value)}
                   placeholder="sk-ant-..."
-                  className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary transition-all"
+                  className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                 />
               </div>
             )}
 
             {/* Groq / OpenRouter / DeepSeek / Custom Configuration */}
             {['groq', 'openrouter', 'deepseek', 'custom'].includes(provider) && (
-              <div className="space-y-3">
+              <div className="space-y-3.5">
                 <div>
-                  <label className="block text-[11px] font-bold text-meridian-text mb-1">
-                    API Base Endpoint URL:
+                  <label htmlFor="custom-base-url-input" className="mb-1.5 block text-label font-semibold text-ink">
+                    API base endpoint URL
                   </label>
                   <input
+                    id="custom-base-url-input"
                     type="text"
                     value={customBaseUrl}
                     onChange={(e) => setCustomBaseUrl(e.target.value)}
                     placeholder="http://localhost:20128/v1 or https://api.groq.com/openai/v1"
-                    className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary transition-all"
+                    className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-meridian-text mb-1 flex items-center justify-between">
-                    <span className="flex items-center space-x-2">
-                      <span>Provider API Key:</span>
+                  <label
+                    htmlFor="custom-key-input"
+                    className="mb-1.5 flex items-center justify-between gap-2 text-label font-semibold text-ink"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>Provider API Key</span>
                       {renderKeyStatus(provider)}
                     </span>
-                    <span className="text-[10px] text-meridian-textMuted font-normal">Leave blank to keep existing; optional for local endpoints</span>
+                    <span className="shrink-0 text-micro font-normal text-faint">
+                      Leave blank to keep existing; optional for local endpoints
+                    </span>
                   </label>
                   <input
+                    id="custom-key-input"
                     type="password"
                     value={customKey}
                     onChange={(e) => setCustomKey(e.target.value)}
                     placeholder="Enter API key or leave blank for unauthenticated local endpoints"
-                    className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary transition-all"
+                    className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                   />
                 </div>
               </div>
@@ -590,31 +625,115 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Ollama Configuration */}
             {provider === 'ollama' && (
               <div>
-                <label className="block text-[11px] font-bold text-meridian-text mb-1">
-                  Local Ollama Host Endpoint:
+                <label htmlFor="ollama-base-url-input" className="mb-1.5 block text-label font-semibold text-ink">
+                  Local Ollama host endpoint
                 </label>
                 <input
+                  id="ollama-base-url-input"
                   type="text"
                   value={ollamaBaseUrl}
                   onChange={(e) => setOllamaBaseUrl(e.target.value)}
                   placeholder="http://localhost:11434"
-                  className="w-full bg-white border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary transition-all"
+                  className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                 />
-                <p className="text-[10px] text-meridian-textMuted mt-1">
+                <p className="mt-1.5 text-micro text-muted">
                   Connects to your local Ollama daemon to fetch installed offline models.
                 </p>
               </div>
             )}
           </div>
 
-          {/* Section 3: Model Selector & Dynamic Population */}
+          {/* Connection checks — both connection actions, in one labelled block
+              next to the provider and endpoint fields they read. */}
+          <div data-testid="connection-group" className="space-y-3 rounded-sm border border-hairline bg-surface-raised p-4">
+            <div>
+              <h3 className="label-section flex items-center gap-1.5 text-ink">
+                <Activity className="size-3.5 text-accent" aria-hidden="true" />
+                <span>Connection checks</span>
+              </h3>
+              <p className="mt-1 text-micro text-muted">
+                Two independent checks, and neither one saves — Save &amp; Apply does that.
+              </p>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex flex-col items-start gap-1.5 rounded-sm border border-hairline bg-surface-sunken p-3">
+                <button
+                  type="button"
+                  onClick={handleCheckSavedConfig}
+                  disabled={pinging}
+                  className="flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 text-label font-semibold text-ink transition-colors hover:border-accent hover:bg-accent-wash hover:text-accent-ink disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  {pinging ? (
+                    <RefreshCw className="size-3.5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Radio className="size-3.5 text-accent" aria-hidden="true" />
+                  )}
+                  <span>Check saved config</span>
+                </button>
+                <p className="text-micro text-muted">
+                  Reads the configuration already stored on the server and pings it. Ignores the
+                  values you just typed.
+                </p>
+              </div>
+
+              <div className="flex flex-col items-start gap-1.5 rounded-sm border border-hairline bg-surface-sunken p-3">
+                <button
+                  type="button"
+                  onClick={handleTestAndFetchModels}
+                  disabled={testing}
+                  className="flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-label font-bold text-white transition-colors hover:bg-accent-ink disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  {testing ? (
+                    <RefreshCw className="size-3.5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Zap className="size-3.5" aria-hidden="true" />
+                  )}
+                  <span>Validate typed values &amp; load models</span>
+                </button>
+                <p className="text-micro text-muted">
+                  Tests the values you just typed against the endpoint and replaces the model list
+                  with what that endpoint returns.
+                </p>
+              </div>
+            </div>
+
+            {pingResult && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-start gap-2 border-t border-hairline pt-3"
+              >
+                <StatusChip variant={pingResult.success ? 'ok' : 'fail'}>
+                  {pingResult.success ? 'Reachable' : 'Unreachable'}
+                </StatusChip>
+                <span className="text-label text-muted">{pingResult.message}</span>
+              </div>
+            )}
+
+            {testResult && (
+              <div
+                role="alert"
+                aria-live="polite"
+                className="flex items-start gap-2 border-t border-hairline pt-3"
+              >
+                <StatusChip variant={testResult.success ? 'ok' : 'fail'}>
+                  {testResult.success ? 'Endpoint valid' : 'Endpoint rejected'}
+                </StatusChip>
+                <span className="text-label text-muted">{testResult.message}</span>
+              </div>
+            )}
+          </div>
+
+          {/* 2 · Target model */}
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label htmlFor="model-select" className="block text-xs font-bold text-meridian-text">
-                2. Active Target Model:
+            <div className="mb-1.5 flex items-baseline justify-between gap-3">
+              <label htmlFor="model-select" className="label-section text-muted">
+                2 · Active target model
               </label>
-              <span className="text-[11px] text-meridian-primary font-semibold">
-                {modelList.length} models available
+              <span className="flex items-baseline gap-1.5">
+                <span className="num text-readout font-semibold text-accent-ink">{modelList.length}</span>
+                <span className="text-micro text-faint">models listed</span>
               </span>
             </div>
 
@@ -624,7 +743,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   id="model-select"
                   value={defaultModel}
                   onChange={(e) => setDefaultModel(e.target.value)}
-                  className="w-full bg-meridian-bg border border-meridian-border rounded-xl px-3.5 py-2 text-xs text-meridian-text font-bold outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white transition-all cursor-pointer"
+                  className="w-full cursor-pointer rounded-sm border border-hairline bg-surface-raised px-3 py-2 id-mono text-ink outline-none transition-colors focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   {modelList.map((m) => (
                     <option key={m} value={m}>
@@ -634,43 +753,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </select>
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={defaultModel}
                   onChange={(e) => setDefaultModel(e.target.value)}
                   placeholder="Or enter any custom model name..."
                   aria-label="Custom Model Name"
-                  className="flex-1 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
+                  className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                 />
               </div>
             </div>
 
-            <p className="text-[11px] text-meridian-textMuted mt-1">
-              💡 Tip: Click <strong>"Test Connection & Fetch Models"</strong> below to validate endpoint and auto-populate available models.
+            <p className="mt-1.5 text-micro text-muted">
+              Pick one of the listed models, or type any model name the endpoint accepts.
             </p>
           </div>
 
-          {/* Section 4: Advanced pipeline settings (timeout, guardrails, cycles) */}
-          <div className="pt-2 border-t border-meridian-border">
+          {/* Advanced pipeline settings (timeout, guardrails, cycles) */}
+          <div className="border-t border-hairline pt-4">
             <button
               type="button"
               onClick={() => setShowPipelineSettings((prev) => !prev)}
               aria-expanded={showPipelineSettings}
-              className="flex items-center justify-between w-full text-xs font-bold text-meridian-primary hover:text-meridian-primaryHover py-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+              className="flex w-full cursor-pointer items-center justify-between gap-2 py-1 text-label font-bold text-accent-ink transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              <span className="flex items-center space-x-1.5">
-                <Zap className="w-4 h-4 text-meridian-secondary" />
-                <span>Advanced: timeout, guardrails & agent cycles</span>
+              <span className="flex items-center gap-1.5">
+                <Zap className="size-3.5 text-accent" aria-hidden="true" />
+                <span>Advanced: timeout, guardrails &amp; agent cycles</span>
               </span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${showPipelineSettings ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`size-4 transition-transform ${showPipelineSettings ? 'rotate-180' : ''}`} aria-hidden="true" />
             </button>
 
             {showPipelineSettings && (
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-4 rounded-2xl bg-meridian-lavenderLight/50 border border-meridian-border">
+              <div className="mt-3 grid grid-cols-1 gap-2.5 rounded-sm border border-hairline bg-surface-sunken p-4 sm:grid-cols-3">
                 <div>
-                  <label htmlFor="timeout-seconds-input" className="block text-[10px] font-semibold text-meridian-textMuted mb-1">
-                    Timeout (seconds, 1–300):
+                  <label htmlFor="timeout-seconds-input" className="mb-1.5 block text-label font-medium text-muted">
+                    Timeout (seconds, 1–300)
                   </label>
                   <input
                     id="timeout-seconds-input"
@@ -680,12 +799,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     value={timeoutSeconds}
                     onChange={(e) => setTimeoutSeconds(e.target.value)}
                     placeholder="e.g. 60"
-                    className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
+                    className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 num text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                   />
                 </div>
                 <div>
-                  <label htmlFor="max-cycles-setting-input" className="block text-[10px] font-semibold text-meridian-textMuted mb-1">
-                    Max cycles (1–10):
+                  <label htmlFor="max-cycles-setting-input" className="mb-1.5 block text-label font-medium text-muted">
+                    Max cycles (1–10)
                   </label>
                   <input
                     id="max-cycles-setting-input"
@@ -695,16 +814,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     value={maxCycles}
                     onChange={(e) => setMaxCycles(e.target.value)}
                     placeholder="e.g. 3"
-                    className="w-full bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
+                    className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 num text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                   />
                 </div>
                 <div className="flex items-end pb-1">
-                  <label className="text-[11px] font-semibold text-meridian-text flex items-center space-x-1.5 cursor-pointer">
+                  <label htmlFor="enforce-guardrails-input" className="flex cursor-pointer items-center gap-1.5 text-label font-medium text-ink">
                     <input
+                      id="enforce-guardrails-input"
                       type="checkbox"
                       checked={enforceGuardrails}
                       onChange={(e) => setEnforceGuardrails(e.target.checked)}
-                      className="rounded text-meridian-primary focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none cursor-pointer"
+                      className="cursor-pointer rounded-sm accent-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     />
                     <span>Enforce guardrails</span>
                   </label>
@@ -713,175 +833,94 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          {/* Section 5: Quick ping against the saved provider config */}
-          <div className="flex items-center space-x-2">
-            <button
-              type="button"
-              onClick={async () => {
-                setPinging(true);
-                setPingResult(null);
-                try {
-                  const res = await api.testLLMConnection();
-                  setPingResult({
-                    success: res.status === 'success',
-                    message: `${res.message} (${res.latency_ms.toFixed(0)} ms)`,
-                  });
-                } catch (err: unknown) {
-                  setPingResult({
-                    success: false,
-                    message: err instanceof Error ? err.message : 'Ping failed.',
-                  });
-                } finally {
-                  setPinging(false);
-                }
-              }}
-              disabled={pinging}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-meridian-primary bg-white hover:bg-meridian-blossom border border-meridian-border flex items-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
-            >
-              {pinging ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Zap className="w-3.5 h-3.5 text-meridian-primary" />
-              )}
-              <span>Quick ping</span>
-            </button>
-            {pingResult && (
-              <span
-                role="status"
-                aria-live="polite"
-                className={`text-[11px] font-semibold ${pingResult.success ? 'text-emerald-700' : 'text-rose-700'}`}
-              >
-                {pingResult.message}
-              </span>
-            )}
-          </div>
-
-          {/* Test Result Banner */}
-          {testResult && (
-            <div
-              role="alert"
-              aria-live="polite"
-              className={`p-3.5 rounded-2xl border text-xs flex items-center space-x-2.5 animate-in fade-in duration-150 ${
-                testResult.success
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                  : 'bg-rose-50 border-rose-300 text-rose-900'
-              }`}
-            >
-              {testResult.success ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-              )}
-              <span className="font-medium leading-relaxed">{testResult.message}</span>
-            </div>
-          )}
-
-          {/* Success Banner */}
+          {/* Save outcome banners */}
           {saveSuccess && (
             <div
               role="alert"
               aria-live="polite"
-              className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center space-x-2 animate-in fade-in duration-150"
+              className="flex items-center gap-2 rounded-sm border border-hairline bg-ok-wash px-3 py-2 text-label font-semibold text-ok"
             >
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-              <span className="font-bold">Settings and active model saved successfully!</span>
+              <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
+              <span>Settings and active model saved successfully!</span>
             </div>
           )}
 
-          {/* Save Error Banner (422/5xx detail surfaced inline) */}
           {saveError && (
             <div
               role="alert"
               aria-live="polite"
-              className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center space-x-2 animate-in fade-in duration-150"
+              className="flex items-start gap-2 rounded-sm border border-hairline bg-fail-wash px-3 py-2 text-label font-semibold text-fail"
             >
-              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-              <span className="font-medium leading-relaxed">{saveError}</span>
+              <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+              <span className="leading-relaxed">{saveError}</span>
             </div>
           )}
 
-          {/* Expandable Architecture Explanations: X-API-Key & LiteLLM */}
-          <div className="pt-2 border-t border-meridian-border">
+          {/* Platform key — the disclosure is the field's single title. */}
+          <div className="border-t border-hairline pt-4">
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center justify-between w-full text-xs font-bold text-meridian-primary hover:text-meridian-primaryHover py-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+              aria-expanded={showAdvanced}
+              className="flex w-full cursor-pointer items-center justify-between gap-2 py-1 text-label font-bold text-accent-ink transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-                <span className="flex items-center space-x-1.5">
-                  <HelpCircle className="w-4 h-4 text-meridian-secondary" />
-                  <span>What is the Meridian Platform Key?</span>
-                </span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+              <span className="flex items-center gap-1.5">
+                <HelpCircle className="size-3.5 text-accent" aria-hidden="true" />
+                <span>What is the Meridian Platform Key?</span>
+              </span>
+              <ChevronDown className={`size-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} aria-hidden="true" />
             </button>
 
             {showAdvanced && (
-              <div className="mt-3 space-y-3 p-4 rounded-2xl bg-meridian-lavenderLight/50 border border-meridian-border text-xs text-meridian-text">
-                <div>
-                  <h4 className="font-bold text-meridian-primary flex items-center space-x-1.5">
-                    <Key className="w-3.5 h-3.5" />
-                    <span>Meridian Platform Key (<code>X-API-Key</code>)</span>
-                  </h4>
-                  <p className="text-[11px] text-meridian-textMuted mt-0.5 leading-relaxed">
-                    Internal security token that authenticates client requests against Meridian platform endpoints.
-                  </p>
-                  <input
-                    type="text"
-                    value={platformKey}
-                    onChange={(e) => setPlatformKey(e.target.value)}
-                    placeholder="meridian-test-secret-key-2026"
-                    aria-label="Meridian Platform Key"
-                    className="w-full mt-1.5 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
-                  />
-                </div>
+              <div data-testid="platform-key-panel" className="mt-3 rounded-sm border border-hairline bg-surface-sunken p-4">
+                <p className="text-label leading-relaxed text-muted">
+                  Internal security token that authenticates client requests against Meridian
+                  platform endpoints. Sent as the <code className="id-mono text-ink">X-API-Key</code> header.
+                </p>
+                <input
+                  id="platform-key-input"
+                  type="text"
+                  value={platformKey}
+                  onChange={(e) => setPlatformKey(e.target.value)}
+                  placeholder="meridian-test-secret-key-2026"
+                  aria-label="Meridian Platform Key"
+                  className="mt-2.5 w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
+                />
               </div>
             )}
           </div>
         </div>
 
-        {/* Fixed Footer */}
-        <div className="p-4 sm:p-5 pt-3 border-t border-meridian-border shrink-0 flex items-center justify-between bg-meridian-lavenderLight/40">
+        {/* Footer — Cancel and Save & Apply only. The connection checks live
+            with the fields they read, not here. */}
+        <div
+          data-testid="settings-modal-footer"
+          className="flex shrink-0 items-center justify-end gap-2 border-t border-hairline bg-surface px-5 py-3"
+        >
           <button
             type="button"
-            onClick={handleTestAndFetchModels}
-            disabled={testing}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-meridian-primary bg-white hover:bg-meridian-blossom border border-meridian-border flex items-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+            onClick={onClose}
+            className="cursor-pointer rounded-sm px-3.5 py-1.5 text-label font-medium text-muted transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            {testing ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Zap className="w-3.5 h-3.5 text-meridian-primary" />
-            )}
-            <span>Test Connection & Fetch Models</span>
+            Cancel
           </button>
-
-          <div className="flex space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-meridian-textMuted hover:bg-white transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSave()}
-              disabled={loading || saveSuccess}
-              className={`px-6 py-2 rounded-xl text-xs font-bold shadow-glow flex items-center space-x-1.5 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none ${
-                saveSuccess
-                  ? 'bg-emerald-600 text-white cursor-default'
-                  : 'bg-meridian-primary hover:bg-meridian-primaryHover text-white'
-              }`}
-            >
-              {loading ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <span>Save & Apply</span>
-              )}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => handleSave()}
+            disabled={loading || saveSuccess}
+            className={`flex cursor-pointer items-center gap-1.5 rounded-sm px-5 py-1.5 text-label font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              saveSuccess ? 'bg-ok' : 'bg-accent hover:bg-accent-ink'
+            }`}
+          >
+            {loading ? (
+              <>
+                <RefreshCw className="size-3.5 animate-spin" aria-hidden="true" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <span>Save &amp; Apply</span>
+            )}
+          </button>
         </div>
       </div>
     </div>
@@ -889,4 +928,3 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return createPortal(modalContent, document.body);
 };
-

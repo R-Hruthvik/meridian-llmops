@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SettingsModal } from './SettingsModal';
 import { api, ApiError } from '../services/api';
@@ -371,7 +371,12 @@ describe('SettingsModal - masked settings contract (F1/F2/F3/F5)', () => {
       expect(api.getLLMSettings).toHaveBeenCalled();
     });
 
-    expect(await screen.findByText((_content, el) => el?.textContent === 'Configured ••••')).toBeInTheDocument();
+    // StatusChip nests a decorative dot inside the chip, so the label is
+    // disambiguated by its slot. The masked-view contract is unchanged: the
+    // chip still reads "Configured ••••" and the input is still never filled.
+    expect(
+      await screen.findByText('Configured ••••', { selector: '[data-slot="label"]' }),
+    ).toBeInTheDocument();
     const openaiInput = screen.getByPlaceholderText('sk-proj-...') as HTMLInputElement;
     expect(openaiInput.value).toBe('');
   });
@@ -519,7 +524,7 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
     expect(payload).not.toHaveProperty('max_cycles');
   });
 
-  it('G5: Quick ping calls testLLMConnection and shows latency inline', async () => {
+  it('G5: the saved-config check calls testLLMConnection and shows latency inline', async () => {
     const user = userEvent.setup();
     render(
       <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
@@ -529,11 +534,121 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
       expect(api.getLLMSettings).toHaveBeenCalled();
     });
 
-    await user.click(screen.getByRole('button', { name: /Quick ping/i }));
+    await user.click(screen.getByRole('button', { name: /check saved config/i }));
 
     await waitFor(() => {
       expect(api.testLLMConnection).toHaveBeenCalledTimes(1);
     });
     expect(await screen.findByText(/Successfully connected.*87 ms/)).toBeInTheDocument();
+  });
+});
+
+describe('SettingsModal - connection actions, footer, platform key (H1-H4)', () => {
+  const mockGet = {
+    active_provider: 'openai',
+    default_model: 'gpt-4o-mini',
+    providers_configured: { openai: true, ollama: true },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
+      active_provider: 'openai',
+      providers: [],
+    });
+    (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'success',
+      message: 'Successfully connected to gpt-4o-mini via openai',
+      latency_ms: 87.4,
+    });
+  });
+
+  const openModal = async () => {
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+  };
+
+  it('H1: one labelled connection group holds both checks with distinct, self-contained copy', async () => {
+    await openModal();
+
+    const group = screen.getByTestId('connection-group');
+
+    const savedCheck = within(group).getByRole('button', { name: /check saved config/i });
+    const typedCheck = within(group).getByRole('button', { name: /validate typed values/i });
+
+    // Each action's own block says what that action reads and what it does.
+    expect(savedCheck.closest('div')).toHaveTextContent(/already stored on the server/i);
+    expect(savedCheck.closest('div')).toHaveTextContent(/ignores the values you just typed/i);
+    expect(typedCheck.closest('div')).toHaveTextContent(/values you just typed/i);
+    expect(typedCheck.closest('div')).toHaveTextContent(/model list/i);
+
+    // No tip anywhere that points at a control in another part of the modal.
+    expect(screen.queryByText(/💡/)).toBeNull();
+    expect(screen.queryByText(/below to validate/i)).toBeNull();
+  });
+
+  it('H2: a failed saved-config check shows no latency suffix', async () => {
+    const user = userEvent.setup();
+    (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'failed',
+      message: 'Missing API Key. Please enter an API key for the selected provider.',
+      latency_ms: 0,
+    });
+
+    await openModal();
+    await user.click(screen.getByRole('button', { name: /check saved config/i }));
+
+    expect(await screen.findByText(/Missing API Key/i)).toBeInTheDocument();
+    expect(screen.queryByText(/\(\d+\s*ms\)/)).toBeNull();
+  });
+
+  it('H2: a successful saved-config check still reports the latency', async () => {
+    const user = userEvent.setup();
+
+    await openModal();
+    await user.click(screen.getByRole('button', { name: /check saved config/i }));
+
+    expect(await screen.findByText(/Successfully connected.*87 ms/)).toBeInTheDocument();
+  });
+
+  it('H3: the fixed footer carries exactly Cancel and Save & Apply', async () => {
+    await openModal();
+
+    const footer = screen.getByTestId('settings-modal-footer');
+    const labels = within(footer)
+      .getAllByRole('button')
+      .map((b) => b.textContent?.trim());
+    expect(labels).toEqual(['Cancel', 'Save & Apply']);
+
+    // Neither connection check competes for the footer — both live in the body.
+    expect(within(footer).queryByRole('button', { name: /check saved config/i })).toBeNull();
+    expect(within(footer).queryByRole('button', { name: /validate typed values/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /check saved config/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /validate typed values/i })).toBeInTheDocument();
+  });
+
+  it('H4: the platform key field carries a single title', async () => {
+    const user = userEvent.setup();
+
+    await openModal();
+    await user.click(screen.getByRole('button', { name: /What is the Meridian Platform Key/i }));
+
+    const panel = screen.getByTestId('platform-key-panel');
+    // One title for one control: the disclosure above it, never a second
+    // heading or a second visible label inside the panel.
+    expect(within(panel).queryByRole('heading')).toBeNull();
+    expect(within(panel).queryByText('Meridian Platform Key (X-API-Key)')).toBeNull();
+    expect(within(panel).queryByText('Platform key')).toBeNull();
+
+    // The explanation and the field itself are untouched.
+    expect(within(panel).getByText(/Internal security token/)).toBeInTheDocument();
+    expect(within(panel).getByLabelText('Meridian Platform Key')).toBeInTheDocument();
   });
 });
