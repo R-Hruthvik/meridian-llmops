@@ -132,6 +132,14 @@ class QueryRequest(BaseModel):
     enforce_guardrails: bool = Field(True, description="Whether to enforce input/output rails")
 
 
+class ServingProvenance(BaseModel):
+    """Who actually served this response. Nulls mean no LLM produced the answer."""
+
+    provider: str | None = Field(None, description="Provider that actually served the request, or null when no LLM served it")
+    model: str | None = Field(None, description="Model the upstream reported it served (may differ from what was requested), or null when no LLM served it")
+    fresh: bool = Field(False, description="True only when this request's own upstream call returned non-empty content attributed to the fields above")
+
+
 class QueryResponse(BaseModel):
     """Unified system response payload."""
     query: str
@@ -143,8 +151,9 @@ class QueryResponse(BaseModel):
     refusal: bool = Field(False, description="Whether the response is a safe refusal fallback")
     execution_time_ms: float = Field(0.0, description="Total latency in milliseconds")
     degraded_reason: str | None = Field(None, description="Why this response was produced on a degraded path (e.g. LLM generation failed); null when a normal generation succeeded")
-    serving_provider: str = Field("openai", description="Upstream LLM provider that generated the response")
-    serving_model: str = Field("gpt-4o-mini", description="Specific model that generated the response")
+    serving_provider: str | None = Field("openai", description="Upstream LLM provider that generated the response; null when no LLM served it")
+    serving_model: str | None = Field("gpt-4o-mini", description="Model that generated the response as reported upstream; null when no LLM served it")
+    serving: ServingProvenance = Field(default_factory=ServingProvenance, description="Explicit serving provenance; the authoritative signal for issue #35")
 
 
 # =====================================================================

@@ -21,6 +21,7 @@ from packages.core.models import (
     QueryRequest,
     QueryResponse,
     SearchResult,
+    ServingProvenance,
     UpdateLLMSettingsRequest,
 )
 from packages.core.secrets_store import SECRET_SUFFIX
@@ -393,6 +394,8 @@ async def query_endpoint(
     """Executes the self-healing Agentic RAG pipeline with guardrails and tracing."""
     start_time = time.time()
     trace_ctx = tracer.trace(name="rag-query-pipeline", tenant_id=tenant_id)
+    # Issue #35: provenance must come from the upstream response, not from config.
+    served_seq_before = llm_client.served_snapshot()[0]
 
     with trace_ctx as trace:
         # 1. Input Guardrails
@@ -450,7 +453,23 @@ async def query_endpoint(
             )
 
     elapsed_ms = (time.time() - start_time) * 1000
-    active_cfg = get_active_llm_config()
+
+    # Issue #35: report who actually served this. The upstream may have substituted a
+    # different model than we asked for, and on bypass/refusal/degraded paths no LLM
+    # served the answer at all — in both cases a config echo would be a lie.
+    seq_after, served_provider, served_model, requested_model, had_content = llm_client.served_snapshot()
+    llm_served = seq_after > served_seq_before and had_content and not final_state.get("is_refusal", False)
+    if llm_served:
+        provider_value, model_value = served_provider, served_model
+        if served_model != requested_model:
+            logger.warning(
+                "LLM model substitution (issue #35): requested '%s', upstream served '%s' via %s",
+                requested_model,
+                served_model,
+                served_provider,
+            )
+    else:
+        provider_value, model_value = None, None
 
     chunks_data = [
         SearchResult(
@@ -488,8 +507,13 @@ async def query_endpoint(
         verified=final_state.get("is_grounded", False),
         refusal=final_state.get("is_refusal", False),
         execution_time_ms=elapsed_ms,
-        serving_provider=active_cfg.get("provider", "openai"),
-        serving_model=active_cfg.get("model", "gpt-4o-mini"),
+        serving_provider=provider_value,
+        serving_model=model_value,
+        serving=ServingProvenance(
+            provider=provider_value,
+            model=model_value,
+            fresh=bool(llm_served),
+        ),
         degraded_reason=degraded_reason,
     )
 
