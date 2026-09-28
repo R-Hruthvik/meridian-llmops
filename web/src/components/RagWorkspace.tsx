@@ -212,7 +212,9 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                     ? 'Rate Limit Exceeded'
                     : error.status === 401
                       ? 'Authentication Error'
-                      : 'Query Intercepted / Failed'}
+                      : error.status === 422
+                        ? 'Validation Error'
+                        : 'Query Intercepted / Failed'}
                 </span>
                 {error.status && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-black/5 border border-current/30">
@@ -294,7 +296,15 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
             {/* Telemetry & Grounding Verification Bar */}
             <div className="flex flex-wrap items-center justify-between gap-2.5 bg-meridian-bg/80 p-3 rounded-2xl border border-meridian-border/70 text-xs">
               <div className="flex flex-wrap items-center gap-2">
-                {response.refusal ? (
+                {response.degraded_reason ? (
+                  <span
+                    className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 border border-amber-300 text-amber-800 shadow-sm"
+                    title={response.degraded_reason}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Degraded Response</span>
+                  </span>
+                ) : response.refusal ? (
                   <span className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 border border-amber-300 text-amber-800 shadow-sm">
                     <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
                     <span>Safe Refusal Fallback</span>
@@ -319,16 +329,6 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                   <span>Cycle {response.cycle_count}/{maxCycles}</span>
                 </span>
 
-                {response.degraded_reason && (
-                  <span
-                    className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 border border-red-300 text-red-800 shadow-sm"
-                    title={response.degraded_reason}
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-                    <span>Degraded Path</span>
-                  </span>
-                )}
-
                 {response.serving_model && (
                   <span className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-white border border-meridian-border text-meridian-text shadow-sm">
                     <Zap className="w-3.5 h-3.5 text-meridian-primary" />
@@ -347,7 +347,14 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
 
             {/* Major Focus Hero Answer Body */}
             <div className="bg-white border border-meridian-border/80 rounded-2xl p-5 md:p-6 shadow-inner">
-              <MarkdownRenderer content={response.answer} />
+              {!response.answer || !response.answer.trim() ? (
+                <p className="text-xs text-meridian-textMuted font-medium leading-relaxed">
+                  The pipeline returned an empty answer on a degraded path
+                  {response.degraded_reason ? `: ${response.degraded_reason}` : ' (generation_error/placeholder).'}
+                </p>
+              ) : (
+                <MarkdownRenderer content={response.answer} />
+              )}
             </div>
           </div>
         )}

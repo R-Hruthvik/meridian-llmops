@@ -8,13 +8,12 @@ import {
   Key,
   Layers,
   RefreshCw,
-  Server,
   X,
   Zap,
 } from 'lucide-react';
-import { api } from '../services/api';
+import { api, ApiError } from '../services/api';
 import { PROVIDER_DEFAULT_BASE_URLS, PROVIDER_MODELS } from '../constants/providerModels';
-import type { ProviderInfo, ProvidersResponse } from '../types/api';
+import type { MaskedKeyStatus, ProviderInfo, ProvidersResponse, UpdateLLMSettingsPayload } from '../types/api';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -51,12 +50,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     'llama-3.3-70b-versatile',
     'deepseek-chat',
   ]);
-  const [litellmUrl, setLitellmUrl] = useState('http://localhost:4000');
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // Per-provider key status from providers_configured (GET booleans) merged
+  // with POST masked-view hints. Never written into password inputs.
+  const [keyStatus, setKeyStatus] = useState<Record<string, MaskedKeyStatus>>({});
 
   // Registry state
   const [providersData, setProvidersData] = useState<ProvidersResponse | null>(null);
@@ -80,10 +82,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         const activeProvider = settings.active_provider || 'openai';
         if (settings.active_provider) setProvider(activeProvider);
         if (settings.default_model) setDefaultModel(settings.default_model);
-        if (settings.litellm_base_url) setLitellmUrl(settings.litellm_base_url);
-        if (settings.openai_org_id) setOpenaiOrgId(settings.openai_org_id);
-        if (settings.openai_proj_id) setOpenaiProjId(settings.openai_proj_id);
         if (settings.custom_base_url) setCustomBaseUrl(settings.custom_base_url);
+
+        // Per-provider configured flags (booleans only — no key material).
+        // Password inputs are intentionally never populated from the server.
+        const configured = settings.providers_configured ?? {};
+        setKeyStatus((prev) => {
+          const next: Record<string, MaskedKeyStatus> = { ...prev };
+          for (const [providerId, isConfigured] of Object.entries(configured)) {
+            next[providerId] = { configured: Boolean(isConfigured), hint: next[providerId]?.hint };
+          }
+          next['ollama'] = { configured: true };
+          return next;
+        });
 
         // Restore the model list: fetched models for the active provider first, registry fallback
         const savedModels = settings.provider_available_models?.[activeProvider] ?? [];
@@ -207,6 +218,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSave = async (switchProvider?: string, switchModel?: string) => {
     setLoading(true);
     setSaveSuccess(false);
+    setSaveError(null);
     if (platformKey) {
       onSavePlatformApiKey(platformKey);
       api.setApiKey(platformKey);
@@ -218,20 +230,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     localStorage.setItem('meridian_active_provider', targetProvider);
     localStorage.setItem('meridian_default_model', targetModel);
 
+    // Backend accepts only UpdateLLMSettingsRequest fields (extra="forbid" → 422).
+    // openai_proj_id is test-call-only; litellm_base_url is not a settings field.
+    // custom_api_key/custom_base_url are sent only for the OpenAI-compatible
+    // family (groq/openrouter/deepseek/custom); ollama sends custom_base_url
+    // (backend fallback) but never a key. Blank strings are dropped so blanks
+    // preserve saved values server-side.
+    const isCustomFamily = ['groq', 'openrouter', 'deepseek', 'custom'].includes(targetProvider);
+    const payload: UpdateLLMSettingsPayload = {
+      active_provider: targetProvider,
+      default_model: targetModel,
+    };
+    // Only include non-blank fields so blanks preserve saved values server-side
+    // (and absent keys never appear on the wire at all).
+    if (openaiKey) payload.openai_api_key = openaiKey;
+    if (openaiOrgId) payload.openai_org_id = openaiOrgId;
+    if (anthropicKey) payload.anthropic_api_key = anthropicKey;
+    if (customKey) {
+      if (targetProvider === 'groq') payload.groq_api_key = customKey;
+      if (targetProvider === 'openrouter') payload.openrouter_api_key = customKey;
+      if (targetProvider === 'deepseek') payload.deepseek_api_key = customKey;
+      if (isCustomFamily) payload.custom_api_key = customKey;
+    }
+    if (targetProvider === 'ollama') {
+      if (ollamaBaseUrl) payload.custom_base_url = ollamaBaseUrl;
+    } else if (isCustomFamily && customBaseUrl) {
+      payload.custom_base_url = customBaseUrl;
+    }
+
     try {
-      await api.updateLLMSettings({
-        active_provider: targetProvider,
-        openai_api_key: openaiKey || undefined,
-        openai_org_id: openaiOrgId || undefined,
-        openai_proj_id: openaiProjId || undefined,
-        anthropic_api_key: anthropicKey || undefined,
-        groq_api_key: targetProvider === 'groq' && customKey ? customKey : undefined,
-        openrouter_api_key: targetProvider === 'openrouter' && customKey ? customKey : undefined,
-        deepseek_api_key: targetProvider === 'deepseek' && customKey ? customKey : undefined,
-        custom_api_key: customKey || undefined,
-        custom_base_url: customBaseUrl || undefined,
-        default_model: targetModel,
-        litellm_base_url: litellmUrl || undefined,
+      const saved = await api.updateLLMSettings(payload);
+
+      // Merge POST masked-view hints ({configured, hint}) into status badges.
+      setKeyStatus((prev) => {
+        const next: Record<string, MaskedKeyStatus> = { ...prev };
+        const masked = saved as unknown as Record<string, MaskedKeyStatus | undefined>;
+        const keyByProvider: Record<string, string> = {
+          openai: 'openai_api_key',
+          anthropic: 'anthropic_api_key',
+          groq: 'groq_api_key',
+          openrouter: 'openrouter_api_key',
+          deepseek: 'deepseek_api_key',
+          custom: 'custom_api_key',
+        };
+        for (const [providerId, key] of Object.entries(keyByProvider)) {
+          const entry = masked[key];
+          if (entry && typeof entry === 'object' && 'configured' in entry) {
+            next[providerId] = { configured: entry.configured, hint: entry.hint ?? next[providerId]?.hint };
+          }
+        }
+        if (saved.providers_configured) {
+          for (const [providerId, isConfigured] of Object.entries(saved.providers_configured)) {
+            next[providerId] = { configured: Boolean(isConfigured), hint: next[providerId]?.hint };
+          }
+        }
+        next['ollama'] = { configured: true };
+        return next;
       });
 
       setSaveSuccess(true);
@@ -240,8 +294,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setSaveSuccess(false);
         onClose();
       }, 600);
-    } catch {
-      // Handled
+    } catch (err: unknown) {
+      // Surface validation (422) and server errors inline — never swallow.
+      const msg =
+        err instanceof ApiError && err.detail
+          ? `Save failed (HTTP ${err.status}): ${err.detail}`
+          : err instanceof Error
+            ? err.message
+            : 'Settings save failed.';
+      setSaveError(msg);
     } finally {
       setLoading(false);
     }
@@ -250,6 +311,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSelectProviderCard = (p: ProviderInfo) => {
     setProvider(p.id);
     handleProviderChange(p.id);
+  };
+
+  // Per-provider "Configured •••ab12" badge from providers_configured / POST hint.
+  const renderKeyStatus = (providerId: string) => {
+    const s = keyStatus[providerId];
+    if (!s) return null;
+    if (!s.configured) {
+      return (
+        <span className="text-[10px] font-bold text-meridian-textMuted bg-white border border-meridian-border px-2 py-0.5 rounded-full">
+          Not configured
+        </span>
+      );
+    }
+    const suffix = s.hint && s.hint !== '****' ? ` •••${s.hint}` : ' ••••';
+    return (
+      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+        Configured{suffix}
+      </span>
+    );
   };
 
   const modalContent = (
@@ -369,7 +449,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="space-y-3">
                 <div>
                   <label className="block text-[11px] font-bold text-meridian-text mb-1 flex items-center justify-between">
-                    <span>OpenAI API Key (<code className="text-meridian-primary">OPENAI_API_KEY</code>)</span>
+                    <span className="flex items-center space-x-2">
+                      <span>OpenAI API Key (<code className="text-meridian-primary">OPENAI_API_KEY</code>)</span>
+                      {renderKeyStatus('openai')}
+                    </span>
                     <span className="text-[10px] text-meridian-textMuted font-normal">Leave blank to keep existing</span>
                   </label>
                   <input
@@ -397,7 +480,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   <div>
                     <label className="block text-[10px] font-semibold text-meridian-textMuted mb-1">
-                      Project ID (Optional):
+                      Project ID (Optional, test-call only — not saved):
                     </label>
                     <input
                       type="text"
@@ -415,8 +498,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {provider === 'anthropic' && (
               <div>
                 <label className="block text-[11px] font-bold text-meridian-text mb-1 flex items-center justify-between">
-                  <span>Anthropic API Key (<code className="text-meridian-primary">ANTHROPIC_API_KEY</code>)</span>
-                  <span className="text-[10px] text-meridian-textMuted font-normal">For Claude 3.5 & 3.7</span>
+                  <span className="flex items-center space-x-2">
+                    <span>Anthropic API Key (<code className="text-meridian-primary">ANTHROPIC_API_KEY</code>)</span>
+                    {renderKeyStatus('anthropic')}
+                  </span>
+                  <span className="text-[10px] text-meridian-textMuted font-normal">Leave blank to keep existing</span>
                 </label>
                 <input
                   type="password"
@@ -446,8 +532,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div>
                   <label className="block text-[11px] font-bold text-meridian-text mb-1 flex items-center justify-between">
-                    <span>Provider API Key:</span>
-                    <span className="text-[10px] text-meridian-textMuted font-normal">Optional for local vLLM / LMStudio</span>
+                    <span className="flex items-center space-x-2">
+                      <span>Provider API Key:</span>
+                      {renderKeyStatus(provider)}
+                    </span>
+                    <span className="text-[10px] text-meridian-textMuted font-normal">Leave blank to keep existing; optional for local endpoints</span>
                   </label>
                   <input
                     type="password"
@@ -556,6 +645,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
+          {/* Save Error Banner (422/5xx detail surfaced inline) */}
+          {saveError && (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center space-x-2 animate-in fade-in duration-150"
+            >
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+              <span className="font-medium leading-relaxed">{saveError}</span>
+            </div>
+          )}
+
           {/* Expandable Architecture Explanations: X-API-Key & LiteLLM */}
           <div className="pt-2 border-t border-meridian-border">
             <button
@@ -563,10 +664,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="flex items-center justify-between w-full text-xs font-bold text-meridian-primary hover:text-meridian-primaryHover py-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
             >
-              <span className="flex items-center space-x-1.5">
-                <HelpCircle className="w-4 h-4 text-meridian-secondary" />
-                <span>What are Meridian Platform Key & LiteLLM Gateway URL?</span>
-              </span>
+                <span className="flex items-center space-x-1.5">
+                  <HelpCircle className="w-4 h-4 text-meridian-secondary" />
+                  <span>What is the Meridian Platform Key?</span>
+                </span>
               <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
             </button>
 
@@ -586,24 +687,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onChange={(e) => setPlatformKey(e.target.value)}
                     placeholder="meridian-test-secret-key-2026"
                     aria-label="Meridian Platform Key"
-                    className="w-full mt-1.5 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
-                  />
-                </div>
-
-                <div className="pt-2 border-t border-meridian-border/60">
-                  <h4 className="font-bold text-meridian-primary flex items-center space-x-1.5">
-                    <Server className="w-3.5 h-3.5" />
-                    <span>LiteLLM Gateway URL</span>
-                  </h4>
-                  <p className="text-[11px] text-meridian-textMuted mt-0.5 leading-relaxed">
-                    The endpoint where the AI Gateway container runs (default <code>http://localhost:4000</code>).
-                  </p>
-                  <input
-                    type="text"
-                    value={litellmUrl}
-                    onChange={(e) => setLitellmUrl(e.target.value)}
-                    placeholder="http://localhost:4000"
-                    aria-label="LiteLLM Gateway Base URL"
                     className="w-full mt-1.5 bg-white border border-meridian-border rounded-xl px-3 py-1.5 text-xs text-meridian-text font-mono outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary"
                   />
                 </div>

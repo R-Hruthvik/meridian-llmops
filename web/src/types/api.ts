@@ -67,26 +67,89 @@ export interface TenantMetrics {
   total_cost_usd: number;
 }
 
+export interface HealthServiceStatus {
+  status: string;
+  endpoint: string;
+  reachable: boolean;
+}
+
 export interface HealthStatus {
   status: string;
   service: string;
+  storage_documents?: number;
+  vector_chunks?: number;
+  services?: Record<string, HealthServiceStatus>;
 }
 
-export interface LLMSettings {
+/** Masked key status returned by POST /v1/settings/llm (never key material). */
+export interface MaskedKeyStatus {
+  configured: boolean;
+  hint?: string;
+}
+
+/**
+ * GET /v1/settings/llm view: provider booleans only, no key material.
+ * Keys are never exposed — per-provider state lives in `providers_configured`.
+ */
+export interface LLMSettingsGet {
   active_provider: string;
-  openai_api_key?: string;
+  default_model: string;
+  litellm_base_url?: string;
+  custom_base_url?: string;
+  provider_models?: Record<string, string>;
+  provider_available_models?: Record<string, string[]>;
+  providers_configured: Record<string, boolean>;
+}
+
+/**
+ * POST /v1/settings/llm masked view: same scalar fields, but secret-suffixed
+ * keys are `{configured, hint}` objects (hint = last-4, or "****").
+ */
+export interface MaskedLLMSettings {
+  active_provider: string;
+  default_model: string;
+  litellm_base_url?: string;
+  custom_base_url?: string;
   openai_org_id?: string;
-  openai_proj_id?: string;
+  provider_models?: Record<string, string>;
+  provider_available_models?: Record<string, string[]>;
+  providers_configured?: Record<string, boolean>;
+  openai_api_key?: MaskedKeyStatus;
+  anthropic_api_key?: MaskedKeyStatus;
+  groq_api_key?: MaskedKeyStatus;
+  openrouter_api_key?: MaskedKeyStatus;
+  deepseek_api_key?: MaskedKeyStatus;
+  custom_api_key?: MaskedKeyStatus;
+}
+
+/**
+ * Payload for POST /v1/settings/llm (UpdateLLMSettingsRequest, extra="forbid").
+ * Only these fields are accepted — unknown fields (e.g. openai_proj_id,
+ * litellm_base_url) are rejected with 422. Blank strings are dropped
+ * server-side ("blank preserves saved").
+ */
+export interface UpdateLLMSettingsPayload {
+  provider?: string;
+  api_key?: string;
+  custom_api_key?: string;
+  openai_api_key?: string;
   anthropic_api_key?: string;
   groq_api_key?: string;
   openrouter_api_key?: string;
   deepseek_api_key?: string;
-  custom_api_key?: string;
+  active_provider?: string;
+  openai_org_id?: string;
+  default_model?: string;
   custom_base_url?: string;
-  default_model: string;
-  litellm_base_url: string;
-  provider_available_models?: Record<string, string[]>;
+  model?: string;
+  base_url?: string;
+  timeout_seconds?: number;
+  enforce_guardrails?: boolean;
+  max_cycles?: number;
 }
+
+/** @deprecated Use LLMSettingsGet (GET view) or MaskedLLMSettings (POST view). */
+export type LLMSettings = LLMSettingsGet;
 
 export interface LLMTestAndFetchRequest {
   provider: string;

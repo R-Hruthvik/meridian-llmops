@@ -117,6 +117,76 @@ describe('MeridianApiClient', () => {
     });
   });
 
+  describe('error detail normalization (422 arrays)', () => {
+    it('joins FastAPI 422 array detail into a string message', async () => {
+      const detail = [
+        { loc: ['body', 'openai_proj_id'], msg: 'Extra inputs are not permitted', type: 'extra_forbidden' },
+        { loc: ['body', 'litellm_base_url'], msg: 'Extra inputs are not permitted', type: 'extra_forbidden' },
+      ];
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse({ detail }, 422, 'Unprocessable Entity') as unknown as Response);
+
+      try {
+        await api.query({ query: 'test' });
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(422);
+        expect(typeof (err as ApiError).message).toBe('string');
+        expect((err as ApiError).message).toContain('openai_proj_id');
+        expect((err as ApiError).message).toContain('Extra inputs are not permitted');
+        expect((err as ApiError).message).not.toContain('[object Object]');
+      }
+    });
+
+    it('falls back when detail is missing or non-string', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse({}, 500, 'Server Error') as unknown as Response);
+
+      try {
+        await api.query({ query: 'test' });
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(500);
+        expect(typeof (err as ApiError).message).toBe('string');
+      }
+    });
+  });
+
+  describe('checkGuardrails() canonical GET contract', () => {
+    it('calls GET /v1/guardrails/check?text= (no POST body)', async () => {
+      const mock = mockResponse({ allowed: true, sanitized_text: 'hi', policy_violations: [], action_taken: 'pass' }, 200);
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce(mock as unknown as Response);
+
+      await api.checkGuardrails('hello <script>', 'acme');
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/v1/guardrails/check?text=');
+      expect(url).toContain(encodeURIComponent('hello <script>'));
+      expect(init.method).toBe('GET');
+      expect(init.body).toBeUndefined();
+      expect((init.headers as Record<string, string>)['X-Tenant-Id']).toBe('acme');
+    });
+  });
+
+  describe('catalog calls pass tenantId through', () => {
+    it('sends X-Tenant-Id on getDocuments/getDocument/delete', async () => {
+      const docs = { total_documents: 0, total_chunks: 0, total_entities: 0, documents: [] };
+      const fetchSpy = vi.spyOn(global, 'fetch')
+        .mockResolvedValueOnce(mockResponse(docs, 200) as unknown as Response)
+        .mockResolvedValueOnce(mockResponse({ id: 'd1' }, 200) as unknown as Response)
+        .mockResolvedValueOnce(mockResponse({ status: 'deleted', document_id: 'd1', message: 'ok' }, 200) as unknown as Response);
+
+      await api.getDocuments('acme');
+      await api.getDocument('d1', 'acme');
+      await api.deleteDocument('d1', 'acme');
+
+      for (const [, init] of fetchSpy.mock.calls as [string, RequestInit][]) {
+        expect((init.headers as Record<string, string>)['X-Tenant-Id']).toBe('acme');
+      }
+    });
+  });
+
   describe('getDocuments() & deleteDocument()', () => {
     it('fetches document catalog successfully', async () => {
       const mockDocs = {

@@ -49,7 +49,7 @@ export const GuardrailsStudio: React.FC<GuardrailsStudioProps> = ({ tenantId }) 
     setLoading(true);
     setError(null);
     try {
-      const res = await api.checkGuardrails({ text: raw }, tenantId);
+      const res = await api.checkGuardrails(raw, tenantId);
       setResult(res);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Evaluation failed';

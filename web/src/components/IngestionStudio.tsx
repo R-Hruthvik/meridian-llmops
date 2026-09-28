@@ -51,19 +51,24 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDocDetail, setSelectedDocDetail] = useState<DocumentDetail | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const fetchDocuments = async (retry = true) => {
     setLoadingDocs(true);
+    setCatalogError(null);
     try {
-      const res = await api.getDocuments();
+      const res = await api.getDocuments(tenantId);
       setDocList(res);
-    } catch {
+    } catch (err: unknown) {
       // Backend may still be booting — retry the initial load once before giving up
       if (retry) {
         setTimeout(() => {
           void fetchDocuments(false);
         }, 2000);
+      } else {
+        const msg = err instanceof Error ? err.message : 'Failed to load document catalog';
+        setCatalogError(msg);
       }
     } finally {
       setLoadingDocs(false);
@@ -72,7 +77,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
 
   useEffect(() => {
     fetchDocuments();
-  }, []);
+  }, [tenantId]);
 
   // Escape key handler for Chunk Inspector Modal
   useEffect(() => {
@@ -137,7 +142,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
 
   const handleViewDetails = async (doc: DocumentSummary) => {
     try {
-      const detail = await api.getDocument(doc.id);
+      const detail = await api.getDocument(doc.id, tenantId);
       setSelectedDocDetail(detail);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Could not load document chunks';
@@ -152,7 +157,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
 
     setDeletingId(docId);
     try {
-      await api.deleteDocument(docId);
+      await api.deleteDocument(docId, tenantId);
       showToast(`Deleted document "${docTitle}" from knowledge base.`);
       if (selectedDocDetail?.id === docId) {
         setSelectedDocDetail(null);
@@ -296,9 +301,9 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
         </div>
 
         <div className="flex items-center space-x-2">
-          <button
-            onClick={() => void fetchDocuments(false)}
-            disabled={loadingDocs}
+            <button
+              onClick={() => void fetchDocuments(false)}
+              disabled={loadingDocs}
             aria-label="Refresh document catalog"
             className="p-2 rounded-xl bg-white border border-meridian-border text-meridian-textMuted hover:text-meridian-primary hover:bg-meridian-bg transition-all text-xs font-semibold flex items-center space-x-1.5 shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
             title="Refresh Knowledge Base"
@@ -310,7 +315,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
           <button
             onClick={async () => {
               try {
-                const res = await api.seedSampleDocuments();
+                const res = await api.seedSampleDocuments(tenantId);
                 showToast(`Seeded ${res.documents_seeded} sample architecture documents.`);
                 await fetchDocuments();
               } catch (err: unknown) {
@@ -332,7 +337,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
                   return;
                 }
                 try {
-                  const res = await api.clearAllDocuments();
+                  const res = await api.clearAllDocuments(tenantId);
                   showToast(`Cleared all ${res.deleted_count} documents from storage.`);
                   await fetchDocuments();
                 } catch (err: unknown) {
@@ -366,10 +371,24 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
                 className="w-full bg-meridian-bg border border-meridian-border rounded-xl pl-9 pr-3.5 py-2 text-xs text-meridian-text outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white transition-all font-medium"
               />
             </div>
-            <div className="text-[11px] font-semibold text-meridian-textMuted">
-              Showing {filteredDocs.length} of {docList.total_documents} documents
+            <div className="text-[11px] font-semibold text-meridian-textMuted flex items-center space-x-2">
+              <span>
+                Showing {filteredDocs.length} of {docList.total_documents} documents
+              </span>
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-meridian-lavenderLight border border-meridian-border text-meridian-primary"
+                title="The document catalog is shared across tenants"
+              >
+                Global
+              </span>
             </div>
           </div>
+
+          {catalogError && (
+            <div role="alert" aria-live="polite" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+              {catalogError}
+            </div>
+          )}
 
           {/* Document Table / Card Grid */}
           {filteredDocs.length === 0 ? (

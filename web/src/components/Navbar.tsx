@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { SettingsModal } from './SettingsModal';
 import { api } from '../services/api';
+import type { BackendHealth } from '../App';
 import type { LLMSettings } from '../types/api';
 
 interface NavbarProps {
@@ -17,7 +18,7 @@ interface NavbarProps {
   setActiveTab: (tab: string) => void;
   tenantId: string;
   setTenantId: (tenant: string) => void;
-  isBackendHealthy: boolean;
+  backendHealth: BackendHealth;
   apiKey: string;
   setApiKey: (key: string) => void;
 }
@@ -34,7 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   tenantId,
   setTenantId,
-  isBackendHealthy,
+  backendHealth,
   apiKey,
   setApiKey,
 }) => {
@@ -150,22 +151,28 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Settings className="w-3.5 h-3.5 text-meridian-textMuted group-hover:text-meridian-primary group-hover:rotate-45 transition-transform duration-300 ml-0.5 shrink-0" />
           </button>
 
-          {/* Health Status Indicator */}
+          {/* Health Status Indicator (driven by /health services map) */}
           <div
             role="status"
             aria-live="polite"
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold ${
-              isBackendHealthy
+              backendHealth === 'online'
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                : 'bg-rose-50 border-rose-200 text-rose-700'
+                : backendHealth === 'degraded'
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'bg-rose-50 border-rose-200 text-rose-700'
             }`}
           >
             <span
               className={`w-2 h-2 rounded-full ${
-                isBackendHealthy ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
+                backendHealth === 'online'
+                  ? 'bg-emerald-500 animate-pulse'
+                  : backendHealth === 'degraded'
+                    ? 'bg-amber-500 animate-pulse'
+                    : 'bg-rose-500'
               }`}
             />
-            <span>{isBackendHealthy ? 'Online' : 'Offline'}</span>
+            <span>{backendHealth === 'online' ? 'Online' : backendHealth === 'degraded' ? 'Degraded' : 'Offline'}</span>
           </div>
         </div>
       </div>

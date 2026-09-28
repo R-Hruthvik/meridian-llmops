@@ -147,6 +147,73 @@ describe('RagWorkspace', () => {
     expect(runButton).toBeDisabled();
   });
 
+  it('renders Validation Error for HTTP 422 with server detail', async () => {
+    const user = userEvent.setup();
+    const validationError = new ApiError(
+      'top_k: Input should be less than or equal to 50',
+      422,
+      'top_k: Input should be less than or equal to 50',
+    );
+    (api.query as ReturnType<typeof vi.fn>).mockRejectedValueOnce(validationError);
+
+    render(<RagWorkspace tenantId="default" />);
+
+    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    await user.type(textarea, 'test query');
+
+    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    await user.click(runButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Validation Error')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/less than or equal to 50/)).toBeInTheDocument();
+  });
+
+  it('prefers Degraded badge over Verified when both are set', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...mockQueryResponse,
+      verified: true,
+      degraded_reason: 'LLM generation failed, served fallback',
+    });
+
+    render(<RagWorkspace tenantId="default" />);
+
+    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    await user.type(textarea, 'test query');
+
+    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    await user.click(runButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Degraded Response')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Critic Verified Grounded')).toBeNull();
+  });
+
+  it('renders empty-answer fallback on degraded empty responses', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...mockQueryResponse,
+      answer: '   ',
+      verified: false,
+      degraded_reason: 'LLM generation failed, served fallback',
+    });
+
+    render(<RagWorkspace tenantId="default" />);
+
+    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    await user.type(textarea, 'test query');
+
+    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    await user.click(runButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/empty answer on a degraded path/)).toBeInTheDocument();
+    });
+  });
+
   it('does not write provider API keys to localStorage', () => {
     render(<RagWorkspace tenantId="default" />);
 

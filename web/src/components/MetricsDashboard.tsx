@@ -12,13 +12,22 @@ import {
   Zap,
 } from 'lucide-react';
 import { api } from '../services/api';
-import type { TenantMetrics } from '../types/api';
+import type { HealthServiceStatus, TenantMetrics } from '../types/api';
 
 interface MetricsDashboardProps {
   tenantId: string;
 }
 
-const INFRASTRUCTURE_SERVICES = [
+interface InfraService {
+  name: string;
+  port: string;
+  status: string;
+  type: string;
+  icon: typeof Cpu;
+  healthKey?: string;
+}
+
+const INFRASTRUCTURE_SERVICES: InfraService[] = [
   {
     name: 'Meridian RAG Engine (FastAPI)',
     port: ':8000',
@@ -32,6 +41,7 @@ const INFRASTRUCTURE_SERVICES = [
     status: 'Ready',
     type: 'Ingress Proxy',
     icon: Server,
+    healthKey: 'litellm',
   },
   {
     name: 'Qdrant Vector Database',
@@ -39,6 +49,7 @@ const INFRASTRUCTURE_SERVICES = [
     status: 'Ready',
     type: 'Dense Storage',
     icon: Database,
+    healthKey: 'qdrant',
   },
   {
     name: 'Neo4j Knowledge Graph',
@@ -46,6 +57,7 @@ const INFRASTRUCTURE_SERVICES = [
     status: 'Ready',
     type: 'Entity Graph',
     icon: Network,
+    healthKey: 'neo4j',
   },
   {
     name: 'Langfuse Tracing',
@@ -55,11 +67,13 @@ const INFRASTRUCTURE_SERVICES = [
     icon: Activity,
   },
 ];
-
 export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) => {
   const [metrics, setMetrics] = useState<TenantMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Live /health services map; null = unreachable (sane static fallback).
+  const [serviceHealth, setServiceHealth] = useState<Record<string, HealthServiceStatus> | null>(null);
+  const [healthReachable, setHealthReachable] = useState(true);
 
   const fetchMetrics = async () => {
     setLoading(true);
@@ -74,6 +88,14 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
       setMetrics(null);
     } finally {
       setLoading(false);
+    }
+    try {
+      const h = await api.checkHealth();
+      setServiceHealth(h.services ?? {});
+      setHealthReachable(true);
+    } catch {
+      setServiceHealth(null);
+      setHealthReachable(false);
     }
   };
 
@@ -167,6 +189,34 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {INFRASTRUCTURE_SERVICES.map((svc) => {
             const Icon = svc.icon;
+            // Resolve live status from /health services map; fall back to the
+            // static label when health is unreachable or the service has no key.
+            // RAG engine card reflects the health fetch itself (same-origin backend).
+            let label = svc.status;
+            let tone: 'ok' | 'warn' | 'bad' = 'ok';
+            if (svc.name.startsWith('Meridian RAG Engine')) {
+              if (!healthReachable) {
+                label = 'Offline';
+                tone = 'bad';
+              }
+            } else if (svc.healthKey && serviceHealth) {
+              const live = serviceHealth[svc.healthKey];
+              if (live && !live.reachable) {
+                label = 'Degraded';
+                tone = 'warn';
+              }
+            } else if (!healthReachable && !svc.healthKey) {
+              label = 'Unknown';
+              tone = 'warn';
+            }
+            const badgeClass =
+              tone === 'ok'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                : tone === 'warn'
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'bg-rose-50 border-rose-200 text-rose-700';
+            const dotClass =
+              tone === 'ok' ? 'bg-emerald-500 animate-pulse' : tone === 'warn' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500';
             return (
               <div
                 key={svc.name}
@@ -184,9 +234,9 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
                   </div>
                 </div>
 
-                <span className="flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-700">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>{svc.status}</span>
+                <span className={`flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold border ${badgeClass}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+                  <span>{label}</span>
                 </span>
               </div>
             );

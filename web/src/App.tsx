@@ -6,20 +6,24 @@ import { Navbar } from './components/Navbar';
 import { RagWorkspace } from './components/RagWorkspace';
 import { api } from './services/api';
 
+export type BackendHealth = 'online' | 'degraded' | 'offline';
+
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('rag');
   const [tenantId, setTenantId] = useState('default');
   const [apiKey, setApiKey] = useState(api.getApiKey());
-  const [isBackendHealthy, setIsBackendHealthy] = useState(true);
+  const [backendHealth, setBackendHealth] = useState<BackendHealth>('offline');
 
-  // Health check polling
+  // Health check polling (driven by /health services map)
   useEffect(() => {
     const check = async () => {
       try {
-        await api.checkHealth();
-        setIsBackendHealthy(true);
+        const h = await api.checkHealth();
+        const services = h.services ?? {};
+        const anyDegraded = Object.values(services).some((s) => !s.reachable);
+        setBackendHealth(anyDegraded ? 'degraded' : 'online');
       } catch {
-        setIsBackendHealthy(false);
+        setBackendHealth('offline');
       }
     };
 
@@ -40,7 +44,7 @@ export const App: React.FC = () => {
         setActiveTab={setActiveTab}
         tenantId={tenantId}
         setTenantId={setTenantId}
-        isBackendHealthy={isBackendHealthy}
+        backendHealth={backendHealth}
         apiKey={apiKey}
         setApiKey={handleSetApiKey}
       />
