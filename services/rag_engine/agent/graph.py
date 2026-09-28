@@ -5,9 +5,19 @@ import uuid
 from typing import Any
 
 import httpx
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 
 logger = logging.getLogger("meridian.rag_engine.agent")
+
+# Per-request retrieval breadth. Travels in RunnableConfig["configurable"] rather
+# than RagAgentState: a control knob must not bloat every checkpoint, and adding
+# one later needs no state-schema change and no graph recompile.
+DEFAULT_TOP_K = 3
+MIN_TOP_K = 1
+MAX_TOP_K = 50
+RECALL_K_MULTIPLIER = 10
+MAX_RECALL_K = 500
 
 from packages.verification.tiered_verifier import TieredCitationVerifier
 from services.gateway.client import LiteLLMClient
@@ -17,6 +27,37 @@ from services.rag_engine.agent.reformulator import QueryReformulator
 from services.rag_engine.agent.refusal import SafeRefusalGenerator
 from services.rag_engine.agent.state import RagAgentState
 from services.rag_engine.retrieval.hybrid import HybridRetriever
+
+
+def _positive_int(value: Any) -> int | None:
+    """Return value if it is a usable positive int, else None (bools rejected)."""
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def resolve_retrieval_breadth(config: RunnableConfig | None) -> tuple[int, int]:
+    """Resolve (top_k, recall_k) from a request's `configurable` block.
+
+    `top_k` is the final cut handed to the caller; `recall_k` is the fan-out
+    breadth sent to the retriever, so a future rerank stage can recall wide and
+    cut narrow. Invalid or missing values fall back to defaults instead of
+    raising — a malformed request still deserves an answer.
+    """
+    configurable = (config or {}).get("configurable") or {}
+
+    requested_top_k = _positive_int(configurable.get("top_k"))
+    top_k = min(max(requested_top_k or DEFAULT_TOP_K, MIN_TOP_K), MAX_TOP_K)
+
+    requested_recall_k = _positive_int(configurable.get("recall_k"))
+    if requested_recall_k is None:
+        recall_k = top_k * RECALL_K_MULTIPLIER
+    else:
+        # Never let the fan-out fall below the final cut; that would return
+        # fewer results than the caller asked for.
+        recall_k = min(max(requested_recall_k, top_k), MAX_RECALL_K)
+
+    return top_k, recall_k
 
 
 def build_rag_agent_graph(
@@ -35,12 +76,14 @@ def build_rag_agent_graph(
 
     # --- Node Definitions ---
 
-    def retrieve_node(state: RagAgentState) -> dict[str, Any]:
+    def retrieve_node(state: RagAgentState, config: RunnableConfig) -> dict[str, Any]:
         query = state.get("current_search_query") or state["query"]
         cycle = state.get("cycle_count", 0) + 1
 
-        chunks = retriever.retrieve(query, top_k=3)
-        chunk_dicts = [c.model_dump() for c in chunks]
+        top_k, recall_k = resolve_retrieval_breadth(config)
+
+        chunks = retriever.retrieve(query, top_k=recall_k)
+        chunk_dicts = [c.model_dump() for c in chunks[:top_k]]
 
         # Extract graph neighborhood if entities match
         extracted_entities: list[dict[str, Any]] = []
@@ -69,17 +112,20 @@ def build_rag_agent_graph(
             wl = w.lower()
             if len(wl) < 3 or wl in stopwords:
                 continue
-            for ent_name, ent in graph_store.entities.items():
-                if ent_name in seen:
-                    continue
-                el = ent_name.lower()
-                hit = {"name": ent.name, "entity_type": ent.entity_type}
-                if wl == el:
-                    exact_hits.append(hit)
-                    seen.add(ent_name)
-                elif min(len(wl), len(el)) >= 5 and (wl in el or el in wl):
-                    fuzzy_hits.append(hit)
-                    seen.add(ent_name)
+            # O(1) exact match via index
+            ent_obj = graph_store.get_entity_by_lowercase_name(wl)
+            if ent_obj and ent_obj.name not in seen:
+                exact_hits.append({"name": ent_obj.name, "entity_type": ent_obj.entity_type})
+                seen.add(ent_obj.name)
+            else:
+                # Fuzzy matching still requires full scan (only for non-exact words)
+                for ent_name, ent in graph_store.entities.items():
+                    if ent_name in seen:
+                        continue
+                    el = ent_name.lower()
+                    if min(len(wl), len(el)) >= 5 and (wl in el or el in wl):
+                        fuzzy_hits.append({"name": ent.name, "entity_type": ent.entity_type})
+                        seen.add(ent_name)
 
         extracted_entities.extend(exact_hits[:8])
         extracted_entities.extend(fuzzy_hits[: max(0, 12 - len(extracted_entities))])
