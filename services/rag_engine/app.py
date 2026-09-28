@@ -217,8 +217,12 @@ _tested_api_keys: dict[str, str] = {}
 _settings_lock = asyncio.Lock()
 
 
-def get_active_llm_config() -> dict[str, Any]:
-    """Resolves active provider credentials, endpoints, and exact model dynamically."""
+def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
+    """Resolves active provider credentials, endpoints, and exact model dynamically.
+
+    Internal only: returns secrets (``api_key``) for the LLM data plane
+    (agent graph, connectivity test). Never expose via API responses.
+    """
     settings = dict(_runtime_llm_settings)
     provider = settings.get("active_provider", "openai").lower()
     provider_models = settings.get("provider_models", {})
@@ -291,6 +295,14 @@ def get_active_llm_config() -> dict[str, Any]:
     }
 
 
+def get_active_llm_config() -> dict[str, str]:
+    """Thin no-secrets reader over the single settings owner."""
+    from packages.core.settings import get_settings
+
+    s = get_settings()
+    return {"provider": "openai", "model": s.default_llm_model, "base_url": s.litellm_base_url}
+
+
 # Check Docker-backed services readiness (non-blocking, graceful fallback)
 try:
     _service_status = _check_docker_services()
@@ -306,7 +318,7 @@ agent_graph = build_rag_agent_graph(
     retriever=retriever,
     graph_store=graph_store,
     llm_client=llm_client,
-    llm_config_getter=get_active_llm_config,
+    llm_config_getter=_resolve_active_llm_config_with_secrets,
 )
 
 
@@ -601,7 +613,7 @@ async def update_llm_settings(
             retriever=retriever,
             graph_store=graph_store,
             llm_client=llm_client,
-            llm_config_getter=get_active_llm_config,
+            llm_config_getter=_resolve_active_llm_config_with_secrets,
         )
 
     return masked_llm_view(_runtime_llm_settings)
@@ -883,7 +895,7 @@ async def test_llm_connection(tenant_id: str = Depends(verify_api_key)):
     """Tests LLM provider connectivity with a test ping."""
     start = time.time()
     provider = _runtime_llm_settings.get("active_provider", "openai").lower()
-    config = get_active_llm_config()
+    config = _resolve_active_llm_config_with_secrets()
     api_key = config.get("api_key", "")
     base_url = config.get("base_url", "https://api.openai.com/v1")
     model = config.get("model", "gpt-4o-mini")
