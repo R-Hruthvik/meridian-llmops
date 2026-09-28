@@ -1,5 +1,6 @@
 """Unified Meridian RAG Engine & LLMOps FastAPI Application."""
 
+import asyncio
 import json
 import logging
 import os
@@ -15,9 +16,11 @@ from pydantic import BaseModel, Field
 from packages.core.db import init_db
 from packages.core.models import (
     DocumentFormat,
+    IngestDocumentRequest,
     QueryRequest,
     QueryResponse,
     SearchResult,
+    UpdateLLMSettingsRequest,
 )
 from services.gateway.auth import verify_api_key
 from services.gateway.client import LiteLLMClient
@@ -180,6 +183,16 @@ def _merge_preserving_saved(base: dict[str, Any], incoming: dict[str, Any]) -> d
     return merged
 
 
+def masked_llm_view(d: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in d.items():
+        if k.endswith("_api_key") and isinstance(v, str) and v:
+            out[k] = {"configured": True, "hint": v[-4:]}
+        else:
+            out[k] = v
+    return out
+
+
 def _save_persisted_settings(settings: dict[str, Any]) -> None:
     settings_file = _get_settings_file()
     existing: dict[str, Any] = {}
@@ -198,54 +211,77 @@ def _save_persisted_settings(settings: dict[str, Any]) -> None:
 
 _runtime_llm_settings: dict[str, Any] = _load_persisted_settings()
 
+# Session-only cache for tested API keys (not persisted to disk)
+_tested_api_keys: dict[str, str] = {}
+
+_settings_lock = asyncio.Lock()
+
 
 def get_active_llm_config() -> dict[str, Any]:
     """Resolves active provider credentials, endpoints, and exact model dynamically."""
-    provider = _runtime_llm_settings.get("active_provider", "openai").lower()
-    provider_models = _runtime_llm_settings.get("provider_models", {})
-    configured_model = _runtime_llm_settings.get("default_model")
+    settings = dict(_runtime_llm_settings)
+    provider = settings.get("active_provider", "openai").lower()
+    provider_models = settings.get("provider_models", {})
+    configured_model = settings.get("default_model")
 
+    # Resolve api_key from persisted settings first, then check session-tested keys as override
+    persisted_key = ""
     if provider == "groq":
         if configured_model and not configured_model.startswith(("gpt-", "claude-", "o1", "o3")):
             model = configured_model
         else:
             model = provider_models.get("groq", "groq/compound-mini")
-        api_key = _runtime_llm_settings.get("groq_api_key") or _runtime_llm_settings.get("custom_api_key")
-        base_url = _runtime_llm_settings.get("custom_base_url") or "https://api.groq.com/openai/v1"
+        persisted_key = settings.get("groq_api_key") or settings.get("custom_api_key")
+        base_url = settings.get("custom_base_url") or "https://api.groq.com/openai/v1"
     elif provider == "openai":
         if configured_model and configured_model.startswith(("gpt-", "o1", "o3", "chatgpt")):
             model = configured_model
         else:
             model = provider_models.get("openai", "gpt-4o-mini")
-        api_key = _runtime_llm_settings.get("openai_api_key")
+        persisted_key = settings.get("openai_api_key")
         base_url = "https://api.openai.com/v1"
     elif provider == "anthropic":
         if configured_model and configured_model.startswith("claude-"):
             model = configured_model
         else:
             model = provider_models.get("anthropic", "claude-3-5-sonnet-20241022")
-        api_key = _runtime_llm_settings.get("anthropic_api_key")
+        persisted_key = settings.get("anthropic_api_key")
         base_url = "https://api.anthropic.com/v1"
     elif provider == "openrouter":
         model = configured_model or provider_models.get("openrouter", "meta-llama/llama-3.3-70b-instruct")
-        api_key = _runtime_llm_settings.get("openrouter_api_key") or _runtime_llm_settings.get("custom_api_key")
-        base_url = _runtime_llm_settings.get("custom_base_url") or "https://openrouter.ai/api/v1"
+        persisted_key = settings.get("openrouter_api_key") or settings.get("custom_api_key")
+        base_url = settings.get("custom_base_url") or "https://openrouter.ai/api/v1"
     elif provider == "deepseek":
         model = configured_model or provider_models.get("deepseek", "deepseek-chat")
-        api_key = _runtime_llm_settings.get("deepseek_api_key") or _runtime_llm_settings.get("custom_api_key")
-        base_url = _runtime_llm_settings.get("custom_base_url") or "https://api.deepseek.com/v1"
+        persisted_key = settings.get("deepseek_api_key") or settings.get("custom_api_key")
+        base_url = settings.get("custom_base_url") or "https://api.deepseek.com/v1"
     elif provider in ["custom", "openai_compatible"]:
         model = configured_model or "groq/compound-mini"
-        api_key = _runtime_llm_settings.get("custom_api_key")
-        base_url = _runtime_llm_settings.get("custom_base_url", "https://api.groq.com/openai/v1")
+        persisted_key = settings.get("custom_api_key")
+        base_url = settings.get("custom_base_url", "https://api.groq.com/openai/v1")
     elif provider == "ollama":
         model = configured_model or provider_models.get("ollama", "llama3:latest")
         api_key = None
-        base_url = _runtime_llm_settings.get("custom_base_url") or "http://localhost:11434/v1"
+        base_url = settings.get("custom_base_url") or "http://localhost:11434/v1"
+        return {
+            "provider": provider,
+            "model": model,
+            "api_key": api_key,
+            "base_url": base_url,
+        }
     else:
         model = configured_model or "gpt-4o-mini"
         api_key = None
-        base_url = _runtime_llm_settings.get("litellm_base_url", "http://localhost:4000")
+        base_url = settings.get("litellm_base_url", "http://localhost:4000")
+        return {
+            "provider": provider,
+            "model": model,
+            "api_key": api_key,
+            "base_url": base_url,
+        }
+
+    # Use session-tested key as override if available, otherwise use persisted key
+    api_key = _tested_api_keys.get(provider) or persisted_key
 
     return {
         "provider": provider,
@@ -287,15 +323,13 @@ async def health_check():
 
 @app.post("/v1/ingest")
 async def ingest_document_endpoint(
-    payload: dict[str, Any],
+    payload: IngestDocumentRequest,
     tenant_id: str = Depends(verify_api_key),
 ):
     """Ingests text or documents into dedicated disk storage, Qdrant vector store, and Neo4j knowledge graph."""
-    text = payload.get("text", "")
-    title = payload.get("title", "Uploaded Document")
-    source = payload.get("source", "manual")
-    if not text.strip():
-        raise HTTPException(status_code=400, detail="Document text cannot be empty.")
+    text = payload.text
+    title = payload.title or "Uploaded Document"
+    source = payload.source or "manual"
 
     result = ingestion_pipeline.ingest_text(text=text, title=title, source=source)
     retriever.update_chunks(vector_store.get_all_chunks())
@@ -424,13 +458,27 @@ class TestAndFetchModelsRequest(BaseModel):
 
 @app.get("/v1/settings/llm")
 async def get_llm_settings(tenant_id: str = Depends(verify_api_key)):
-    """Returns the current LLM configuration and active model."""
-    masked = _runtime_llm_settings.copy()
-    for key_name in ["openai_api_key", "anthropic_api_key", "groq_api_key", "openrouter_api_key", "deepseek_api_key", "custom_api_key"]:
-        if masked.get(key_name):
-            val = str(masked[key_name])
-            masked[key_name] = val[:7] + "..." + val[-4:] if len(val) > 11 else "***"
-    return masked
+    """Returns the current LLM configuration (keys never exposed)."""
+    # Return all settings EXCEPT api keys - never expose any key information
+    safe_settings = {
+        "active_provider": _runtime_llm_settings.get("active_provider"),
+        "default_model": _runtime_llm_settings.get("default_model"),
+        "litellm_base_url": _runtime_llm_settings.get("litellm_base_url"),
+        "custom_base_url": _runtime_llm_settings.get("custom_base_url"),
+        "provider_models": _runtime_llm_settings.get("provider_models"),
+        "provider_available_models": _runtime_llm_settings.get("provider_available_models"),
+        # Add configured status for each provider (True/False, no key info)
+        "providers_configured": {
+            "openai": bool(_runtime_llm_settings.get("openai_api_key")),
+            "anthropic": bool(_runtime_llm_settings.get("anthropic_api_key")),
+            "groq": bool(_runtime_llm_settings.get("groq_api_key")),
+            "openrouter": bool(_runtime_llm_settings.get("openrouter_api_key")),
+            "deepseek": bool(_runtime_llm_settings.get("deepseek_api_key")),
+            "custom": bool(_runtime_llm_settings.get("custom_api_key") or _runtime_llm_settings.get("custom_base_url")),
+            "ollama": True,  # Always available locally
+        },
+    }
+    return safe_settings
 
 
 @app.get("/v1/settings/providers")
@@ -528,33 +576,35 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
 
 @app.post("/v1/settings/llm")
 async def update_llm_settings(
-    payload: dict[str, Any],
+    payload: UpdateLLMSettingsRequest,
     tenant_id: str = Depends(verify_api_key),
 ):
     """Updates runtime LLM API keys and default model and persists to disk safely."""
-    updates = {k: v for k, v in payload.items() if v is not None}
-    _runtime_llm_settings.update(_merge_preserving_saved(_runtime_llm_settings, updates))
+    updates = payload.model_dump(exclude_none=True)
 
-    # Also update provider_models map if default_model and active_provider were supplied
-    prov = _runtime_llm_settings.get("active_provider", "openai")
-    model = _runtime_llm_settings.get("default_model")
-    if prov and model:
-        if "provider_models" not in _runtime_llm_settings:
-            _runtime_llm_settings["provider_models"] = {}
-        _runtime_llm_settings["provider_models"][prov] = model
+    async with _settings_lock:
+        _runtime_llm_settings.update(_merge_preserving_saved(_runtime_llm_settings, updates))
 
-    _save_persisted_settings(_runtime_llm_settings)
+        # Also update provider_models map if default_model and active_provider were supplied
+        prov = _runtime_llm_settings.get("active_provider", "openai")
+        model = _runtime_llm_settings.get("default_model")
+        if prov and model:
+            if "provider_models" not in _runtime_llm_settings:
+                _runtime_llm_settings["provider_models"] = {}
+            _runtime_llm_settings["provider_models"][prov] = model
 
-    global agent_graph, llm_client
-    llm_client = LiteLLMClient()
-    agent_graph = build_rag_agent_graph(
-        retriever=retriever,
-        graph_store=graph_store,
-        llm_client=llm_client,
-        llm_config_getter=get_active_llm_config,
-    )
+        _save_persisted_settings(_runtime_llm_settings)
 
-    return _runtime_llm_settings
+        global agent_graph, llm_client
+        llm_client = LiteLLMClient()
+        agent_graph = build_rag_agent_graph(
+            retriever=retriever,
+            graph_store=graph_store,
+            llm_client=llm_client,
+            llm_config_getter=get_active_llm_config,
+        )
+
+    return masked_llm_view(_runtime_llm_settings)
 
 
 @app.delete("/v1/documents")
@@ -584,9 +634,8 @@ async def seed_sample_documents_endpoint(tenant_id: str = Depends(verify_api_key
     return {"status": "seeded", "documents_seeded": count}
 
 
-@app.get("/v1/documents")
-async def list_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
-    """Lists all stored documents in the permanent knowledge base catalog."""
+def _get_document_list_response() -> dict[str, Any]:
+    """Builds the shared document catalog response dict."""
     docs = ingestion_pipeline.get_documents()
     total_chunks = sum(d.get("chunk_count", 0) for d in docs)
     total_entities = sum(d.get("entities_count", 0) for d in docs)
@@ -596,20 +645,25 @@ async def list_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
         "total_entities": total_entities,
         "documents": docs,
     }
+
+
+@app.get("/v1/documents")
+async def list_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
+    """Lists all stored documents in the permanent knowledge base catalog."""
+    return _get_document_list_response()
 
 
 @app.get("/v1/documents/catalog")
 async def catalog_alias_endpoint(tenant_id: str = Depends(verify_api_key)):
-    """Alias for document catalog - returns same as /v1/documents for UI compatibility."""
-    docs = ingestion_pipeline.get_documents()
-    total_chunks = sum(d.get("chunk_count", 0) for d in docs)
-    total_entities = sum(d.get("entities_count", 0) for d in docs)
-    return {
-        "total_documents": len(docs),
-        "total_chunks": total_chunks,
-        "total_entities": total_entities,
-        "documents": docs,
-    }
+    """Alias for document catalog - returns same as /v1/documents for UI compatibility.
+
+    .. deprecated::
+        Use :get:`/v1/documents` instead.
+    """
+    response = _get_document_list_response()
+    response["Deprecation"] = "true"
+    response["Sunset"] = "2027-01-01"
+    return response
 
 
 @app.get("/v1/documents/{doc_id}/chunks")
@@ -800,16 +854,17 @@ async def test_and_fetch_models(
 
     if is_success and models:
         # Cache successfully verified models & endpoints
-        if "provider_available_models" not in _runtime_llm_settings:
-            _runtime_llm_settings["provider_available_models"] = {}
-        _runtime_llm_settings["provider_available_models"][provider] = models
-        if api_key and not _is_masked(api_key):
-            if provider in ["groq", "openrouter", "deepseek", "custom"]:
-                _runtime_llm_settings["custom_api_key"] = api_key
-            _runtime_llm_settings[f"{provider}_api_key"] = api_key
-        if base_url and provider in ["groq", "openrouter", "deepseek", "custom"] and not _is_masked(base_url):
-            _runtime_llm_settings["custom_base_url"] = base_url
-        _save_persisted_settings(_runtime_llm_settings)
+        async with _settings_lock:
+            if "provider_available_models" not in _runtime_llm_settings:
+                _runtime_llm_settings["provider_available_models"] = {}
+            _runtime_llm_settings["provider_available_models"][provider] = models
+            if api_key and not _is_masked(api_key):
+                if provider in ["groq", "openrouter", "deepseek", "custom"]:
+                    _runtime_llm_settings["custom_api_key"] = api_key
+                _runtime_llm_settings[f"{provider}_api_key"] = api_key
+            if base_url and provider in ["groq", "openrouter", "deepseek", "custom"] and not _is_masked(base_url):
+                _runtime_llm_settings["custom_base_url"] = base_url
+            _save_persisted_settings(_runtime_llm_settings)
 
     elapsed_ms = (time.time() - start_time) * 1000
 
