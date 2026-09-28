@@ -11,6 +11,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { StatusChip, type StatusChipVariant } from './StatusChip';
 import type { GuardrailResult } from '../types/api';
 
 interface GuardrailsStudioProps {
@@ -35,6 +36,16 @@ const PRESETS = [
     text: 'What are the best practices for structuring Qdrant collections in Kubernetes?',
   },
 ];
+
+/**
+ * The backend reports a coarse `action_taken`; the operator cares about three
+ * decisions only. Anything else is surfaced verbatim rather than assumed safe.
+ */
+const VERDICT: Record<string, { label: string; variant: StatusChipVariant; Icon: typeof AlertOctagon }> = {
+  blocked: { label: 'Blocked', variant: 'fail', Icon: AlertOctagon },
+  redacted: { label: 'Redacted', variant: 'warn', Icon: ShieldAlert },
+  pass: { label: 'Pass', variant: 'ok', Icon: CheckCircle2 },
+};
 
 export const GuardrailsStudio: React.FC<GuardrailsStudioProps> = ({ tenantId }) => {
   const [inputText, setInputText] = useState('');
@@ -61,181 +72,143 @@ export const GuardrailsStudio: React.FC<GuardrailsStudioProps> = ({ tenantId }) 
     }
   };
 
+  const verdict = result ? VERDICT[result.action_taken] : undefined;
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      {/* Left Column: Playground & Presets (7 cols) */}
-      <div className="lg:col-span-7 space-y-5">
-        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card hover:shadow-cardHover transition-all space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-meridian-text flex items-center space-x-1.5">
-              <Shield className="w-4 h-4 text-meridian-primary" />
-              <span>Input Guardrails & Threat Evaluation</span>
-            </h3>
-            <span className="text-[10px] font-extrabold uppercase text-meridian-text bg-meridian-blossom px-2.5 py-0.5 rounded-full border border-meridian-lavender">
-              NeMo Policy Rails
-            </span>
-          </div>
-
-          {/* Quick Presets */}
-          <div>
-            <label className="block text-xs font-semibold text-meridian-text mb-1.5">
-              Select Attack Preset or Sample Input:
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.name}
-                  disabled={loading}
-                  onClick={() => {
-                    setInputText(p.text);
-                    handleEvaluate(p.text);
-                  }}
-                  className="text-xs px-3.5 py-1.5 rounded-xl bg-meridian-lavenderLight/70 border border-meridian-border hover:border-meridian-primary text-meridian-text hover:text-meridian-primary hover:bg-meridian-blossom transition-all flex items-center space-x-1.5 font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
-                >
-                  <Zap className="w-3.5 h-3.5 text-meridian-primary" />
-                  <span>{p.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Input Textarea */}
-          <div>
-            <label htmlFor="guardrail-payload-input" className="block text-xs font-semibold text-meridian-text mb-1">
-              Input Text Payload:
-            </label>
-            <textarea
-              id="guardrail-payload-input"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="Enter text containing potential injections, jailbreaks, or PII..."
-              className="w-full h-32 bg-meridian-bg border border-meridian-border rounded-2xl p-4 text-xs text-meridian-text placeholder-meridian-textMuted outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary focus:border-meridian-primary focus:bg-white resize-none transition-all leading-relaxed"
-            />
-          </div>
-
-          {/* Evaluate Button */}
-          <div className="flex justify-end pt-1">
-            <button
-              onClick={() => handleEvaluate()}
-              disabled={loading || !inputText.trim()}
-              className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-meridian-primary hover:bg-meridian-primaryHover text-white text-xs font-bold shadow-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
-            >
-              {loading ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Evaluating Policies...</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Evaluate Guardrails</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {error && (
-          <div role="alert" aria-live="polite" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
-            {error}
-          </div>
-        )}
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="label-section flex items-center gap-1.5 text-ink">
+          <Shield className="size-3.5 text-accent" aria-hidden="true" />
+          <span>Input Guardrails &amp; Threat Evaluation</span>
+        </h3>
+        <span className="rounded-sm border border-hairline bg-surface-sunken px-2 py-0.5 text-micro font-medium text-muted">
+          NeMo Policy Rails
+        </span>
       </div>
 
-      {/* Right Column: Security Analysis & Verdict (5 cols) */}
-      <div className="lg:col-span-5 space-y-5">
-        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card space-y-4">
-          <h3 className="text-xs font-bold text-meridian-text flex items-center space-x-1.5">
-            <FileSearch className="w-4 h-4 text-meridian-primary" />
-            <span>Policy Verdict & Sanitization Inspector</span>
-          </h3>
+      <div className="flex flex-wrap gap-1.5">
+        {PRESETS.map((p) => (
+          <button
+            key={p.name}
+            disabled={loading}
+            onClick={() => {
+              setInputText(p.text);
+              handleEvaluate(p.text);
+            }}
+            className="flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label font-medium text-muted transition-colors hover:border-accent hover:bg-accent-wash hover:text-accent-ink disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <Zap className="size-3 text-accent" aria-hidden="true" />
+            <span>{p.name}</span>
+          </button>
+        ))}
+      </div>
 
+      <div>
+        <label htmlFor="guardrail-payload-input" className="mb-1 block text-micro font-semibold uppercase tracking-[0.12em] text-muted">
+          Text to evaluate
+        </label>
+        <textarea
+          id="guardrail-payload-input"
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          placeholder="Enter text containing potential injections, jailbreaks, or PII…"
+          className="h-28 w-full resize-none rounded-sm border border-hairline bg-surface-sunken p-3 text-body text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus:bg-surface-raised focus-visible:ring-2 focus-visible:ring-accent"
+        />
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          onClick={() => handleEvaluate()}
+          disabled={loading || !inputText.trim()}
+          className="flex items-center gap-2 rounded-sm bg-accent px-4 py-2 text-label font-bold text-white transition-colors hover:bg-accent-ink disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
           {loading ? (
-            <div className="p-6 rounded-2xl border border-meridian-primary/40 bg-meridian-bg/50 animate-pulse space-y-3 text-center">
-              <RefreshCw className="w-8 h-8 mx-auto text-meridian-primary animate-spin" />
-              <p className="text-xs font-bold text-meridian-text">Evaluating Security Policies...</p>
-              <p className="text-[11px] text-meridian-textMuted">Scanning for prompt injections, jailbreaks, and PII leakage</p>
-            </div>
-          ) : !result ? (
-            <div className="text-center py-14 text-meridian-textMuted text-xs border border-dashed border-meridian-border rounded-2xl bg-meridian-bg/50">
-              <Lock className="w-8 h-8 mx-auto mb-2 text-meridian-secondary/60" />
-              <p className="font-semibold text-meridian-text">No evaluation performed yet</p>
-              <p className="text-[11px] text-meridian-textMuted mt-1">
-                Select a preset or enter text to inspect real-time injection blocking and PII masking.
-              </p>
-            </div>
+            <RefreshCw className="size-3.5 animate-spin" aria-hidden="true" />
           ) : (
-            <div className="space-y-4">
-              {/* Verdict Header Badge */}
-              <div
-                className={`p-4 rounded-2xl border flex items-center space-x-3.5 ${
-                  result.action_taken === 'blocked'
-                    ? 'bg-rose-50 border-rose-300 text-rose-900'
-                    : result.action_taken === 'redacted'
-                    ? 'bg-amber-50 border-amber-300 text-amber-900'
-                    : 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                }`}
-              >
-                {result.action_taken === 'blocked' ? (
-                  <AlertOctagon className="w-6 h-6 shrink-0 text-rose-600" />
-                ) : result.action_taken === 'redacted' ? (
-                  <ShieldAlert className="w-6 h-6 shrink-0 text-amber-600" />
-                ) : (
-                  <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600" />
-                )}
-                <div>
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider">
-                    {result.action_taken === 'blocked'
-                      ? 'Threat Intercepted & Blocked'
-                      : result.action_taken === 'redacted'
-                      ? 'PII Detected & Redacted'
-                      : 'Content Safe (Passed All Rails)'}
-                  </h4>
-                  <p className="text-[11px] opacity-85 mt-0.5 font-medium">
-                    Action Taken: <span className="font-bold uppercase">{result.action_taken}</span>
-                    {' • '}Allowed:{' '}
-                    <span className={`font-bold uppercase px-1.5 py-0.5 rounded ${result.allowed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                      {result.allowed ? 'Yes' : 'No'}
-                    </span>
-                  </p>
+            <ShieldCheck className="size-3.5" aria-hidden="true" />
+          )}
+          <span>{loading ? 'Evaluating' : 'Evaluate'}</span>
+        </button>
+      </div>
+
+      {error && (
+        <div role="alert" aria-live="polite" className="rounded-sm border border-fail/30 bg-fail-wash px-3 py-2 text-label font-semibold text-fail">
+          {error}
+        </div>
+      )}
+
+      <div className="border-t border-hairline pt-4">
+        <h3 className="label-section mb-3 flex items-center gap-1.5 text-ink">
+          <FileSearch className="size-3.5 text-accent" aria-hidden="true" />
+          <span>Policy verdict</span>
+        </h3>
+
+        {loading ? (
+          <div className="flex items-center gap-2 rounded-sm border border-hairline bg-surface-sunken px-3 py-4 text-label text-muted">
+            <RefreshCw className="size-4 animate-spin text-accent" aria-hidden="true" />
+            <span>Evaluating security policies…</span>
+          </div>
+        ) : !result ? (
+          <div className="rounded-sm border border-dashed border-hairline bg-surface-sunken px-4 py-8 text-center">
+            <Lock className="mx-auto mb-2 size-5 text-faint" aria-hidden="true" />
+            <p className="text-label font-semibold text-ink">No evaluation performed yet</p>
+            <p className="mt-1 text-micro text-muted">Select a preset or enter text to inspect injection blocking and PII masking.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {/* The verdict is a security decision: state first, then the action
+                that was actually taken, then the decision's yes/no. */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-hairline py-3">
+              {verdict ? (
+                <StatusChip variant={verdict.variant}>
+                  <verdict.Icon className="size-3.5" aria-hidden="true" />
+                  {verdict.label}
+                </StatusChip>
+              ) : (
+                <StatusChip variant="faint">{result.action_taken}</StatusChip>
+              )}
+
+              <span className="text-micro text-muted">
+                Action Taken:{' '}
+                <span data-slot="action" className="num text-label font-semibold uppercase text-ink">
+                  {result.action_taken}
+                </span>
+              </span>
+
+              <span className="text-micro text-muted">
+                Allowed:{' '}
+                <span className="num text-label font-semibold text-ink">{result.allowed ? 'Yes' : 'No'}</span>
+              </span>
+            </div>
+
+            {/* The matched regexes are the most useful payload on this screen,
+                so they lead with the raw pattern in identifiers type. */}
+            {result.policy_violations.length > 0 && (
+              <div>
+                <div className="label-section mb-1.5 text-muted">
+                  Matched policies · <span className="num">{result.policy_violations.length}</span>
+                </div>
+                <ul className="flex flex-col gap-px overflow-hidden rounded-sm border border-hairline">
+                  {result.policy_violations.map((violation) => (
+                    <li key={violation} className="num break-all bg-surface-sunken px-2.5 py-1.5 text-id text-fail">
+                      {violation}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {result.sanitized_text && (
+              <div>
+                <div className="label-section mb-1.5 text-muted">Sanitized text dispatched to LLM</div>
+                <div className="answer-prose rounded-sm border border-hairline bg-surface-sunken px-3 py-2.5 whitespace-pre-wrap">
+                  {result.sanitized_text}
                 </div>
               </div>
-
-              {/* Policy Violations List */}
-              {result.policy_violations.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold text-meridian-text mb-1.5">
-                    Policy Triggers:
-                  </label>
-                  <div className="space-y-1.5">
-                    {result.policy_violations.map((violation) => (
-                      <div
-                        key={violation}
-                        className="text-xs p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 font-medium"
-                      >
-                        {violation}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Sanitized Text Diff */}
-              {result.sanitized_text && (
-                <div>
-                  <label className="block text-xs font-semibold text-meridian-text mb-1.5">
-                    Sanitized Text Dispatched to LLM:
-                  </label>
-                  <div className="p-3.5 rounded-2xl bg-meridian-bg border border-meridian-border text-xs font-mono text-meridian-text whitespace-pre-wrap leading-relaxed">
-                    {result.sanitized_text}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 };
-

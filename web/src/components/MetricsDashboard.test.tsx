@@ -68,7 +68,7 @@ describe('MetricsDashboard', () => {
   it('Index & Storage: Qdrant card reports the live endpoint from /v1/index/status', async () => {
     render(<MetricsDashboard tenantId="default" />);
 
-    const card = (await screen.findByText('Qdrant Vector Database')).closest('div.rounded-2xl');
+    const card = (await screen.findByText('Qdrant Vector Database')).closest('[data-testid="infra-card"]');
     expect(card).not.toBeNull();
     expect(card).toHaveTextContent('http://qdrant:6333');
   });
@@ -76,7 +76,7 @@ describe('MetricsDashboard', () => {
   it('Index & Storage: Neo4j card reports the live endpoint from /v1/index/status', async () => {
     render(<MetricsDashboard tenantId="default" />);
 
-    const card = (await screen.findByText('Neo4j Knowledge Graph')).closest('div.rounded-2xl');
+    const card = (await screen.findByText('Neo4j Knowledge Graph')).closest('[data-testid="infra-card"]');
     expect(card).toHaveTextContent('bolt://neo4j:7687');
   });
 
@@ -90,7 +90,7 @@ describe('MetricsDashboard', () => {
     });
     render(<MetricsDashboard tenantId="default" />);
 
-    const card = (await screen.findByText('Qdrant Vector Database')).closest('div.rounded-2xl');
+    const card = (await screen.findByText('Qdrant Vector Database')).closest('[data-testid="infra-card"]');
     expect(card).toHaveTextContent('Fallback');
     expect(card).not.toHaveTextContent('Ready');
   });
@@ -105,7 +105,7 @@ describe('MetricsDashboard', () => {
     });
     render(<MetricsDashboard tenantId="default" />);
 
-    const card = (await screen.findByText('Qdrant Vector Database')).closest('div.rounded-2xl');
+    const card = (await screen.findByText('Qdrant Vector Database')).closest('[data-testid="infra-card"]');
     expect(card).toHaveTextContent('Offline');
   });
 
@@ -113,8 +113,92 @@ describe('MetricsDashboard', () => {
     (api.getIndexStatus as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('index status unavailable'));
     render(<MetricsDashboard tenantId="default" />);
 
-    const card = (await screen.findByText('Qdrant Vector Database')).closest('div.rounded-2xl');
+    const card = (await screen.findByText('Qdrant Vector Database')).closest('[data-testid="infra-card"]');
     expect(card).toHaveTextContent('Unprobed');
     expect(card).not.toHaveTextContent('Ready');
+  });
+
+  // --- instrument-console language ---------------------------------------
+  describe('KPI readout strip', () => {
+    it('renders the three KPIs as one dense strip, not three cards', async () => {
+      render(<MetricsDashboard tenantId="default" />);
+
+      const strip = await screen.findByTestId('kpi-strip');
+      expect(strip).toBeInTheDocument();
+      expect(strip.querySelectorAll('[data-slot="kpi"]')).toHaveLength(3);
+    });
+
+    it('every KPI value is tabular monospace with its unit', async () => {
+      render(<MetricsDashboard tenantId="default" />);
+      await screen.findByTestId('kpi-strip');
+
+      const values = screen.getAllByTestId('kpi-value');
+      expect(values).toHaveLength(3);
+      for (const value of values) {
+        expect(value.className).toContain('num');
+      }
+      expect(screen.getByTestId('kpi-total-requests')).toHaveTextContent('10');
+      expect(screen.getByTestId('kpi-total-tokens')).toHaveTextContent('500');
+    });
+
+    it('formats cost to fixed precision instead of leaking a raw float', async () => {
+      (api.getMetrics as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        tenant_id: 'default',
+        total_requests: 10,
+        total_tokens: 500,
+        total_cost_usd: 1.5,
+      });
+      render(<MetricsDashboard tenantId="default" />);
+
+      // A raw float renders as "1.5"; the readout must pad to a fixed scale.
+      expect(await screen.findByTestId('kpi-cost')).toHaveTextContent('$1.5000');
+    });
+
+    it('shows a zeroed readout when metrics have not loaded, not a blank', async () => {
+      (api.getMetrics as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        tenant_id: 'default',
+        total_requests: 0,
+        total_tokens: 0,
+        total_cost_usd: 0,
+      });
+      render(<MetricsDashboard tenantId="default" />);
+
+      expect(await screen.findByTestId('kpi-cost')).toHaveTextContent('$0.0000');
+    });
+  });
+
+  describe('infra live-source honesty survives the restyle', () => {
+    it('a card with no live source still names its source on its face', async () => {
+      render(<MetricsDashboard tenantId="default" />);
+
+      const card = (await screen.findByText('Langfuse Tracing')).closest('[data-testid="infra-card"]');
+      expect(card).toHaveTextContent(/no live \/health probe/i);
+      expect(card).not.toHaveTextContent('Ready');
+    });
+
+    it('a failed health poll never claims a sourced card is Online', async () => {
+      (api.checkHealth as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('health unreachable'));
+      render(<MetricsDashboard tenantId="default" />);
+
+      const card = (await screen.findByText('LiteLLM AI Gateway')).closest('[data-testid="infra-card"]');
+      expect(card).toHaveTextContent('Unprobed');
+    });
+
+    it('self-sourced engine card reads Offline when health is unreachable', async () => {
+      (api.checkHealth as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('health unreachable'));
+      render(<MetricsDashboard tenantId="default" />);
+
+      const card = (await screen.findByText('Meridian RAG Engine (FastAPI)')).closest('[data-testid="infra-card"]');
+      expect(card).toHaveTextContent('Offline');
+      expect(card).not.toHaveTextContent('Online');
+    });
+
+    it('infra status chips carry the shared StatusChip state attribute', async () => {
+      render(<MetricsDashboard tenantId="default" />);
+      await screen.findByText('Qdrant Vector Database');
+
+      const card = screen.getByText('Qdrant Vector Database').closest('[data-testid="infra-card"]');
+      expect(card?.querySelector('[data-variant]')).not.toBeNull();
+    });
   });
 });

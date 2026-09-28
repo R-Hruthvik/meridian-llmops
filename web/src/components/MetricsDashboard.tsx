@@ -12,6 +12,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { StatusChip, type StatusChipVariant } from './StatusChip';
 import type { HealthServiceStatus, IndexStatusResponse, TenantMetrics } from '../types/api';
 
 interface MetricsDashboardProps {
@@ -78,6 +79,17 @@ const STATIC_LABELS = {
   staticUnknown: 'Unknown',
   staticNote: 'Static config — no live /health probe',
 } as const;
+
+/** Cost is a small fraction of a dollar; a raw float is not a readout. */
+const COST_SCALE = 4;
+const formatCost = (usd: number) => `$${usd.toFixed(COST_SCALE)}`;
+
+const KPIS: Array<{ key: string; label: string; unit: string; hint: string; icon: typeof Zap; accent: boolean }> = [
+  { key: 'total-requests', label: 'Total requests', unit: 'req', hint: 'Recorded in Langfuse telemetry', icon: Zap, accent: false },
+  { key: 'total-tokens', label: 'Token volume', unit: 'tok', hint: 'Prompt + completion tokens', icon: Layers, accent: true },
+  { key: 'cost', label: 'Est. cost', unit: 'USD', hint: 'Aggregated upstream model charges', icon: Coins, accent: false },
+];
+
 export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) => {
   const [metrics, setMetrics] = useState<TenantMetrics | null>(null);
   const [loading, setLoading] = useState(false);
@@ -129,17 +141,23 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
     fetchMetrics();
   }, [tenantId]);
 
+  const kpiValue = (key: string): string => {
+    if (!metrics) return key === 'cost' ? formatCost(0) : '0';
+    if (key === 'total-requests') return metrics.total_requests.toLocaleString();
+    if (key === 'total-tokens') return metrics.total_tokens.toLocaleString();
+    return formatCost(metrics.total_cost_usd);
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-extrabold text-meridian-text flex items-center space-x-2">
-            <Gauge className="w-5 h-5 text-meridian-primary" />
-            <span>LLMOps Observability & Tenant Economics</span>
+          <h2 className="label-section flex items-center gap-1.5 text-ink">
+            <Gauge className="size-3.5 text-accent" aria-hidden="true" />
+            <span>LLMOps observability</span>
           </h2>
-          <p className="text-xs text-meridian-textMuted mt-0.5 font-medium">
-            Active Tenant: <span className="font-bold text-meridian-primary">{tenantId}</span>
+          <p className="mt-1 text-micro text-muted">
+            Tenant <span className="id-mono text-accent-ink">{tenantId}</span>
           </p>
         </div>
 
@@ -147,93 +165,76 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
           onClick={fetchMetrics}
           disabled={loading}
           aria-label="Refresh telemetry metrics"
-          className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-white hover:bg-meridian-lavenderLight border border-meridian-border text-xs text-meridian-text font-bold shadow-card transition-all disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+          className="flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label font-semibold text-muted transition-colors hover:border-accent hover:text-accent-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-meridian-primary' : ''}`} />
-          <span>Refresh Metrics</span>
+          <RefreshCw className={`size-3.5 ${loading ? 'animate-spin text-accent' : ''}`} aria-hidden="true" />
+          <span>Refresh</span>
         </button>
       </div>
 
       {error && (
-        <div role="alert" aria-live="polite" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+        <div role="alert" aria-live="polite" className="rounded-sm border border-fail/30 bg-fail-wash px-3 py-2 text-label font-semibold text-fail">
           {error}
         </div>
       )}
 
-      {/* Primary KPI Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Total Requests */}
-        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card hover:shadow-cardHover transition-all">
-          <div className="flex items-center justify-between text-meridian-textMuted text-xs font-semibold mb-2">
-            <span>Total Requests</span>
-            <Zap className="w-4 h-4 text-meridian-primary" />
+      {/* One dense readout strip — label, value, unit — not three cards. */}
+      <dl data-testid="kpi-strip" className="grid grid-cols-3 divide-x divide-hairline border-y border-hairline">
+        {KPIS.map(({ key, label, unit, hint, icon: Icon, accent }) => (
+          <div key={key} data-slot="kpi" className="px-3 py-2.5">
+            <dt className="flex items-center gap-1.5 text-micro uppercase tracking-[0.12em] text-muted">
+              <Icon className="size-3 text-faint" aria-hidden="true" />
+              <span>{label}</span>
+            </dt>
+            <dd className="mt-0.5 flex items-baseline gap-1.5">
+              <span
+                data-testid="kpi-value"
+                data-kpi={key}
+                className={`num text-readout font-semibold ${accent ? 'text-accent-ink' : 'text-ink'}`}
+              >
+                <span data-testid={`kpi-${key}`} className="contents">
+                  {kpiValue(key)}
+                </span>
+              </span>
+              <span className="text-micro text-faint">{unit}</span>
+            </dd>
+            <p className="mt-0.5 truncate text-micro text-faint" title={hint}>
+              {hint}
+            </p>
           </div>
-          <div className="text-3xl font-black text-meridian-text">
-            {metrics ? metrics.total_requests.toLocaleString() : '0'}
-          </div>
-          <p className="text-[11px] text-meridian-textMuted mt-1 font-medium">
-            Recorded in Langfuse telemetry
-          </p>
-        </div>
+        ))}
+      </dl>
 
-        {/* Total Token Consumption */}
-        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card hover:shadow-cardHover transition-all">
-          <div className="flex items-center justify-between text-meridian-textMuted text-xs font-semibold mb-2">
-            <span>Token Volume</span>
-            <Layers className="w-4 h-4 text-meridian-secondary" />
-          </div>
-          <div className="text-3xl font-black text-meridian-primary">
-            {metrics ? metrics.total_tokens.toLocaleString() : '0'}
-          </div>
-          <p className="text-[11px] text-meridian-textMuted mt-1 font-medium">
-            Prompt + Completion tokens
-          </p>
-        </div>
-
-        {/* Estimated Cost */}
-        <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card hover:shadow-cardHover transition-all">
-          <div className="flex items-center justify-between text-meridian-textMuted text-xs font-semibold mb-2">
-            <span>Estimated Operational Cost</span>
-            <Coins className="w-4 h-4 text-meridian-primary" />
-          </div>
-          <div className="text-3xl font-black text-emerald-600">
-            ${metrics ? metrics.total_cost_usd.toFixed(4) : '0.0000'}
-          </div>
-          <p className="text-[11px] text-meridian-textMuted mt-1 font-medium">
-            Aggregated upstream model charges
-          </p>
-        </div>
-      </div>
-
-      {/* Multi-Container Infrastructure Status */}
-      <div className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-6 shadow-card">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <h3 className="text-xs font-bold text-meridian-text flex items-center space-x-2">
-            <Server className="w-4 h-4 text-meridian-primary" />
-            <span>Multi-Container Infrastructure Topology</span>
+      <div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="label-section flex items-center gap-1.5 text-ink">
+            <Server className="size-3.5 text-accent" aria-hidden="true" />
+            <span>Infrastructure</span>
           </h3>
           {(storageDocuments !== null || vectorChunks !== null) && (
-            <span className="text-[11px] font-semibold text-meridian-textMuted">
-              Storage (from /health):{' '}
-              <span className="font-bold text-meridian-text">{storageDocuments ?? '—'} docs</span>
-              {' • '}
-              <span className="font-bold text-meridian-text">{vectorChunks ?? '—'} chunks</span>
+            <span className="text-micro text-muted">
+              From /health ·{' '}
+              {/* The count and its unit read as one mono readout so the
+                  "unavailable" case shows an em-dash, never a fake 0. */}
+              <span className="num text-label font-semibold text-ink">{`${storageDocuments ?? '—'} docs`}</span>
+              {' · '}
+              <span className="num text-label font-semibold text-ink">{`${vectorChunks ?? '—'} chunks`}</span>
             </span>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        <ul className="flex flex-col border-t border-hairline">
           {INFRASTRUCTURE_SERVICES.map((svc) => {
             const Icon = svc.icon;
             // Resolve every card from a live source. When a source is missing
             // or failed, the card says so instead of asserting Ready/Online.
             let label: string;
-            let tone: 'ok' | 'warn' | 'bad';
+            let tone: StatusChipVariant;
             let endpoint: string | null = null;
             let sourceNote: string | null = null;
             if (svc.source.kind === 'self') {
               label = healthReachable ? 'Online' : STATIC_LABELS.selfOffline;
-              tone = healthReachable ? 'ok' : 'bad';
+              tone = healthReachable ? 'ok' : 'fail';
             } else if (svc.source.kind === 'health-map') {
               const live = serviceHealth?.[svc.source.key];
               if (!serviceHealth) {
@@ -257,7 +258,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
                 // used, so it is the more specific (and more alarming) truth
                 // than a bare Offline when a backend is down.
                 label = live.is_fallback ? 'Fallback' : live.reachable ? 'Online' : 'Offline';
-                tone = live.is_fallback ? 'warn' : live.reachable ? 'ok' : 'bad';
+                tone = live.is_fallback ? 'warn' : live.reachable ? 'ok' : 'fail';
                 endpoint = live.endpoint;
               }
             } else {
@@ -265,52 +266,35 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
               tone = 'warn';
               sourceNote = svc.source.note;
             }
-            const badgeClass =
-              tone === 'ok'
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                : tone === 'warn'
-                  ? 'bg-amber-50 border-amber-200 text-amber-700'
-                  : 'bg-rose-50 border-rose-200 text-rose-700';
-            const dotClass =
-              tone === 'ok' ? 'bg-emerald-500 animate-pulse' : tone === 'warn' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500';
             return (
-              <div
+              <li
                 key={svc.name}
-                className="p-4 rounded-2xl bg-meridian-bg/70 border border-meridian-border flex items-center justify-between hover:border-meridian-primary/50 transition-all"
+                data-testid="infra-card"
+                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-hairline py-2.5 transition-colors last:border-b-0 hover:bg-accent-wash/40"
               >
-                <div className="flex items-center space-x-3">
-                  <div className="p-2.5 rounded-xl bg-white border border-meridian-border shadow-sm">
-                    <Icon className="w-4 h-4 text-meridian-primary" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-meridian-text">{svc.name}</h4>
-                    <p className="text-[11px] text-meridian-textMuted font-medium">
-                      {svc.type}
-                      {endpoint && (
-                        <>
-                          {' • '}
-                          <code className="text-meridian-primary font-bold break-all">{endpoint}</code>
-                        </>
-                      )}
-                    </p>
-                    {sourceNote && (
-                      <p className="text-[10px] text-meridian-textMuted font-medium mt-0.5">
-                        Source: {sourceNote}
-                      </p>
-                    )}
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <Icon className="size-4 shrink-0 text-muted" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <div className="text-label font-semibold text-ink">{svc.name}</div>
+                    <div className="id-mono truncate text-faint" title={endpoint ?? undefined}>
+                      {endpoint ?? svc.type}
+                    </div>
                   </div>
                 </div>
 
-                <span className={`flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold border ${badgeClass}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
-                  <span>{label}</span>
-                </span>
-              </div>
+                <div className="flex items-center gap-2">
+                  {sourceNote && (
+                    <span className="text-micro text-faint" title={sourceNote}>
+                      Source: {sourceNote}
+                    </span>
+                  )}
+                  <StatusChip variant={tone}>{label}</StatusChip>
+                </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       </div>
     </div>
   );
 };
-

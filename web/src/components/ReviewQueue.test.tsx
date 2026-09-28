@@ -100,4 +100,73 @@ describe('ReviewQueue', () => {
 
     expect(await screen.findByText('Item corrected successfully.')).toBeInTheDocument();
   });
+
+  // --- instrument-console language ---------------------------------------
+  // The queue is a dense table, not a card list: id, entity, confidence, age,
+  // actions. Every number is tabular monospace.
+  const longIdItems = [
+    {
+      id: '98cd9ff5c7874c6a1b2c3d4e5f60718',
+      extracted_field_id: 'f1',
+      document_id: 'doc-c2bd07cc',
+      field_name: 'invoice_total',
+      value: '100',
+      confidence: 0.4,
+      provenance_page: 1,
+      status: 'pending',
+      corrected_value: null,
+      notes: null,
+    },
+  ];
+
+  it('renders a dense table with the instrument column set', async () => {
+    render(<ReviewQueue tenantId="default" />);
+    await screen.findByText('invoice_total');
+
+    const table = screen.getByRole('table');
+    for (const header of ['Item', 'Entity', 'Confidence', 'Age', 'Actions']) {
+      expect(screen.getByRole('columnheader', { name: new RegExp(header, 'i') })).toBeInTheDocument();
+    }
+    expect(table).toBeInTheDocument();
+  });
+
+  it('item id renders in short form, in identifiers type', async () => {
+    (api.listReviewItems as ReturnType<typeof vi.fn>).mockResolvedValueOnce(longIdItems);
+    render(<ReviewQueue tenantId="default" />);
+
+    const cell = (await screen.findByText(/^98cd9ff5/)).closest('td');
+    expect(cell?.className).toContain('id-mono');
+    // Short form: the full 32-char id must not be dumped on screen.
+    expect(screen.queryByText('98cd9ff5c7874c6a1b2c3d4e5f60718')).not.toBeInTheDocument();
+  });
+
+  it('confidence renders as a tabular number with a proportional bar', async () => {
+    (api.listReviewItems as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { ...longIdItems[0], confidence: 0.42 },
+    ]);
+    render(<ReviewQueue tenantId="default" />);
+
+    const value = await screen.findByText('42%');
+    expect(value.className).toContain('num');
+
+    const bar = screen.getByRole('progressbar', { name: /confidence/i });
+    expect(bar).toHaveAttribute('aria-valuenow', '42');
+  });
+
+  it('age stays empty rather than inventing a timestamp the API never returns', async () => {
+    (api.listReviewItems as ReturnType<typeof vi.fn>).mockResolvedValueOnce(longIdItems);
+    render(<ReviewQueue tenantId="default" />);
+    await screen.findByText('invoice_total');
+
+    // The review API exposes no timestamp, so age must read as unavailable —
+    // the same "unavailable, never a fake 0" rule the index counters follow.
+    const age = screen.getByTestId('review-age-unavailable');
+    expect(age).toHaveTextContent('—');
+  });
+
+  it('keeps the GLOBAL badge, empty state and toast on the restyled table', async () => {
+    render(<ReviewQueue tenantId="default" />);
+    await screen.findByText('invoice_total');
+    expect(screen.getByText('Global')).toBeInTheDocument();
+  });
 });
