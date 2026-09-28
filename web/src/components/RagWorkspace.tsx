@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
   Clock,
   Copy,
@@ -20,6 +21,11 @@ import type { QueryResponse } from '../types/api';
 
 interface RagWorkspaceProps {
   tenantId: string;
+  /**
+   * Reports the document and chunk behind a citation so the workbench can jump
+   * to that exact source. Optional: the workspace is fully usable on its own.
+   */
+  onCitationSelect?: (documentId: string, chunkId: string) => void;
 }
 
 const SAMPLE_QUERIES = [
@@ -29,7 +35,7 @@ const SAMPLE_QUERIES = [
   'What is the secret formula for alchemical immortality?', // Tests refusal
 ];
 
-export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
+export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId, onCitationSelect }) => {
   const [query, setQuery] = useState('');
   const [topK, setTopK] = useState(3);
   const [maxCycles, setMaxCycles] = useState(3);
@@ -438,9 +444,12 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
           ) : (
             <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
               {response.source_chunks.map((chunk, idx) => (
-                <div
+                <button
                   key={chunk.chunk_id || `chunk-${idx}`}
-                  className="p-3.5 rounded-2xl bg-meridian-bg/70 border border-meridian-border hover:border-meridian-primary/50 transition-all"
+                  type="button"
+                  onClick={() => onCitationSelect?.(chunk.document_id, chunk.chunk_id)}
+                  title="Open this source in the Corpus"
+                  className="block w-full text-left p-3.5 rounded-2xl bg-meridian-bg/70 border border-meridian-border hover:border-meridian-primary/50 hover:bg-meridian-blossom/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary transition-all"
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-meridian-blossom text-meridian-text border border-meridian-lavender">
@@ -459,7 +468,11 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                   >
                     id: {chunk.chunk_id} • doc: {chunk.document_id}
                   </p>
-                </div>
+                  <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-meridian-primary">
+                    <ArrowRight className="w-3 h-3" />
+                    <span>Open source in Corpus</span>
+                  </span>
+                </button>
               ))}
             </div>
           )}

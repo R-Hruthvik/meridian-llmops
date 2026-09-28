@@ -1,23 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import {
   Bot,
-  ClipboardCheck,
   Database,
-  HardDrive,
   Layers,
   LineChart,
   Settings,
   ShieldAlert,
+  X,
   Zap,
 } from 'lucide-react';
+import { MetricsDashboard } from './MetricsDashboard';
 import { SettingsModal } from './SettingsModal';
 import { api } from '../services/api';
-import type { BackendHealth } from '../App';
+import type { AreaId, BackendHealth } from '../App';
 import type { LLMSettings } from '../types/api';
 
 interface NavbarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
+  activeArea: AreaId;
+  onSelectArea: (area: AreaId) => void;
   tenantId: string;
   setTenantId: (tenant: string) => void;
   backendHealth: BackendHealth;
@@ -25,18 +25,16 @@ interface NavbarProps {
   setApiKey: (key: string) => void;
 }
 
-const TABS = [
-  { id: 'rag', label: 'Agentic RAG', icon: Bot },
-  { id: 'ingest', label: 'Ingestion Studio', icon: Database },
-  { id: 'guardrails', label: 'Guardrails Security', icon: ShieldAlert },
-  { id: 'review', label: 'Review Queue', icon: ClipboardCheck },
-  { id: 'index', label: 'Index & Storage', icon: HardDrive },
-  { id: 'metrics', label: 'Observability & Costs', icon: LineChart },
-];
+/** The three primary areas. Studio-level concerns live in their own sub-sections. */
+const AREAS = [
+  { id: 'ask', label: 'Ask', icon: Bot },
+  { id: 'corpus', label: 'Corpus', icon: Database },
+  { id: 'operate', label: 'Operate', icon: ShieldAlert },
+] as const;
 
 export const Navbar: React.FC<NavbarProps> = ({
-  activeTab,
-  setActiveTab,
+  activeArea,
+  onSelectArea,
   tenantId,
   setTenantId,
   backendHealth,
@@ -44,6 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   setApiKey,
 }) => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showStatusPanel, setShowStatusPanel] = useState(false);
   const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
   const [localTenant, setLocalTenant] = useState(tenantId);
 
@@ -72,6 +71,18 @@ export const Navbar: React.FC<NavbarProps> = ({
     fetchSettings();
   }, [showSettingsModal]);
 
+  // Escape closes the status slide-over, matching the Chunk Inspector pattern.
+  useEffect(() => {
+    if (!showStatusPanel) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowStatusPanel(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showStatusPanel]);
+
   return (
     <header className="border-b border-meridian-border bg-white/80 backdrop-blur-md sticky top-0 z-50 px-6 py-3.5 shadow-card">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -98,15 +109,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           aria-label="Main Navigation"
           className="flex items-center space-x-1.5 bg-meridian-lavenderLight/70 p-1.5 rounded-2xl border border-meridian-border"
         >
-          {TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+          {AREAS.map((area) => {
+            const Icon = area.icon;
+            const isActive = activeArea === area.id;
             return (
               <button
-                key={tab.id}
+                key={area.id}
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => onSelectArea(area.id)}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary ${
                   isActive
                     ? 'bg-meridian-primary text-white shadow-glow'
@@ -114,7 +125,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <Icon className={`w-4 h-4 ${isActive ? 'text-meridian-blossom' : ''}`} />
-                <span>{tab.label}</span>
+                <span>{area.label}</span>
               </button>
             );
           })}
@@ -155,6 +166,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Settings className="w-3.5 h-3.5 text-meridian-textMuted group-hover:text-meridian-primary group-hover:rotate-45 transition-transform duration-300 ml-0.5 shrink-0" />
           </button>
 
+          {/* Tenant Status — metrics are three numbers plus infra state, so they
+              slide over the current area rather than costing it a slot. */}
+          <button
+            onClick={() => setShowStatusPanel(true)}
+            aria-label="Open status panel"
+            aria-expanded={showStatusPanel}
+            className="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-white hover:bg-meridian-blossom/50 border border-meridian-border hover:border-meridian-primary/50 text-meridian-text transition-all text-xs font-semibold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-meridian-primary"
+            title="Tenant status, costs and infrastructure"
+          >
+            <LineChart className="w-3.5 h-3.5 text-meridian-primary shrink-0" />
+            <span className="hidden lg:inline">Status</span>
+          </button>
+
           {/* Health Status Indicator (driven by /health services map) */}
           <div
             role="status"
@@ -191,6 +215,34 @@ export const Navbar: React.FC<NavbarProps> = ({
         platformApiKey={apiKey}
         onSavePlatformApiKey={setApiKey}
       />
+
+      {/* Tenant Status Slide-over — the current area stays mounted behind it. */}
+      {showStatusPanel && (
+        <div className="fixed inset-0 z-40 flex justify-end">
+          <div
+            className="absolute inset-0 bg-[#1E2050]/40 backdrop-blur-sm animate-in fade-in duration-150"
+            onClick={() => setShowStatusPanel(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Tenant Status"
+            className="relative w-full max-w-2xl h-full overflow-y-auto bg-meridian-bg border-l border-meridian-border shadow-2xl p-6 animate-in slide-in-from-right-4 duration-200"
+          >
+            <div className="flex justify-end mb-3">
+              <button
+                onClick={() => setShowStatusPanel(false)}
+                aria-label="Close status panel"
+                className="p-1.5 rounded-xl text-meridian-textMuted hover:text-meridian-text hover:bg-white transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+                title="Close status panel"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <MetricsDashboard tenantId={tenantId} />
+          </div>
+        </div>
+      )}
     </header>
   );
 };

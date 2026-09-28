@@ -199,3 +199,116 @@ describe('IngestionStudio Component', () => {
     expect(screen.getByText(/Created:/)).toBeInTheDocument();
   });
 });
+
+// The shared-workbench context passes the citing document/chunk down from the
+// Ask spine. These props are the seam between the two areas.
+describe('IngestionStudio focused source (citation drill-through)', () => {
+  const DOC = {
+    id: 'doc-arch-1',
+    title: 'Meridian Architecture Overview',
+    format: 'md',
+    source: 'manual',
+    created_at: '2026-08-18T10:00:00Z',
+    char_count: 500,
+    chunk_count: 2,
+    entities_count: 4,
+    relationships_count: 2,
+    snippet: 'Enterprise LLMOps platform combining self-healing Agentic RAG',
+  };
+
+  const DETAIL = {
+    ...DOC,
+    text: 'Architecture overview text',
+    chunks: [
+      { id: 'chunk-a', chunk_index: 0, section_heading: 'Overview', text: 'First chunk body' },
+      { id: 'chunk-b', chunk_index: 1, section_heading: 'Storage', text: 'Second chunk body' },
+    ],
+  };
+
+  const withOneDoc = () => {
+    vi.spyOn(api, 'getDocuments').mockResolvedValue({
+      total_documents: 1,
+      total_chunks: 2,
+      total_entities: 4,
+      documents: [DOC],
+    });
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('opens the focused document and highlights the focused chunk', async () => {
+    withOneDoc();
+    vi.spyOn(api, 'getDocument').mockResolvedValue(DETAIL);
+
+    render(
+      <IngestionStudio tenantId="default" focusedDocumentId="doc-arch-1" focusedChunkId="chunk-b" />
+    );
+
+    expect(await screen.findByText(/Document Chunk Inspector: Meridian Architecture Overview/)).toBeInTheDocument();
+    expect(api.getDocument).toHaveBeenCalledWith('doc-arch-1', 'default');
+    expect(document.querySelector('[data-focused-document="doc-arch-1"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-focused-chunk="chunk-b"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-focused-chunk="chunk-a"]')).toBeNull();
+  });
+
+  it('clears any active search filter so the focused document is not hidden', async () => {
+    withOneDoc();
+    vi.spyOn(api, 'getDocument').mockResolvedValue(DETAIL);
+
+    const { rerender } = render(<IngestionStudio tenantId="default" />);
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Search documents catalog'), 'zzz-no-match');
+    expect(screen.getByText('No matching documents found')).toBeInTheDocument();
+
+    rerender(<IngestionStudio tenantId="default" focusedDocumentId="doc-arch-1" focusedChunkId="chunk-b" />);
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-focused-document="doc-arch-1"]')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('No matching documents found')).toBeNull();
+  });
+
+  it('reports back when the user dismisses the focus', async () => {
+    withOneDoc();
+    vi.spyOn(api, 'getDocument').mockResolvedValue(DETAIL);
+    const onDismissFocus = vi.fn();
+
+    render(
+      <IngestionStudio
+        tenantId="default"
+        focusedDocumentId="doc-arch-1"
+        focusedChunkId="chunk-b"
+        onDismissFocus={onDismissFocus}
+      />
+    );
+
+    await userEvent.setup().click(await screen.findByRole('button', { name: /Dismiss source focus/i }));
+
+    expect(onDismissFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no focus affordance when nothing is focused', async () => {
+    withOneDoc();
+    render(<IngestionStudio tenantId="default" />);
+
+    expect(await screen.findByText('Meridian Architecture Overview')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Dismiss source focus/i })).toBeNull();
+    expect(document.querySelector('[data-focused-document]')).toBeNull();
+  });
+
+  it('surfaces an error when the focused document cannot be loaded', async () => {
+    withOneDoc();
+    vi.spyOn(api, 'getDocument').mockRejectedValue(new Error('Document not found'));
+
+    render(<IngestionStudio tenantId="default" focusedDocumentId="doc-missing" focusedChunkId="chunk-x" />);
+
+    expect(await screen.findByText(/Document not found/)).toBeInTheDocument();
+    // The focus is still named, so the user can tell what failed, and no chunk
+    // is falsely marked as the cited one.
+    expect(screen.getByText('chunk-x')).toBeInTheDocument();
+    expect(document.querySelector('[data-focused-chunk]')).toBeNull();
+  });
+});

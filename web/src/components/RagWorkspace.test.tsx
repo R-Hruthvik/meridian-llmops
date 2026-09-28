@@ -453,3 +453,66 @@ describe('RagWorkspace serving provenance badge', () => {
     expect(screen.getByText(/no model served this/i)).toBeInTheDocument();
   });
 });
+
+// An answer must be able to reach the source that produced it: the citation
+// hands the document and chunk ids up to the shared workbench context.
+describe('RagWorkspace citation drill-through', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      active_provider: 'openai',
+      default_model: 'gpt-4o-mini',
+    });
+  });
+
+  it('reports the cited document and chunk when a citation is clicked', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValue({
+      query: 'q',
+      answer: 'a',
+      source_chunks: [
+        { chunk_id: 'chunk-1', document_id: 'doc-7', text: 'cited body', score: 0.8, retrieval_method: 'bm25' },
+      ],
+      entities: [],
+      cycle_count: 1,
+      verified: false,
+      refusal: false,
+      execution_time_ms: 10,
+    });
+    const onCitationSelect = vi.fn();
+
+    render(<RagWorkspace tenantId="default" onCitationSelect={onCitationSelect} />);
+
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'what is this');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+
+    await user.click(await screen.findByRole('button', { name: /Chunk 1 • bm25/ }));
+
+    expect(onCitationSelect).toHaveBeenCalledWith('doc-7', 'chunk-1');
+  });
+
+  it('leaves the citation callback unused when the prop is not supplied', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValue({
+      query: 'q',
+      answer: 'a',
+      source_chunks: [
+        { chunk_id: 'chunk-1', document_id: 'doc-7', text: 'cited body', score: 0.8, retrieval_method: 'bm25' },
+      ],
+      entities: [],
+      cycle_count: 1,
+      verified: false,
+      refusal: false,
+      execution_time_ms: 10,
+    });
+
+    render(<RagWorkspace tenantId="default" />);
+
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'what is this');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    await user.click(await screen.findByRole('button', { name: /Chunk 1 • bm25/ }));
+
+    // The studio stays usable on its own; nothing is required of the caller.
+    expect(screen.getByText('Retrieved Chunks & Citations')).toBeInTheDocument();
+  });
+});

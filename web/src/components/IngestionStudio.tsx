@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   CheckCircle2,
@@ -13,6 +13,7 @@ import {
   Layers,
   Network,
   Plus,
+  Quote,
   RefreshCw,
   Search,
   Sparkles,
@@ -24,6 +25,12 @@ import type { DocumentDetail, DocumentListResponse, DocumentSummary, IngestRespo
 
 interface IngestionStudioProps {
   tenantId: string;
+  /** The document an answer cited, opened here from the Ask spine. */
+  focusedDocumentId?: string | null;
+  /** The specific chunk within that document. */
+  focusedChunkId?: string | null;
+  /** Called when the user dismisses the citation focus. */
+  onDismissFocus?: () => void;
 }
 
 const SAMPLE_DOC = `# High-Performance Distributed Caching
@@ -47,7 +54,12 @@ export const isBinaryLike = (content: string): boolean => {
   return sample.length > 0 && bad / sample.length > 0.1;
 };
 
-export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) => {
+export const IngestionStudio: React.FC<IngestionStudioProps> = ({
+  tenantId,
+  focusedDocumentId = null,
+  focusedChunkId = null,
+  onDismissFocus,
+}) => {
   const [activeTab, setActiveTab] = useState<'catalog' | 'upload'>('catalog');
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
@@ -68,7 +80,10 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
   const [selectedDocDetail, setSelectedDocDetail] = useState<DocumentDetail | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [focusError, setFocusError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const focusedDocRef = useRef<HTMLDivElement | null>(null);
+  const focusedChunkRef = useRef<HTMLDivElement | null>(null);
 
   const fetchDocuments = async (retry = true) => {
     setLoadingDocs(true);
@@ -94,6 +109,49 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
   useEffect(() => {
     fetchDocuments();
   }, [tenantId]);
+
+  // Citation drill-through: when the Ask spine hands us a document, reveal it
+  // in the catalog and expand it, with the cited chunk highlighted.
+  useEffect(() => {
+    if (!focusedDocumentId) return;
+    // A stale search filter must not hide the document we were sent to.
+    setActiveTab('catalog');
+    setSearchQuery('');
+
+    let cancelled = false;
+    const open = async () => {
+      try {
+        const detail = await api.getDocument(focusedDocumentId, tenantId);
+        if (cancelled) return;
+        setSelectedDocDetail(detail);
+        setFocusError(null);
+      } catch (err: unknown) {
+        if (cancelled) return;
+        setFocusError(
+          err instanceof Error ? err.message : 'Could not load the cited document'
+        );
+      }
+    };
+    void open();
+    return () => {
+      cancelled = true;
+    };
+  }, [focusedDocumentId, tenantId]);
+
+  // Bring the cited document/chunk into view once it is on screen.
+  useEffect(() => {
+    if (!focusedDocumentId && !focusedChunkId) return;
+    focusedDocRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    focusedChunkRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  }, [focusedDocumentId, focusedChunkId, selectedDocDetail]);
+
+  const handleDismissFocus = () => {
+    onDismissFocus?.();
+    setFocusError(null);
+    if (selectedDocDetail?.id === focusedDocumentId) {
+      setSelectedDocDetail(null);
+    }
+  };
 
   // Escape key handler for Chunk Inspector Modal
   useEffect(() => {
@@ -218,6 +276,43 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
         >
           <CheckCircle2 className="w-4 h-4" />
           <span>{toastMessage.text}</span>
+        </div>
+      )}
+
+      {/* Citation focus banner — explains why this document is open and how to leave it */}
+      {focusedDocumentId && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-meridian-blossom/60 border border-meridian-lavender shadow-sm"
+        >
+          <div className="flex items-center space-x-2 min-w-0">
+            <Quote className="w-4 h-4 text-meridian-primary shrink-0" />
+            <p className="text-xs text-meridian-text font-semibold min-w-0 truncate">
+              Opened from a citation
+              {focusedChunkId ? (
+                <>
+                  {' '}— chunk{' '}
+                  <code className="font-mono text-[11px] text-meridian-primary">{focusedChunkId}</code>
+                </>
+              ) : null}{' '}
+              of document{' '}
+              <code className="font-mono text-[11px] text-meridian-primary">{focusedDocumentId}</code>
+            </p>
+          </div>
+          <button
+            onClick={handleDismissFocus}
+            aria-label="Dismiss source focus"
+            className="px-3 py-1.5 rounded-xl bg-white border border-meridian-border text-meridian-text text-xs font-bold hover:bg-meridian-lavenderLight transition-all focus-visible:ring-2 focus-visible:ring-meridian-primary focus-visible:outline-none"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {focusError && (
+        <div role="alert" aria-live="polite" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+          {focusError}
         </div>
       )}
 
@@ -450,7 +545,13 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
               {filteredDocs.map((doc) => (
                 <div
                   key={doc.id}
-                  className="bg-white/80 backdrop-blur-md border border-meridian-border rounded-3xl p-5 shadow-card hover:shadow-cardHover transition-all flex flex-col justify-between space-y-4 group overflow-hidden"
+                  ref={doc.id === focusedDocumentId ? focusedDocRef : undefined}
+                  data-focused-document={doc.id === focusedDocumentId ? doc.id : undefined}
+                  className={`bg-white/80 backdrop-blur-md border rounded-3xl p-5 shadow-card hover:shadow-cardHover transition-all flex flex-col justify-between space-y-4 group overflow-hidden ${
+                    doc.id === focusedDocumentId
+                      ? 'border-meridian-primary ring-2 ring-meridian-primary/40'
+                      : 'border-meridian-border'
+                  }`}
                 >
                   <div className="space-y-2.5 min-w-0">
                     <div className="flex items-start justify-between gap-2 min-w-0">
@@ -773,7 +874,13 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({ tenantId }) =>
               {selectedDocDetail.chunks.map((chunk, idx) => (
                 <div
                   key={chunk.id}
-                  className="bg-white border border-meridian-border rounded-2xl p-4 shadow-sm space-y-2.5"
+                  ref={chunk.id === focusedChunkId ? focusedChunkRef : undefined}
+                  data-focused-chunk={chunk.id === focusedChunkId ? chunk.id : undefined}
+                  className={`border rounded-2xl p-4 shadow-sm space-y-2.5 bg-white ${
+                    chunk.id === focusedChunkId
+                      ? 'border-meridian-primary ring-2 ring-meridian-primary/40'
+                      : 'border-meridian-border'
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-meridian-text">
                     <span className="px-2.5 py-0.5 rounded-full bg-meridian-lavenderLight text-meridian-primary border border-meridian-border shrink-0">
