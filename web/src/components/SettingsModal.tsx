@@ -824,7 +824,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       type="checkbox"
                       checked={enforceGuardrails}
                       onChange={(e) => setEnforceGuardrails(e.target.checked)}
-                      className="cursor-pointer rounded-sm accent-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      className="cursor-pointer rounded-sm accent-[rgb(var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     />
                     <span>Enforce guardrails</span>
                   </label>

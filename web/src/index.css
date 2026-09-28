@@ -67,34 +67,37 @@
 :root {
   color-scheme: light;
 
-  /* Surfaces and text */
-  --surface: #F7F7F5;
-  --surface-raised: #FFFFFF;
-  --surface-sunken: #EFEEEC;
-  --border: #DEDDD9;
-  --border-strong: #C4C3BE;
-  --text: #16150F;
-  --text-muted: #6B6A63;
-  --text-faint: #9A9992;
+  /* Surfaces and text — rgb channel triplets, NOT hex. Tailwind's opacity
+     modifier expands to `<color>/<alpha-value>`; a bare `var(--fail)` yields
+     the invalid `var(--fail)/0.3` and the whole rule is silently dropped. The
+     config reads these as `rgb(var(--x) / <alpha-value>)` so `/30` works. */
+  --surface: 247 247 245;         /* #F7F7F5 */
+  --surface-raised: 255 255 255;  /* #FFFFFF */
+  --surface-sunken: 239 238 236;  /* #EFEEEC */
+  --border: 222 221 217;          /* #DEDDD9 */
+  --border-strong: 196 195 190;   /* #C4C3BE */
+  --text: 22 21 15;               /* #16150F */
+  --text-muted: 107 106 99;       /* #6B6A63 */
+  --text-faint: 154 153 146;      /* #9A9992 */
 
   /* Accent — the only accent, app-wide */
-  --accent: #E8590C;
-  --accent-ink: #B34708;
-  --accent-wash: #FFF1E8;
+  --accent: 232 89 12;            /* #E8590C */
+  --accent-ink: 179 71 8;         /* #B34708 */
+  --accent-wash: 255 241 232;     /* #FFF1E8 */
 
   /* Status — real state only, never decorative */
-  --ok: #1F7A4D;
-  --warn: #B26B00;
-  --fail: #B3261E;
-  --ok-wash: #EAF4EE;
-  --warn-wash: #FBF2E2;
-  --fail-wash: #F9ECEB;
+  --ok: 31 122 77;                /* #1F7A4D */
+  --warn: 178 107 0;              /* #B26B00 */
+  --fail: 179 38 30;              /* #B3261E */
+  --ok-wash: 234 244 238;         /* #EAF4EE */
+  --warn-wash: 251 242 226;       /* #FBF2E2 */
+  --fail-wash: 249 236 235;       /* #F9ECEB */
 }
 
 body {
   margin: 0;
-  background-color: var(--surface);
-  color: var(--text);
+  background-color: rgb(var(--surface));
+  color: rgb(var(--text));
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -107,23 +110,23 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--surface);
+  background: rgb(var(--surface));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: rgb(var(--border-strong));
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-faint);
+  background: rgb(var(--text-faint));
 }
 
 .glass-panel {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border);
+  border: 1px solid rgb(var(--border));
 }
 
 @layer components {
