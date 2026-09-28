@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { RagWorkspace } from './RagWorkspace';
+import { RagWorkspace, formatLatency, shortId } from './RagWorkspace';
 import { api, ApiError } from '../services/api';
 import { WorkbenchContext } from '../WorkbenchContext';
 
@@ -259,10 +259,12 @@ describe('RagWorkspace', () => {
     await user.type(textarea, 'test query');
     await user.click(screen.getByRole('button', { name: /Run Agent/i }));
 
+    // Readable in the cell, complete on hover.
     await waitFor(() => {
-      expect(screen.getByText('doc-xyz789')).toBeInTheDocument();
+      expect(screen.getByText('doc-xyz7…')).toBeInTheDocument();
     });
-    expect(screen.getByText('chunk-abc123')).toBeInTheDocument();
+    expect(screen.getByText('doc-xyz7…')).toHaveAttribute('title', 'doc-xyz789');
+    expect(screen.getByText('chunk-ab…')).toHaveAttribute('title', 'chunk-abc123');
   });
 });
 
@@ -344,12 +346,14 @@ describe('RagWorkspace verdict bar', () => {
     expect(screen.queryByText('UNVERIFIED')).toBeNull();
   });
 
-  it('reads out cycle, execution ms, chunk count and entity count', async () => {
+  it('reads out cycle, execution latency, chunk count and entity count', async () => {
     const user = userEvent.setup();
     await run(user, { ...baseResponse, cycle_count: 2 });
 
     await waitFor(() => expect(screen.getByText('2/3')).toBeInTheDocument());
-    expect(screen.getByText('1234')).toBeInTheDocument();
+    // 1234 ms reads as 1.2 s, not as a raw integer next to a "ms" unit.
+    expect(screen.getByText('1.2')).toBeInTheDocument();
+    expect(screen.getByText('s')).toBeInTheDocument();
     expect(screen.getByText('chunks')).toBeInTheDocument();
     expect(screen.getByText('entities')).toBeInTheDocument();
   });
@@ -474,6 +478,122 @@ describe('RagWorkspace serving provenance readout', () => {
   });
 });
 
+// The verdict bar and the ID column are instrument readouts, so they have to
+// read like instruments: a latency an operator can compare at a glance, and an
+// id that is shortened in a way that is honest about being shortened.
+describe('formatLatency', () => {
+  it('shows whole milliseconds below one second', () => {
+    expect(formatLatency(847)).toEqual({ value: '847', unit: 'ms' });
+    expect(formatLatency(847.4)).toEqual({ value: '847', unit: 'ms' });
+    expect(formatLatency(0)).toEqual({ value: '0', unit: 'ms' });
+  });
+
+  it('crosses to seconds with one decimal at the 1000ms boundary', () => {
+    expect(formatLatency(1000)).toEqual({ value: '1.0', unit: 's' });
+    expect(formatLatency(6197.359323501587)).toEqual({ value: '6.2', unit: 's' });
+    expect(formatLatency(1234)).toEqual({ value: '1.2', unit: 's' });
+  });
+
+  it('never emits a raw float, and never shows 1000ms next to 1.0s', () => {
+    for (const ms of [0, 7, 999, 1000, 1234, 6197.359323501587, 60000]) {
+      const { value } = formatLatency(ms);
+      expect(value).not.toMatch(/\.\d{2,}/);
+    }
+    expect(formatLatency(999.6)).toEqual({ value: '1.0', unit: 's' });
+  });
+});
+
+describe('shortId', () => {
+  it('cuts a long hash to eight characters with an ellipsis', () => {
+    expect(shortId('94a3f5b2c1d0e7ffa1b2c3d4e5f60718')).toBe('94a3f5b2…');
+    expect(shortId('98cd9ff5c7874c6')).toBe('98cd9ff5…');
+  });
+
+  it('leaves an id that already fits untouched', () => {
+    expect(shortId('94a3f5b2')).toBe('94a3f5b2');
+    expect(shortId('chunk-a')).toBe('chunk-a');
+  });
+
+  it('falls back to an em dash when there is no id at all', () => {
+    expect(shortId('')).toBe('—');
+    expect(shortId(undefined)).toBe('—');
+  });
+});
+
+describe('RagWorkspace instrument readouts', () => {
+  const response = {
+    query: 'q',
+    answer: 'a',
+    source_chunks: [
+      {
+        chunk_id: '94a3f5b2c1d0e7ffa1b2c3d4e5f60718',
+        document_id: 'doc-4f19ac02b7d3e881',
+        text: 'first passage',
+        score: 0.36,
+        retrieval_method: 'HYBRID_RRF',
+      },
+    ],
+    entities: [],
+    cycle_count: 1,
+    verified: true,
+    refusal: false,
+    execution_time_ms: 6197.359323501587,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
+  });
+
+  it('reads out a raw float latency as seconds, not as 6197.359323501587', async () => {
+    const user = userEvent.setup();
+    await run(user, response);
+
+    await waitFor(() => expect(screen.getByText('6.2')).toBeInTheDocument());
+    expect(screen.getByText('s')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('6197.359323501587');
+  });
+
+  it('keeps tabular figures on every numeric readout in the bar', async () => {
+    const user = userEvent.setup();
+    await run(user, response);
+
+    await waitFor(() => expect(screen.getByText('6.2')).toBeInTheDocument());
+
+    // Every readout value in the bar, in order: cycles, latency, chunks, entities.
+    const readouts = Array.from(
+      document.querySelectorAll('.text-readout'),
+    ).map((el) => ({ value: el.textContent, className: el.className }));
+    expect(readouts.map((r) => r.value)).toEqual(['1/3', '6.2', '1', '0']);
+    readouts.forEach((r) => expect(r.className).toContain('num'));
+  });
+
+  it('shortens the chunk id and keeps the full id in the title', async () => {
+    const user = userEvent.setup();
+    await run(user, response);
+
+    const cell = await screen.findByText('94a3f5b2…');
+    expect(cell.className).toContain('truncate');
+    expect(cell).toHaveAttribute('title', '94a3f5b2c1d0e7ffa1b2c3d4e5f60718');
+  });
+
+  it('shortens the source id the same way', async () => {
+    const user = userEvent.setup();
+    await run(user, response);
+
+    const cell = await screen.findByText('doc-4f19…');
+    expect(cell.className).toContain('truncate');
+    expect(cell).toHaveAttribute('title', 'doc-4f19ac02b7d3e881');
+  });
+
+  it('keeps the chunk score on the monospace token class', async () => {
+    const user = userEvent.setup();
+    await run(user, response);
+
+    expect((await screen.findByText('36%')).className).toContain('num');
+  });
+});
+
 // §8 — the ranked chunk table. Ranked rows, hairline dividers, no card boxes,
 // and the whole row opens the source in the Corpus overlay.
 describe('RagWorkspace chunk table', () => {
@@ -514,10 +634,10 @@ describe('RagWorkspace chunk table', () => {
 
     await waitFor(() => expect(screen.getByText('36%')).toBeInTheDocument());
     expect(screen.getByText('28%')).toBeInTheDocument();
-    expect(screen.getByText('doc-c2bd07cc')).toBeInTheDocument();
-    expect(screen.getByText('98cd9ff5c7874c6')).toBeInTheDocument();
-    expect(screen.getByText('doc-e23a17ed')).toBeInTheDocument();
-    expect(screen.getByText('02ec848c94974f36')).toBeInTheDocument();
+    expect(screen.getByText('doc-c2bd…')).toHaveAttribute('title', 'doc-c2bd07cc');
+    expect(screen.getByText('98cd9ff5…')).toHaveAttribute('title', '98cd9ff5c7874c6');
+    expect(screen.getByText('doc-e23a…')).toHaveAttribute('title', 'doc-e23a17ed');
+    expect(screen.getByText('02ec848c…')).toHaveAttribute('title', '02ec848c94974f36');
   });
 
   it('marks up every numeric cell with the monospace token class', async () => {
@@ -527,7 +647,8 @@ describe('RagWorkspace chunk table', () => {
     await waitFor(() => expect(screen.getByText('36%')).toBeInTheDocument());
 
     expect(screen.getByText('36%').className).toContain('num');
-    expect(screen.getByText('98cd9ff5c7874c6').className).toContain('id-mono');
+    expect(screen.getByText('98cd9ff5…').className).toContain('id-mono');
+    expect(screen.getByText('98cd9ff5…').className).toContain('truncate');
   });
 
   it('is a real table with no card boxes', async () => {

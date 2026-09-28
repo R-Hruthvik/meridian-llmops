@@ -46,6 +46,31 @@ const verdictFor = (response: QueryResponse): Verdict => {
   return { state: 'UNVERIFIED', variant: 'faint' };
 };
 
+/**
+ * §9 — the latency readout is an instrument, not a JSON dump. A raw float
+ * (`6197.359323501587 ms`) is unreadable, and every digit shifting as the value
+ * changes defeats the tabular figures it is set in. Under a second reads as
+ * whole milliseconds; a second or more reads as seconds with one decimal, so
+ * the digits hold still as the value moves.
+ */
+export const formatLatency = (ms: number): { value: string; unit: string } => {
+  if (!Number.isFinite(ms)) return { value: '—', unit: 'ms' };
+  const rounded = Math.round(ms);
+  if (Math.abs(rounded) < 1000) return { value: String(rounded), unit: 'ms' };
+  return { value: (ms / 1000).toFixed(1), unit: 's' };
+};
+
+/**
+ * A 32-char hash in a 12rem column is a hard mid-character clip, not an
+ * abbreviation: the reader cannot tell it is cut. Shorten it to a readable head
+ * plus an ellipsis, and keep the full id in the `title` so it stays hoverable
+ * and copyable.
+ */
+export const shortId = (id: string | undefined | null, keep = 8): string => {
+  if (!id) return '—';
+  return id.length > keep ? `${id.slice(0, keep)}…` : id;
+};
+
 /** §9 — one numeric readout: value in mono/tabular, unit in faint sans. */
 const Readout: React.FC<{ value: string; unit: string }> = ({ value, unit }) => (
   <span className="flex items-baseline gap-1 border-l border-hairline pl-3 first:border-l-0 first:pl-0">
@@ -122,6 +147,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
 
   const chunks = response?.source_chunks ?? [];
   const verdict = response ? verdictFor(response) : null;
+  const latency = formatLatency(response?.execution_time_ms ?? 0);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
@@ -325,7 +351,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
 
             <div className="flex flex-wrap items-center gap-x-3">
               <Readout value={`${response.cycle_count}/${maxCycles}`} unit="cycle" />
-              <Readout value={String(response.execution_time_ms)} unit="ms" />
+              <Readout value={latency.value} unit={latency.unit} />
               <Readout value={String(chunks.length)} unit="chunks" />
               <Readout value={String(response.entities.length)} unit="entities" />
               <button
@@ -423,14 +449,14 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                       </button>
                     </td>
                     <td className="id-mono truncate px-2 text-ink" title={chunk.document_id}>
-                      {chunk.document_id}
+                      {shortId(chunk.document_id)}
                     </td>
                     <td className="num px-2 text-right text-micro font-semibold text-ink">
                       {percent}
                     </td>
                     <td className="id-mono truncate px-2 text-muted">{chunk.retrieval_method}</td>
                     <td className="id-mono truncate px-3 text-muted" title={chunk.chunk_id}>
-                      {chunk.chunk_id}
+                      {shortId(chunk.chunk_id)}
                     </td>
                   </tr>
                 );
