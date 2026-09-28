@@ -69,6 +69,54 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
+## Owner satisfaction score — ask after every major change
+
+The project owner rates how the product actually **feels to use**, on a 1-10
+scale. The score is recorded in `README.md` under "Owner Satisfaction Score".
+
+**Current score: 2 / 10** (recorded 2026-09-28, after the three-area
+restructure and the backend contract fixes).
+
+### The rule
+
+**After every major change, stop and ask the owner for their score.** Do not
+self-assess, do not infer it from test counts or commit volume, and do not
+proceed to the next major change without asking.
+
+A major change means any of:
+
+- a new area, tab, studio, or significant navigation restructure
+- a visible redesign, restyle, or layout change
+- a new user-facing capability of consequence (a new tool, panel, or workflow)
+- a change to what the owner sees on first load
+
+### How to ask
+
+Ask once the change is **verified working** (tests green and, for UI work,
+confirmed in a real browser), then ask plainly:
+
+> What's your satisfaction score for this change, out of 10?
+
+Record the number, and update `README.md` with:
+
+- the new score and date
+- what was delivered at the time
+- the known gaps that remain, in the owner's terms where they gave them
+
+### Why this matters here
+
+Test counts and passing suites are not satisfaction. At the 2/10 mark the
+backend was correct, the bugs were fixed, and the test suites were green — the
+product still felt unsatisfying, because the work had been mostly *plumbing*
+while the *experience* stayed a generic purple-gradient template. A green
+suite proved the code did what the code was written to do; it said nothing
+about whether the result was any good to use.
+
+Treat a low score as a real signal about **direction**, not a request for more
+features. The owner's words after the 2/10: "the UI/UX and the whole app feels
+weird and unsatisfied." The next response to that is design work, not another
+endpoint.
+
 ## Agent skills
 
 ### Issue tracker

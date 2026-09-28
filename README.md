@@ -176,6 +176,46 @@ mypy packages services evals --ignore-missing-imports --explicit-package-bases
 
 ---
 
+## 📊 Owner Satisfaction Score
+
+**Current score: 2 / 10** — recorded 2026-09-28 by the project owner after the
+"three connected workbench areas" restructure and the backend contract fixes.
+
+This score is the owner's own assessment, not an estimate. It is recorded here so
+that progress is measured against how the product actually feels to use, not
+against how much code shipped.
+
+### What had been delivered at the time of this score
+
+The score is **not** a verdict on the underlying engineering. At the point of
+rating, the following were complete, tested, and verified live in a browser:
+
+- Backend suite **135 passing**, web suite **116 passing**, `ruff` clean.
+- Six disconnected studio tabs collapsed into three areas (Ask / Corpus /
+  Operate) with cross-studio citation drill-through.
+- Five live bugs fixed: guardrails unreachable from the browser, stale
+  `/health` document count, answer header contradicting a refusal body, inert
+  Top-K control, and all studios mounted simultaneously.
+- Index & Storage inspector reading live backend state, replacing hardcoded
+  infra cards.
+- Issue #35 fixed: the app reports the model that actually served a request
+  instead of echoing configuration.
+
+### Known gaps at the time of this score
+
+- The visual design still reads as a generic purple-gradient SaaS template.
+  Impeccable's deterministic detector found only one anti-pattern, which is
+  precisely the problem: the tool checks craft, not whether the product is
+  pleasant or coherent.
+- No visual pass has been run over the restructured shell.
+- The workbench has no distinct identity, typography, or layout language of its
+  own.
+- Several abilities are still plain form fields rather than tools.
+
+**Next step is design, not more features.**
+
+---
+
 ## 📄 License & Standards
 
 Architectural Decision Records (ADRs) and Domain Modeling references are versioned under `docs/adr/` and `CONTEXT.md`.
