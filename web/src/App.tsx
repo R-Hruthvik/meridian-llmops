@@ -1,15 +1,31 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { ChartNoAxesColumn, Database, FileText, ListChecks, ShieldAlert } from 'lucide-react';
-import { GuardrailsStudio } from './components/GuardrailsStudio';
-import { IndexStorageStudio } from './components/IndexStorageStudio';
-import { IngestionStudio } from './components/IngestionStudio';
 import { LensRail, TopBar, type LensId } from './components/Navbar';
-import { MetricsDashboard } from './components/MetricsDashboard';
 import { Overlay } from './components/Overlay';
 import { RagWorkspace } from './components/RagWorkspace';
-import { ReviewQueue } from './components/ReviewQueue';
+import { SurfaceFallback } from './components/SurfaceFallback';
 import { WorkbenchContext, type OpenOverlayOptions, type OverlayTarget } from './WorkbenchContext';
 import { api } from './services/api';
+
+// Only the Ask canvas ships with the first paint. Every other surface is
+// reachable, but not by default: each is a separate chunk fetched the first time
+// it is opened, so the initial bundle carries the lens the user lands on and
+// nothing else.
+const IngestionStudio = React.lazy(() =>
+  import('./components/IngestionStudio').then((m) => ({ default: m.IngestionStudio })),
+);
+const GuardrailsStudio = React.lazy(() =>
+  import('./components/GuardrailsStudio').then((m) => ({ default: m.GuardrailsStudio })),
+);
+const IndexStorageStudio = React.lazy(() =>
+  import('./components/IndexStorageStudio').then((m) => ({ default: m.IndexStorageStudio })),
+);
+const ReviewQueue = React.lazy(() =>
+  import('./components/ReviewQueue').then((m) => ({ default: m.ReviewQueue })),
+);
+const MetricsDashboard = React.lazy(() =>
+  import('./components/MetricsDashboard').then((m) => ({ default: m.MetricsDashboard })),
+);
 
 export type BackendHealth = 'online' | 'degraded' | 'offline';
 
@@ -104,20 +120,27 @@ export const App: React.FC = () => {
     openOverlay(target, { breadcrumb: LENS_LABEL[activeLens] });
 
   // B5: only the active lens's studio is mounted, so inactive studios never
-  // fetch and their DOM is genuinely gone. Same rule for the overlay host.
+  // fetch and their DOM is genuinely gone. Each one is also a lazy chunk, so
+  // "not mounted" also means "not downloaded". Same rule for the overlay host.
   const canvas = (() => {
     switch (activeLens) {
       case 'corpus':
         return (
-          <IngestionStudio
-            tenantId={tenantId}
-            focusedDocumentId={focusedDocumentId}
-            focusedChunkId={focusedChunkId}
-            onDismissFocus={clearCitationFocus}
-          />
+          <Suspense fallback={<SurfaceFallback label="Corpus" />}>
+            <IngestionStudio
+              tenantId={tenantId}
+              focusedDocumentId={focusedDocumentId}
+              focusedChunkId={focusedChunkId}
+              onDismissFocus={clearCitationFocus}
+            />
+          </Suspense>
         );
       case 'operate':
-        return <GuardrailsStudio tenantId={tenantId} />;
+        return (
+          <Suspense fallback={<SurfaceFallback label="Guardrails" />}>
+            <GuardrailsStudio tenantId={tenantId} />
+          </Suspense>
+        );
       case 'ask':
       default:
         // The canvas drives the overlay through WorkbenchContext itself; the
@@ -131,21 +154,39 @@ export const App: React.FC = () => {
     switch (activeOverlay) {
       case 'corpus':
         return (
-          <IngestionStudio
-            tenantId={tenantId}
-            focusedDocumentId={focusedDocumentId}
-            focusedChunkId={focusedChunkId}
-            onDismissFocus={clearCitationFocus}
-          />
+          <Suspense fallback={<SurfaceFallback label="Corpus" />}>
+            <IngestionStudio
+              tenantId={tenantId}
+              focusedDocumentId={focusedDocumentId}
+              focusedChunkId={focusedChunkId}
+              onDismissFocus={clearCitationFocus}
+            />
+          </Suspense>
         );
       case 'index':
-        return <IndexStorageStudio tenantId={tenantId} />;
+        return (
+          <Suspense fallback={<SurfaceFallback label="Index & Storage" />}>
+            <IndexStorageStudio tenantId={tenantId} />
+          </Suspense>
+        );
       case 'guardrails':
-        return <GuardrailsStudio tenantId={tenantId} />;
+        return (
+          <Suspense fallback={<SurfaceFallback label="Guardrails" />}>
+            <GuardrailsStudio tenantId={tenantId} />
+          </Suspense>
+        );
       case 'review':
-        return <ReviewQueue tenantId={tenantId} />;
+        return (
+          <Suspense fallback={<SurfaceFallback label="Review Queue" />}>
+            <ReviewQueue tenantId={tenantId} />
+          </Suspense>
+        );
       case 'metrics':
-        return <MetricsDashboard tenantId={tenantId} />;
+        return (
+          <Suspense fallback={<SurfaceFallback label="Metrics" />}>
+            <MetricsDashboard tenantId={tenantId} />
+          </Suspense>
+        );
       default:
         return null;
     }

@@ -1,10 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { Bot, Crosshair, Database, ShieldAlert, Settings, Zap } from 'lucide-react';
-import { SettingsModal } from './SettingsModal';
 import { StatusChip, type StatusChipVariant } from './StatusChip';
 import { api } from '../services/api';
 import type { BackendHealth } from '../App';
 import type { LLMSettings } from '../types/api';
+
+// The settings studio is a 900-line dialog behind one gear. It is a lazy chunk
+// so the first paint does not carry it.
+const SettingsModal = React.lazy(() =>
+  import('./SettingsModal').then((m) => ({ default: m.SettingsModal })),
+);
 
 /** The three primary lenses (§6). Everything else is an overlay destination. */
 export type LensId = 'ask' | 'corpus' | 'operate';
@@ -142,15 +147,21 @@ export const TopBar: React.FC<TopBarProps> = ({
         <Settings className="size-4" aria-hidden="true" />
       </button>
 
-      <SettingsModal
-        isOpen={showSettingsModal}
-        onClose={() => {
-          setShowSettingsModal(false);
-          fetchSettings();
-        }}
-        platformApiKey={apiKey}
-        onSavePlatformApiKey={setApiKey}
-      />
+      {/* Mounted only once the gear asks for it: rendering a closed dialog
+          still costs a fetch, because the chunk is what mounts. */}
+      {showSettingsModal ? (
+        <Suspense fallback={null}>
+          <SettingsModal
+            isOpen
+            onClose={() => {
+              setShowSettingsModal(false);
+              fetchSettings();
+            }}
+            platformApiKey={apiKey}
+            onSavePlatformApiKey={setApiKey}
+          />
+        </Suspense>
+      ) : null}
     </header>
   );
 };
