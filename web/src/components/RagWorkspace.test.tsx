@@ -94,6 +94,30 @@ describe('RagWorkspace', () => {
     expect(screen.getByText('test answer')).toBeInTheDocument();
   });
 
+  it('names the guardrail toggle for what it does, and it governs the request', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockQueryResponse);
+
+    renderCanvas();
+
+    // A control that says what it will do, not a readout that says what is.
+    // "Guardrails Active" read as a status; the flag only shapes the next query.
+    const toggle = screen.getByRole('checkbox', { name: /enforce guardrails on this query/i });
+    expect(toggle).toBeChecked();
+
+    await user.click(toggle);
+    expect(toggle).not.toBeChecked();
+
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'What is Meridian?');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+
+    await waitFor(() =>
+      expect(api.query).toHaveBeenCalledWith(
+        expect.objectContaining({ enforce_guardrails: false }),
+      ),
+    );
+  });
+
   it('renders distinct error state for HTTP 429 (rate limit)', async () => {
     const user = userEvent.setup();
     const rateLimitError = new ApiError(

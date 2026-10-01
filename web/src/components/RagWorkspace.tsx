@@ -170,6 +170,9 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
           <label htmlFor="rag-query-input" className="label-section text-muted">
             Ask Agentic RAG Pipeline
           </label>
+          {/* A control, so it is named for what it does. "Guardrails Active"
+              read as a status readout — the same visual grammar as the verdict
+              bar's state chips — when the flag only shapes the next query. */}
           <label
             className={`flex cursor-pointer items-center gap-1.5 rounded-pill border px-3 py-1 text-label transition-colors ${
               enforceGuardrails
@@ -183,7 +186,9 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
               onChange={(e) => setEnforceGuardrails(e.target.checked)}
               className="size-3 rounded-sm accent-accent"
             />
-            <span className={enforceGuardrails ? 'font-semibold' : ''}>Guardrails Active</span>
+            <span className={enforceGuardrails ? 'font-semibold' : ''}>
+              Enforce guardrails on this query
+            </span>
           </label>
         </div>
 
