@@ -253,6 +253,33 @@ describe('App shell: the health chip reports real state only', () => {
     expect(chipVariant(/Offline/)).toHaveAttribute('data-variant', 'fail');
   });
 
+  it('reads Unknown, never Online, when the payload carries no service evidence', async () => {
+    // `services` is optional in HealthStatus, so a partial or proxied payload is
+    // a real shape. `Object.values({}).some(...)` is false, which used to read as
+    // "nothing is down" — the readout claimed health it had no evidence for.
+    (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'healthy',
+      service: 'meridian-rag-engine',
+    });
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('Unknown')).toBeInTheDocument());
+    expect(chipVariant(/Unknown/)).toHaveAttribute('data-variant', 'faint');
+    expect(screen.queryByText('Online')).toBeNull();
+  });
+
+  it('reads Unknown when the services map is present but empty', async () => {
+    (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'healthy',
+      service: 'meridian-rag-engine',
+      services: {},
+    });
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('Unknown')).toBeInTheDocument());
+    expect(screen.queryByText('Online')).toBeNull();
+  });
+
   it('preserves the health poll', async () => {
     render(<App />);
 

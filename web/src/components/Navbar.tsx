@@ -24,12 +24,14 @@ const HEALTH_LABEL: Record<BackendHealth, string> = {
   online: 'Online',
   degraded: 'Degraded',
   offline: 'Offline',
+  unknown: 'Unknown',
 };
 
 const HEALTH_VARIANT: Record<BackendHealth, StatusChipVariant> = {
   online: 'ok',
   degraded: 'warn',
   offline: 'fail',
+  unknown: 'faint',
 };
 
 interface TopBarProps {

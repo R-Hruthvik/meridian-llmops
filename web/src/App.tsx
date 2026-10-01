@@ -27,7 +27,7 @@ const MetricsDashboard = React.lazy(() =>
   import('./components/MetricsDashboard').then((m) => ({ default: m.MetricsDashboard })),
 );
 
-export type BackendHealth = 'online' | 'degraded' | 'offline';
+export type BackendHealth = 'online' | 'degraded' | 'offline' | 'unknown';
 
 /** Every non-lens capability, and where it is reachable from. */
 const CAPABILITIES: readonly { target: OverlayTarget; label: string; icon: React.ElementType }[] = [
@@ -67,8 +67,15 @@ export const App: React.FC = () => {
       try {
         const h = await api.checkHealth();
         const services = h.services ?? {};
-        const anyDegraded = Object.values(services).some((s) => !s.reachable);
-        setBackendHealth(anyDegraded ? 'degraded' : 'online');
+        // No evidence is not good news. `services` is optional in HealthStatus,
+        // and an empty map made `some()` false — which read as "nothing is
+        // down" and put a green Online on a backend that had told us nothing.
+        const checked = Object.values(services);
+        if (checked.length === 0) {
+          setBackendHealth('unknown');
+          return;
+        }
+        setBackendHealth(checked.some((s) => !s.reachable) ? 'degraded' : 'online');
       } catch {
         setBackendHealth('offline');
       }
