@@ -33,13 +33,19 @@ interface Verdict {
 }
 
 /**
- * §7 — the one state the answer is in. Precedence is degraded > refusal >
+ * §7 — the one state the answer is in. Precedence is refusal > degraded >
  * verified; "no model served" only speaks when nothing stronger does, and
  * unverified is the floor. The bar can never claim more than the body.
+ *
+ * Refusal outranks degraded because a refusal is a fact about the answer while
+ * `degraded_reason` is only a cause. When the LLM is unreachable the backend
+ * returns `refusal: true` *and* a generation error, and the old order labelled
+ * that "DEGRADED" above a body that answered nothing at all. The cause is still
+ * printed next to the chip, so nothing is lost by naming the state first.
  */
 const verdictFor = (response: QueryResponse): Verdict => {
-  if (response.degraded_reason) return { state: 'DEGRADED', variant: 'warn' };
   if (response.refusal) return { state: 'REFUSED', variant: 'fail' };
+  if (response.degraded_reason) return { state: 'DEGRADED', variant: 'warn' };
   if (response.verified) return { state: 'VERIFIED GROUNDED', variant: 'ok' };
   if (response.serving && !response.serving.fresh)
     return { state: 'NO MODEL SERVED', variant: 'faint' };

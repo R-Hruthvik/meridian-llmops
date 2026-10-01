@@ -325,6 +325,28 @@ describe('RagWorkspace verdict bar', () => {
     expect(screen.getByText(/LLM generation failed, served fallback/)).toBeInTheDocument();
   });
 
+  it('REFUSED wins over DEGRADED when the pipeline declined *and* generation failed', async () => {
+    const user = userEvent.setup();
+    // The live payload from /v1/query when the LLM is unreachable: the pipeline
+    // refuses, and the refusal's cause arrives as degraded_reason. The chip must
+    // name the state of the answer, not the cause of it.
+    await run(user, {
+      ...baseResponse,
+      verified: false,
+      refusal: true,
+      answer: "I was unable to verify factual information regarding 'test query'",
+      degraded_reason:
+        'LLM generation failed via custom (kilo @ http://localhost:20128/v1): All connection attempts failed',
+      serving: { provider: null, model: null, fresh: false },
+    });
+
+    await waitFor(() => expect(screen.getByText('REFUSED')).toBeInTheDocument());
+    expect(variantOf('REFUSED')).toHaveAttribute('data-variant', 'fail');
+    expect(screen.queryByText('DEGRADED')).toBeNull();
+    // The cause is still stated in words — swallowing it would lose the evidence.
+    expect(screen.getByText(/LLM generation failed via custom/)).toBeInTheDocument();
+  });
+
   it('UNVERIFIED in faint for a plain generated answer', async () => {
     const user = userEvent.setup();
     await run(user, { ...baseResponse });
