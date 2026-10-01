@@ -234,6 +234,26 @@ describe('ReviewQueue keyboard and announcement behaviour', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('has a live region standing before the toast text arrives', async () => {
+    // A live region that mounts already containing its message is never
+    // announced. Both the toast and the error mounted pre-filled, so the result
+    // of the operator's own action — approved, rejected, or failed — was silent.
+    (api.listReviewItems as ReturnType<typeof vi.fn>).mockResolvedValue(pendingItems);
+    const user = userEvent.setup();
+    render(<ReviewQueue tenantId="default" />);
+
+    // Standing before anything is actioned.
+    expect(screen.getByTestId('review-toast-region')).toBeInTheDocument();
+    expect(screen.getByTestId('review-toast-region')).toHaveTextContent('');
+
+    await screen.findByText('invoice_total');
+    await user.click(screen.getByRole('button', { name: /Approve invoice_total/i }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('review-toast-region')).toHaveTextContent(/approved/i),
+    );
+  });
+
   it('names the correction fields after the item, not just the field type', async () => {
     // Every row rendered "Corrected value" and "Review note", so a screen-reader
     // user heard the same two names for whichever row they happened to be in.

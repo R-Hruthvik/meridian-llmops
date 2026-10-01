@@ -99,11 +99,18 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
 
   return (
     <div className="flex flex-col gap-3">
-      {toast && (
-        <div role="alert" aria-live="polite" className="rounded-sm border border-ok/30 bg-ok-wash px-3 py-2 text-label font-semibold text-ok">
-          {toast}
-        </div>
-      )}
+      {/* Both message regions stand empty from first paint. A live region that
+          mounts with its text already inside is silent in NVDA/JAWS/VoiceOver,
+          which meant the outcome of the operator's own action — approved,
+          rejected, or failed — was never spoken (WCAG 4.1.3). role="alert" also
+          implies assertive, so it no longer contradicts an aria-live="polite". */}
+      <div data-testid="review-toast-region" role="status" aria-live="polite">
+        {toast ? (
+          <div className="rounded-sm border border-ok/30 bg-ok-wash px-3 py-2 text-label font-semibold text-ok">
+            {toast}
+          </div>
+        ) : null}
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline pb-3">
         <div className="flex items-center gap-2">
@@ -131,11 +138,13 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
         </button>
       </div>
 
-      {error && (
-        <div role="alert" aria-live="polite" className="rounded-sm border border-fail/30 bg-fail-wash px-3 py-2 text-label text-fail">
-          {error}
-        </div>
-      )}
+      <div data-testid="review-error-region" role="alert">
+        {error ? (
+          <div className="rounded-sm border border-fail/30 bg-fail-wash px-3 py-2 text-label text-fail">
+            {error}
+          </div>
+        ) : null}
+      </div>
 
       {items.length === 0 && !loading && !error ? (
         <div className="rounded-sm border border-dashed border-hairline bg-surface-sunken px-4 py-10 text-center">
