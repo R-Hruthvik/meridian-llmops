@@ -1,61 +1,63 @@
 # Continuous Improvement Loop — Meridian LLMOps
 
-> Invoke: `opencode run --dir <repo> --title "loop-<part>-2h" --auto "Read .opencode/loop.md and execute PART=<part> DEADLINE=<epoch> BRANCH=loop/<part>-<YYYY-MM-DD>."`
-> One PART per 2h block. Valid PARTs: `gateway | ingestion | rag_engine | web | evals | ops-dx | core`.
-> Cold-boot fast path: `opencode serve --port 4096 &` then `opencode run --attach http://localhost:4096 --dir <repo> "...same prompt..."`.
+> Run: `opencode run --dir <repo> --title "loop-<n>-2h" --auto "Read .opencode/loop.md and execute DEADLINE=<epoch> BRANCH=loop/<name>-<YYYY-MM-DD>."`
+> Cold-boot fast path: `opencode serve --port 4096 &` then `opencode run --attach http://localhost:4096 --dir <repo> "Read .opencode/loop.md and execute DEADLINE=<epoch> BRANCH=..."`
 
-## 0. Inputs (set at launch, never invent)
+## 0. Mission
 
-- `PART` — the single part under improvement this block. Do not drift to other parts except to read interfaces.
-- `DEADLINE` — epoch seconds (`date +%s` + 7200 at launch). Check every tick: `NOW=$(date +%s); REMAIN=$((DEADLINE-NOW))`.
-- `BRANCH` — `loop/<part>-<date>`. All work goes here. Never push to `main`. Never `git add -A`; stage only files this tick touched.
+Improve this project. Not a specific file, not a specific feature — find the highest-value thing wrong and fix it, then find the next. The frontend is the surface the owner judges the product by, so weight it heavily, but take any improvement you find anywhere in the codebase: backend correctness, performance, types, tests, docs, observability, dead code, confusing copy, a11y, flaky gates.
 
-## 1. Scope rule — SEED IS NOT SCOPE (strict)
+**Use every capability you have.** This loop exists to spend your full toolset on the work:
 
-`DIRECTION.md §5 (B1–B5)`, `README.md` known gaps, and `docs/superpowers/loops/<part>-levers.md` are **SEED issues only — fix them when you hit them, but they NEVER limit you.**
+- **Skills — invoke them, don't just list them.** `impeccable` (audit / typeset / colorize / layout / polish / distill / harden / adapt), `hallmark`, `ui-ux-pro-max` + `design-system` + `ui-styling` + `design` + `brand`, `frontend-design`, `theme-factory`, `redesign-existing-projects`, `design-taste-frontend`, `high-end-visual-design`, `minimalist-ui`, `image-to-code`, `imagegen-frontend-web`, and the superpowers set (`brainstorming`, `writing-plans`, `test-driven-development`, `systematic-debugging`, `verification-before-completion`, `requesting-code-review`, `finishing-a-development-branch`). If a change touches UI, a skill that governs UI quality is mandatory before the commit — not optional.
+- **Browser-harness — use it extensively and treat it as evidence.** Research patterns, study competitor products and real design references, audit every surface you touch, screenshot before and after, `start_recording` / `stop_recording` for flows, verify the artifact actually renders. Research credible articles, docs, and product sites — never low-star repos as design authority.
+- **Codebase-memory graph** — `search_graph`, `trace_path`, `detect_changes`, `check_index_coverage` to find callers, blast radius, dead code, and hot paths before you edit.
+- **Subagents** — parallel exploration, review, and verification (`task`) for genuinely independent work only.
+- **websearch / webfetch** — current docs, techniques, and prior art.
 
-As a senior expert you MUST also improve like normal every tick: dead code, duplication, over-large files, N+1/over-fetch, stale counters, weak types, missing/weak tests, slow suites, confusing copy, a11y, docs drift, flaky gates, perf, observability gaps.
+## 1. Seed lists are not scope
 
-Each tick MUST contain: (a) at most one seed item if open, PLUS (b) 1–2 fresh senior-expert findings from your own `search_graph` / `trace_path` / browser probe. A tick that only closes a seed without fresh improvement — or ships no measurable gain — is a failed (worthless) tick: do not commit it, pick a deeper lever.
+`DIRECTION.md`, `README.md` gaps, and `docs/superpowers/loops/*-levers.md` are **hints only**. Fix them when you hit them; they never define or limit your work. You are expected to keep finding improvements on your own — from the graph, from the browser, from reading the code with fresh eyes, from what the owner has said about how the product feels.
 
-## 2. State files (memory lives here, not in chat)
+A change that closes nothing on a list but makes the product measurably better is a success. A change that closes a list item and moves nothing is a failure.
 
-- Backlog: `docs/superpowers/loops/<part>-levers.md` — ranked, `- [ ] OPEN` / `- [x] DONE + SHA`. Top-open wins. Add newly found work here instead of chasing it mid-tick.
-- Journal: `docs/superpowers/loops/<part>-progress.txt` — append per tick: date, lever, SHA, tests, screenshots, `next: <file:line + intent>`.
-- Learnings: `docs/superpowers/loops/lessons.md` + repo `AGENTS.md` — read both at tick start; append hard-won rules immediately when learned (keep entries one line, factual).
-- Next run resumes from these files + `git log --oneline -5` + `git status --short`. Never assume chat memory survived.
+## 2. Standard of done (every round)
 
-## 3. 2h clock + graceful shutdown (deadline-aware)
+Non-negotiable, all of it, before a commit:
 
-- `T+0:00` setup: `git fetch origin`, `git checkout -B $BRANCH`, `browser-harness --doctor`, read levers + progress + lessons + `AGENTS.md`, `todowrite` fresh list.
-- Ticks 20–30 min each until `REMAIN < 900`.
-- Shutdown mode (`REMAIN < 900`, last ~15 min): stop pulling new levers. Finish the CURRENT atom only to its next shippable boundary (smallest test-green, `ruff` clean, artifact renders). If boundary is unreachable in buffer: revert to last green (`git stash` / `git checkout -- <files>`) — **never commit a broken/half-edited state.** Then push branch, create/update PR with evidence, update levers/progress/lessons with exact resume line, exit. Time-over never equals incomplete commit; it equals last complete subtask + handoff.
+1. **Reproduced first** — a failing test, a defect measurement, or a screenshot that proves the gap existed before your edit.
+2. **Tests green** for the touched slice; `ruff check` clean; `mypy` clean where the project runs it; no new ignores or `any` escapes.
+3. **Artifact verified, not the log** — the page renders (screenshot), the API returns real data, the CLI prints the right thing. A green build is not proof.
+4. **Design gate (mandatory for anything visual)** — an anti-pattern/defect scan (e.g. `.opencode/skills/impeccable/scripts/impeccable detect web/src`) plus before/after screenshots at desktop and mobile widths, plus a contrast check on any color/typography token you touch. If a scan reports findings in the area you changed, fix them before committing.
+5. **Surgical diff** — minimal, matches existing style, touches only what the change needs, removes only orphans the change created. No drive-by refactors, no `git add -A`.
+6. **Fresh-eyes review** — a subagent or checklist review of your own diff before commit. Self-review in the same context that wrote the code does not count as verification.
 
-## 4. Tick procedure (every tick, in order)
+Failing the gate sends you back with the error and the original contract, bounded retries (2), then you pick a different improvement. Never `commit anyway`.
 
-1. **Check clock.** Compute REMAIN. If < 900 → shutdown (§3).
-2. **Pick lever.** Top `- [ ] OPEN` from `<part>-levers.md`. Mark in-progress in `todowrite`.
-3. **Impact.** `search_graph` the symbols, `trace_path` callers/callees (depth 2+), `check_index_coverage` on every cited path. Subdivide lever to a ≤25-min atom: exact `file:line`, exact test command, exact done-criteria.
-4. **Reproduce first.** Failing test or browser screenshot proving the gap before editing (TDD / `systematic-debugging`).
-5. **Implement surgically.** Minimal diff, match existing style, touch only what the atom needs. Clean up only orphans YOUR change created.
-6. **Use all powers as needed:** codebase-memory graph, `grep`/`glob`, `skill` invocation (`systematic-debugging`, `test-driven-development`), `websearch`/`webfetch` for docs, `browser-harness` extensively (§5), `task` subagents for parallel exploration only (never duplicate work).
-7. **Verify (unskippable checker).** Relevant `pytest` slice green, `ruff check <touched>`, `mypy` where applicable, artifact proof (API returns real data / page renders + screenshot, not log text). Fresh-context self-review (`requesting-code-review` checklist) before commit.
-8. **Commit.** Conventional message (`feat|fix|docs|test(scope): ...`). One commit per tick.
-9. **Record.** Mark lever DONE + SHA or requeue with error + contract, append `progress.txt`, append `lessons.md` if anything hard-won.
-10. **Restart.** Close todos, `git log --oneline -3` + `git status --short` re-read, next tick reads files fresh.
+## 3. Round cycle — this is the loop
 
-Fail verification → feed error + original contract back, bounded 2 retries, then requeue lever + pick next. Never `commit anyway`.
+Each round is one complete pass, and then the loop restarts:
 
-## 5. Browser-harness — extensive, wherever needed
+**Orient → Audit → Choose → Reproduce → Improve → Verify (gates) → Review → Commit → Push → Record → Restart**
 
-Default to the browser when: researching a pattern, red-teaming guardrails, proving a UI claim, or checking routing. Credible websites/docs/articles only — never low-star repos as authority.
+- **Orient** — read repo `AGENTS.md`, `docs/superpowers/loops/lessons.md`, `git log --oneline -10`, `git status --short`. Resume from records, not from memory.
+- **Audit** — look before you leap. Graph blast radius, `grep` for duplication and dead code, read the surface in the browser, run the defect scanner. Gather several candidates, not one.
+- **Choose** — pick the highest-value candidate that fits the remaining time. Prefer improvements that are real, measurable, and unblock other work.
+- **Restart** — close your todo list, re-read state, and begin the next round with a fresh look. Memory lives in the files and the git history, never in the conversation.
 
-- First nav is `new_tab(url)`, then `wait_for_load()`, then `page_info()`; find elements via AX tree (`Accessibility.getFullAXTree`), click via box-center + verify with `js()`; `start_recording(name)` before UI proof, `stop_recording()` after.
-- Per-part minimums: `web` → screenshot every tick + recording for flows; `gateway` → live curl/openapi + browser route proof (B1 class); `Index/Storage` → live counts vs `/health`; `guardrails` → red-team strings live; `evals` → run-history/diff screenshots.
-- `BH_RECORD=1` for flows the owner must see. Ask before leaving cloud browsers running; `stop_remote_daemon(name)` when done.
+The loop is the cycle, not the duration. One round can be 15 minutes or 60; how many rounds fit in the block is up to the work. Stopping is always allowed — a finished round is a stopping point.
 
-## 6. Safety + delivery
+## 4. Time, deadline, and clean landing
 
-- Branch-only. Push: `git push -u origin $BRANCH`. PR per cycle: `gh pr create --title "loop(<part>): <what>" --body "tests: ... | screenshots: ... | resume: ..."`. Human merges.
-- After each PR (major change per `AGENTS.md`): ask owner `What's your satisfaction score for this change, out of 10?` and record in `README.md` with date + what shipped + remaining gaps. Do not skip.
-- Metrics per block (append to progress): ticks shipped, checker catch rate (fails caught pre-commit), rework (reverts), wall-clock per tick.
+- At launch record `DEADLINE` (epoch seconds, launch + 7200). Every round: `NOW=$(date +%s); REMAIN=$((DEADLINE-NOW))`.
+- Rounds are sized to fit: an audit + improvement + full gate should fit in ~20–30 minutes. Larger ambitions get split into rounds that each end shippable.
+- **Final 15 minutes (`REMAIN < 900`) is landing time, not new work.** Stop starting anything large. Finish the current change to a shippable boundary (all gates green). If that boundary can't be reached in the remaining time, revert cleanly to the last good state — `git checkout --` the files you were editing, or `git stash` — so the repository is never left half-edited.
+- Land it: `git push -u origin $BRANCH`, `gh pr create` (or update the open PR) with what changed, the evidence (test counts, scans, screenshots), and a resume line so the next run picks up exactly where this one stopped.
+
+## 5. Working agreement
+
+- Work on `BRANCH` (`loop/<name>-<date>`). Never push to `main`. Stage only files you touched.
+- One coherent commit per round, conventional message (`feat|fix|docs|test|refactor|perf(<scope>): …`). Small, revertable, readable history.
+- Append to `docs/superpowers/loops/lessons.md` the moment you learn something hard (one line, factual), and to the progress journal what you did, what it measured, and what's next.
+- When you finish a substantial change, ask the owner: **"What's your satisfaction score for this change, out of 10?"** Record the answer in `README.md` with the date, what shipped, and what gaps remain. Their answer decides what the next round prioritizes — take it seriously in either direction.
+- If reality contradicts the task's premise, say so instead of forcing it.
