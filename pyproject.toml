@@ -70,3 +70,6 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 ignore_missing_imports = true
+# Without the plugin, mypy mis-types pydantic's Field(default_factory=...) when the
+# factory model's own fields use Field(...) — a false positive that blocks real errors.
+plugins = ["pydantic.mypy"]

@@ -104,7 +104,8 @@ def _read_vector(vector_store: Any) -> tuple[VectorIndexStatus, BackendHealth]:
         logger.warning("Qdrant live inspection failed: %s", e)
         return (
             VectorIndexStatus(
-                collections=[], points_per_collection={}, is_fallback=True,
+                collections=[], points_per_collection={},
+                total_points=None, vector_dimension=None, is_fallback=True,
                 detail=f"Qdrant query failed, so no collection data is reported: {e}",
             ),
             BackendHealth(

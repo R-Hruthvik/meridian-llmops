@@ -124,7 +124,9 @@ class VectorStoreManager:
         # Always populate in-memory cache for fallback reads
         for chunk in chunks:
             if not chunk.embedding:
-                chunk.embedding = generate_embedding(chunk.text, dim=self.dim)
+                # generate_embedding returns a hashable tuple so lru_cache can memoize it;
+                # Chunk.embedding is a list, so convert on the way in.
+                chunk.embedding = list(generate_embedding(chunk.text, dim=self.dim))
             self._memory_chunks[chunk.id] = chunk
             self._memory_vectors[chunk.id] = np.array(chunk.embedding, dtype=np.float32)
 
@@ -142,10 +144,12 @@ class VectorStoreManager:
                         "text": chunk.text,
                         "source": chunk.metadata.get("source", chunk.document_id) if chunk.metadata else chunk.document_id,
                     }
+                    # Guaranteed non-None by the cache-fill loop above; Qdrant rejects null vectors.
+                    vector = chunk.embedding or []
                     points.append(
                         PointStruct(
                             id=_qdrant_point_id(chunk.id),
-                            vector=chunk.embedding,
+                            vector=vector,
                             payload=payload,
                         )
                     )

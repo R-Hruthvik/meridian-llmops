@@ -242,8 +242,9 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
     provider_models = settings.get("provider_models", {})
     configured_model = settings.get("default_model")
 
-    # Resolve api_key from persisted settings first, then check session-tested keys as override
-    persisted_key = ""
+    # Resolve api_key from persisted settings first, then check session-tested keys as override.
+    # Any provider may have no stored key, so this is str | None; "" stays the falsy sentinel.
+    persisted_key: str | None = ""
     if provider == "groq":
         if configured_model and not configured_model.startswith(("gpt-", "claude-", "o1", "o3")):
             model = configured_model
