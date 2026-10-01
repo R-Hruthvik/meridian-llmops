@@ -1,0 +1,2 @@
+# Progress — web
+2026-10-01 init: branch loop/continuous-improvement-setup-2026-10-01, loop files seeded. next: run PART=web block.

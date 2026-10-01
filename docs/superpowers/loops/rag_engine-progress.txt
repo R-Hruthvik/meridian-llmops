@@ -1,0 +1,2 @@
+# Progress — rag_engine
+2026-10-01 init.
