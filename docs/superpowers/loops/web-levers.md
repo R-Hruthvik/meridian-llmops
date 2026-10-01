@@ -19,4 +19,8 @@
 - [x] DONE 5ef1d90 — Fresh: a failed dynamic chunk unmounted the whole app (no error boundary). Added LazySurface + SurfaceErrorBoundary.
 - [x] DONE 5ef1d90 — Fresh a11y: `Overlay`'s `<header>` mapped to a second `banner` landmark on every open overlay. Now a div.
 - [x] DONE 1cd6773 — Fresh: "Guardrails Active" checkbox read as a status readout. Now "Enforce guardrails on this query", with a test on the payload it sends.
-- [ ] OPEN — Fresh slot: perf/a11y pass on one canvas (keyboard, focus, contrast, redundant live regions) — Overlay.tsx still needs a full pass beyond the landmark fix.
+- [x] DONE 4b77112 — Fresh a11y/audit: the Metrics KPI strip rendered 0/0/$0.0000 for unmeasured telemetry. Now em-dash.
+- [x] DONE d15cbad — AUDIT (a) ReviewQueue focus fell to `<body>` after every approve/reject, and (b) the Correct disclosure had no `aria-expanded`/`aria-controls` while unmounting focused inputs.
+- [x] DONE a0d9787 — AUDIT (d) the IndexStorageStudio fallback banner mounted pre-filled inside `role="alert"`, so the most consequential warning in the app was silent. One always-mounted status region now carries the whole load.
+- [x] DONE 9828c33 — AUDIT (c) ReviewQueue's toast/error regions mounted pre-filled and contradicted their own role. Now standing regions written into on change.
+- [ ] OPEN — AUDITED, not yet fixed: (e) contrast: `--text-faint` 2.86:1 on white FAILS 1.4.3 at 11-13px, and `--warn` on `--warn-wash` is 3.78:1 — both are token-level so a fix touches every surface, which is a visible change and needs the owner's call; (f) `animate-spin` has no `prefers-reduced-motion` guard (AAA, cheap); (g) no `h1` anywhere in the shell, so each overlay starts at h2/h3 (1.3.1/2.4.6).
