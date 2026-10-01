@@ -214,6 +214,34 @@ rating, the following were complete, tested, and verified live in a browser:
 
 **Next step is design, not more features.**
 
+### A second web block ran 2026-10-01 (PR #37) — score not yet re-rated
+
+Eleven ticks landed on correctness, performance and accessibility. What shipped:
+
+- First paint **382.61 kB → 246.88 kB** (gzip 109.75 → 77.18 kB): the studios,
+  the settings dialog and the markdown parser are now fetched on demand rather
+  than shipped to everyone.
+- Four truthfulness fixes, each a case where the interface asserted something the
+  backend had not said: a refusal labelled `DEGRADED`, a health chip reading
+  `Online` with no evidence, telemetry zeros for unmeasured KPIs, and a blank
+  tenant field that silently read the default tenant's data.
+- Six accessibility defects from a read-only audit, including a failed dynamic
+  import that unmounted the whole app, a second `banner` landmark on every
+  overlay, focus lost after every review action, and three status messages that
+  screen readers were never told about.
+- Web suite **116 → 257 passing**, 26 new cases, each failing before its fix.
+
+**What this block did not do:** it did not touch the visual design. The gaps
+listed above — no identity or typography of its own, no visual pass over the
+shell, plain form fields where tools belong — are all still open, and this block
+was mostly the *plumbing* class of work the 2/10 was already a reaction to. Two
+of the remaining items are deliberately untouched because they are visible
+changes and the owner's call: the lens rail is still three unlabelled glyphs
+(spec §6 mandates "icon + tooltip"), and `--text-faint` measures 2.86:1 against
+white, below the 4.5:1 that 11–13px text needs.
+
+**Awaiting the owner's score for PR #37.**
+
 ---
 
 ## 📄 License & Standards
