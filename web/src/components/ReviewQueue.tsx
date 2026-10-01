@@ -20,6 +20,11 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
   const [notes, setNotes] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Index of the row that held focus when an action was taken. The row unmounts
+  // with its focused button and React does not relocate focus on unmount, so
+  // without this the next Tab restarted at the top of the document.
+  const [resumeRow, setResumeRow] = useState<number | null>(null);
 
   useEffect(() => () => {
     if (toastTimer.current !== null) {
@@ -52,7 +57,24 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
     fetchItems();
   }, [tenantId]);
 
-  const handleAction = async (itemId: string, action: string, corrected?: string, note?: string) => {
+  // After an action the list is refetched, so restore focus to the row that took
+  // the actioned item's place — or to the queue heading when nothing is left.
+  useEffect(() => {
+    if (resumeRow === null) return;
+    const next = document.querySelector<HTMLButtonElement>(
+      `[data-review-action="${resumeRow}"]`,
+    );
+    (next ?? headingRef.current)?.focus();
+    setResumeRow(null);
+  }, [items, resumeRow]);
+
+  const handleAction = async (
+    itemId: string,
+    action: string,
+    rowIndex: number,
+    corrected?: string,
+    note?: string,
+  ) => {
     setActingId(itemId);
     try {
       await api.reviewItemAction(
@@ -64,6 +86,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
       setCorrectingId(null);
       setCorrectedValue('');
       setNotes('');
+      setResumeRow(rowIndex);
       await fetchItems();
     } catch (err: unknown) {
       setToast(err instanceof Error ? err.message : 'Review action failed');
@@ -85,7 +108,9 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline pb-3">
         <div className="flex items-center gap-2">
           <ClipboardCheck className="size-3.5 text-accent" aria-hidden="true" />
-          <h3 className="label-section text-ink">
+          {/* Focusable so an action that empties the queue has somewhere to put
+              the caret; see the resumeRow effect above. */}
+          <h3 ref={headingRef} tabIndex={-1} className="label-section text-ink outline-none">
             Pending review · <span className="num">{items.length}</span>
           </h3>
           <span
@@ -140,7 +165,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => {
+              {items.map((item, rowIndex) => {
                 const pct = Math.round(item.confidence * 100);
                 return (
                   <React.Fragment key={item.id}>
@@ -186,8 +211,9 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={() => void handleAction(item.id, 'approve')}
+                            onClick={() => void handleAction(item.id, 'approve', rowIndex)}
                             disabled={actingId === item.id}
+                            data-review-action={rowIndex}
                             aria-label={`Approve ${item.field_name}`}
                             className="flex items-center gap-1 rounded-sm border border-ok/30 bg-ok-wash px-2 py-1 text-micro font-bold text-ok transition-colors hover:bg-ok hover:text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                           >
@@ -195,7 +221,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
                             <span>Approve</span>
                           </button>
                           <button
-                            onClick={() => void handleAction(item.id, 'reject')}
+                            onClick={() => void handleAction(item.id, 'reject', rowIndex)}
                             disabled={actingId === item.id}
                             aria-label={`Reject ${item.field_name}`}
                             className="flex items-center gap-1 rounded-sm border border-fail/30 bg-fail-wash px-2 py-1 text-micro font-bold text-fail transition-colors hover:bg-fail hover:text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -203,12 +229,17 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
                             <X className="size-3" aria-hidden="true" />
                             <span>Reject</span>
                           </button>
+                          {/* A disclosure, so it reports its state. Without it the
+                              button read as a plain action and pressing it twice
+                              unmounted the inputs while focus was inside them. */}
                           <button
                             onClick={() => {
                               setCorrectingId(correctingId === item.id ? null : item.id);
                               setCorrectedValue(item.value);
                               setNotes('');
                             }}
+                            aria-expanded={correctingId === item.id}
+                            aria-controls={`correct-${item.id}`}
                             className="flex items-center gap-1 rounded-sm border border-hairline bg-surface-raised px-2 py-1 text-micro font-bold text-accent-ink transition-colors hover:border-accent hover:bg-accent-wash focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                           >
                             <Pencil className="size-3" aria-hidden="true" />
@@ -218,7 +249,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
                       </td>
                     </tr>
                     {correctingId === item.id && (
-                      <tr className="border-b border-hairline bg-surface-sunken last:border-b-0">
+                      <tr id={`correct-${item.id}`} className="border-b border-hairline bg-surface-sunken last:border-b-0">
                         <td colSpan={5} className="px-3 py-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <input
@@ -226,7 +257,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
                               value={correctedValue}
                               onChange={(e) => setCorrectedValue(e.target.value)}
                               placeholder="Corrected value"
-                              aria-label="Corrected value"
+                              aria-label={`Corrected value for ${item.field_name}`}
                               className="min-w-[200px] flex-1 rounded-sm border border-hairline bg-surface-raised px-2 py-1 text-label text-ink outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                             />
                             <input
@@ -234,11 +265,11 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
                               value={notes}
                               onChange={(e) => setNotes(e.target.value)}
                               placeholder="Note (optional)"
-                              aria-label="Review note"
+                              aria-label={`Review note for ${item.field_name}`}
                               className="min-w-[160px] flex-1 rounded-sm border border-hairline bg-surface-raised px-2 py-1 text-label text-ink outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                             />
                             <button
-                              onClick={() => void handleAction(item.id, 'correct', correctedValue, notes || undefined)}
+                              onClick={() => void handleAction(item.id, 'correct', rowIndex, correctedValue, notes || undefined)}
                               disabled={actingId === item.id || !correctedValue.trim()}
                               className="rounded-sm bg-accent px-3 py-1 text-micro font-bold text-white transition-colors hover:bg-accent-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                             >

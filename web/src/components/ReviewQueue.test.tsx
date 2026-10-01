@@ -67,9 +67,9 @@ describe('ReviewQueue', () => {
     await screen.findByText('invoice_total');
     await user.click(screen.getByText('Correct'));
 
-    await user.clear(screen.getByLabelText('Corrected value'));
-    await user.type(screen.getByLabelText('Corrected value'), '120');
-    await user.type(screen.getByLabelText('Review note'), 'verified against source');
+    await user.clear(screen.getByLabelText('Corrected value for invoice_total'));
+    await user.type(screen.getByLabelText('Corrected value for invoice_total'), '120');
+    await user.type(screen.getByLabelText('Review note for invoice_total'), 'verified against source');
     await user.click(screen.getByText('Submit correction'));
 
     await waitFor(() => {
@@ -94,8 +94,8 @@ describe('ReviewQueue', () => {
 
     await screen.findByText('invoice_total');
     await user.click(screen.getByText('Correct'));
-    await user.clear(screen.getByLabelText('Corrected value'));
-    await user.type(screen.getByLabelText('Corrected value'), '120');
+    await user.clear(screen.getByLabelText('Corrected value for invoice_total'));
+    await user.type(screen.getByLabelText('Corrected value for invoice_total'), '120');
     await user.click(screen.getByText('Submit correction'));
 
     expect(await screen.findByText('Item corrected successfully.')).toBeInTheDocument();
@@ -168,5 +168,83 @@ describe('ReviewQueue', () => {
     render(<ReviewQueue tenantId="default" />);
     await screen.findByText('invoice_total');
     expect(screen.getByText('Global')).toBeInTheDocument();
+  });
+});
+
+describe('ReviewQueue keyboard and announcement behaviour', () => {
+  const twoItems = [
+    { ...pendingItems[0], id: 'r1', field_name: 'invoice_total' },
+    { ...pendingItems[0], id: 'r2', field_name: 'due_date' },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (api.reviewItemAction as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  it('keeps focus in the queue after approving the last item', async () => {
+    // The actioned row unmounts with its focused button, and React does not
+    // relocate focus on unmount — so the next Tab used to restart at the top of
+    // the document. Focus lands on the queue heading instead.
+    // The actioned item is gone from the refetch, so the queue empties.
+    (api.listReviewItems as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(pendingItems)
+      .mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    render(<ReviewQueue tenantId="default" />);
+
+    await screen.findByText('invoice_total');
+    await user.click(screen.getByRole('button', { name: /Approve invoice_total/i }));
+
+    await waitFor(() => expect(api.listReviewItems).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: /Pending review/i }),
+    );
+  });
+
+  it('moves focus to the next row when items remain', async () => {
+    (api.listReviewItems as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(twoItems)
+      .mockResolvedValueOnce([twoItems[1]]);
+    const user = userEvent.setup();
+    render(<ReviewQueue tenantId="default" />);
+
+    await screen.findByText('invoice_total');
+    await user.click(screen.getByRole('button', { name: /Approve invoice_total/i }));
+
+    expect(await screen.findByRole('button', { name: /Approve due_date/i })).toHaveFocus();
+  });
+
+  it('exposes the Correct disclosure as expanded/collapsed', async () => {
+    (api.listReviewItems as ReturnType<typeof vi.fn>).mockResolvedValue(pendingItems);
+    const user = userEvent.setup();
+    render(<ReviewQueue tenantId="default" />);
+
+    await screen.findByText('invoice_total');
+    const toggle = screen.getByRole('button', { name: /^Correct/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle).toHaveAttribute('aria-controls');
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('names the correction fields after the item, not just the field type', async () => {
+    // Every row rendered "Corrected value" and "Review note", so a screen-reader
+    // user heard the same two names for whichever row they happened to be in.
+    (api.listReviewItems as ReturnType<typeof vi.fn>).mockResolvedValue(pendingItems);
+    const user = userEvent.setup();
+    render(<ReviewQueue tenantId="default" />);
+
+    await screen.findByText('invoice_total');
+    await user.click(screen.getByRole('button', { name: /^Correct/ }));
+
+    expect(screen.getByLabelText(/Corrected value for invoice_total/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Review note for invoice_total/i)).toBeInTheDocument();
   });
 });
