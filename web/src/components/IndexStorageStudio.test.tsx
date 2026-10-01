@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { IndexStorageStudio } from './IndexStorageStudio';
 import { api } from '../services/api';
 import type { IndexStatusResponse } from '../types/api';
@@ -306,5 +306,37 @@ describe('IndexStorageStudio instrument language', () => {
     // §9 — the degraded/fallback counts in the banner are mono too.
     expect(within(banner).getByText('3')).toHaveClass('num');
     expect(within(banner).getByText('4')).toHaveClass('num');
+  });
+
+  it('announces the fallback warning instead of mounting it pre-filled', async () => {
+    // A live region that arrives already containing its text is silent in
+    // NVDA/JAWS/VoiceOver: they announce *changes* inside a region that already
+    // exists. The banner used to mount only after the fetch resolved, so the one
+    // message saying these numbers are not real was never spoken. The region has
+    // to be in the DOM before the message lands in it.
+    let resolveStatus: (value: IndexStatusResponse) => void = () => {};
+    (api.getIndexStatus as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise<IndexStatusResponse>((resolve) => {
+        resolveStatus = resolve;
+      }),
+    );
+
+    render(<IndexStorageStudio tenantId="default" />);
+
+    // The live region exists, and it is the one that will carry the warning.
+    const region = await screen.findByTestId('index-status-region');
+    expect(region).toHaveTextContent(/Loading live index state/);
+    expect(region).not.toHaveTextContent(/Fallback data/);
+
+    resolveStatus(FALLBACKING);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('index-status-region')).toHaveTextContent(
+        /Fallback data — 3 of 4 subsystems are not persisted state/,
+      ),
+    );
+    // Same node throughout: a change inside an existing region is what gets
+    // announced.
+    expect(screen.getByTestId('index-status-region')).toBe(region);
   });
 });

@@ -95,42 +95,47 @@ export const IndexStorageStudio: React.FC<IndexStorageStudioProps> = ({ tenantId
         </div>
       )}
 
-      {loading && !status && (
-        <div
-          role="status"
-          className="rounded border border-hairline bg-surface-raised p-4 text-label font-semibold text-muted"
-        >
-          Loading live index state…
-        </div>
-      )}
+      {/* One live region for the whole load, so the wait and the verdict land
+          inside a node that already exists. A region that mounts with its text
+          already inside is never announced by NVDA/JAWS/VoiceOver, and this
+          banner is the one message that says the numbers on screen are not the
+          data being served — it was silent. */}
+      <div
+        data-testid="index-status-region"
+        role="status"
+        aria-live="polite"
+        aria-busy={loading}
+      >
+        {loading && !status ? (
+          <div className="rounded border border-hairline bg-surface-raised p-4 text-label font-semibold text-muted">
+            Loading live index state…
+          </div>
+        ) : null}
 
-      {status && fallingBack.length > 0 && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="rounded border border-warn bg-warn-wash p-3 text-warn"
-        >
-          <h3 className="flex items-start gap-2 text-label font-bold">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            <span>
-              Fallback data — <span className="num">{fallingBack.length}</span> of{' '}
-              <span className="num">{SUBSYSTEMS.length}</span> subsystems are not persisted state
-            </span>
-          </h3>
-          <p className="mt-1 text-micro font-semibold">
-            These numbers come from an in-process fallback. They vanish on restart and are not the
-            data your queries are actually served from.
-          </p>
-          <ul className="mt-2 flex flex-col gap-1">
-            {fallingBack.map(({ key, label }) => (
-              <li key={key} className="text-micro">
-                <span className="font-bold">{label}: </span>
-                <span>{status[key].detail}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+        {status && fallingBack.length > 0 ? (
+          <div role="alert" className="rounded border border-warn bg-warn-wash p-3 text-warn">
+            <h3 className="flex items-start gap-2 text-label font-bold">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                Fallback data — <span className="num">{fallingBack.length}</span> of{' '}
+                <span className="num">{SUBSYSTEMS.length}</span> subsystems are not persisted state
+              </span>
+            </h3>
+            <p className="mt-1 text-micro font-semibold">
+              These numbers come from an in-process fallback. They vanish on restart and are not the
+              data your queries are actually served from.
+            </p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {fallingBack.map(({ key, label }) => (
+                <li key={key} className="text-micro">
+                  <span className="font-bold">{label}: </span>
+                  <span>{status[key].detail}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
 
       {status && (
         <div className="flex flex-col gap-4">
