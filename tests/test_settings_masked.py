@@ -22,9 +22,10 @@ def test_falsy_value_emits_not_configured():
 
 
 def test_masked_view_shares_secret_suffix():
+    import inspect
+
     from packages.core.secrets_store import SECRET_SUFFIX
     from services.rag_engine import app as rag_app
-    import inspect
     assert "SECRET_SUFFIX" in inspect.getsource(rag_app.masked_llm_view) or rag_app.SECRET_SUFFIX == SECRET_SUFFIX
 
 

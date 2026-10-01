@@ -3,11 +3,13 @@
 import logging
 import uuid
 import zlib
+from functools import lru_cache
 
 import numpy as np
 
 from packages.core.config import get_settings
 from packages.core.models import Chunk, SearchResult
+from packages.core.retry_config import retry_on_api_error
 
 logger = logging.getLogger("meridian.ingestion.vector_store")
 
@@ -25,7 +27,8 @@ def _qdrant_point_id(chunk_id: str) -> str:
         return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
 
 
-def generate_embedding(text: str, dim: int = 1024) -> list[float]:
+@lru_cache(maxsize=1000)
+def generate_embedding(text: str, dim: int = 1024) -> tuple[float, ...]:
     """Generates a normalized dense vector embedding (deterministic pseudo-embedding fallback for tests).
 
     Uses zlib.crc32 rather than hash(): Python randomizes str hashes per process,
@@ -34,7 +37,7 @@ def generate_embedding(text: str, dim: int = 1024) -> list[float]:
     vec = np.zeros(dim, dtype=np.float32)
     tokens = text.lower().split()
     if not tokens:
-        return vec.tolist()
+        return tuple(vec.tolist())
 
     for idx, token in enumerate(tokens):
         h = zlib.crc32(token.encode("utf-8")) % dim
@@ -43,7 +46,7 @@ def generate_embedding(text: str, dim: int = 1024) -> list[float]:
     norm = np.linalg.norm(vec)
     if norm > 0:
         vec = vec / norm
-    return vec.tolist()
+    return tuple(vec.tolist())
 
 
 class VectorStoreManager:
@@ -73,13 +76,15 @@ class VectorStoreManager:
                 )
             except Exception as e:  # noqa: BLE001
                 logger.warning("qdrant-client not installed - using in-memory fallback: %s", e)
+                self._qdrant_fallback = True
                 return
-            try:
+
+            @retry_on_api_error(max_attempts=3)
+            def _connect_qdrant():
                 self.client = QdrantClient(
                     host=self.settings.qdrant_host,
                     port=self.settings.qdrant_port,
                     timeout=5,
-                    
                 )
                 # Test connectivity
                 self.client.get_collections()  # type: ignore[attr-defined]
@@ -99,6 +104,9 @@ class VectorStoreManager:
                     self.settings.qdrant_port,
                     self.collection_name,
                 )
+
+            try:
+                _connect_qdrant()
             except Exception as e:  # noqa: BLE001
                 logger.warning(
                     "Qdrant unavailable at %s:%s - using in-memory fallback: %s",
@@ -137,7 +145,7 @@ class VectorStoreManager:
                     points.append(
                         PointStruct(
                             id=_qdrant_point_id(chunk.id),
-                            vector=chunk.embedding or generate_embedding(chunk.text, dim=self.dim),
+                            vector=chunk.embedding,
                             payload=payload,
                         )
                     )
@@ -147,10 +155,11 @@ class VectorStoreManager:
                 self._qdrant_fallback = True
         return len(chunks)
 
+    @retry_on_api_error(max_attempts=3)
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         if self._qdrant_available and self.client is not None:
             try:
-                query_vec = generate_embedding(query, dim=self.dim)
+                query_vec = list(generate_embedding(query, dim=self.dim))
                 # Use search API (qdrant-client 1.8) with fallback to query_points
                 try:
                     hits = self.client.search(  # type: ignore[attr-defined]

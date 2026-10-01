@@ -99,6 +99,7 @@ def test_settings():
 
 def test_chunk_dim_mismatch():
     import pytest
+
     from packages.core.models import Chunk
     with pytest.raises(ValueError):
         Chunk(id="c", document_id="d", text="t", embedding=[0.1] * 3).validate_dim(1024)
