@@ -1,2 +1,0 @@
-# Progress — gateway
-2026-10-01 init. next: B1 routing probe.

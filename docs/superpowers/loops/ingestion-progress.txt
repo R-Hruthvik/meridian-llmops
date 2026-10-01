@@ -1,2 +1,0 @@
-# Progress — ingestion
-2026-10-01 init.
