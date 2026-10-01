@@ -1,9 +1,9 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChartNoAxesColumn, Database, FileText, ListChecks, ShieldAlert } from 'lucide-react';
 import { LensRail, TopBar, type LensId } from './components/Navbar';
 import { Overlay } from './components/Overlay';
 import { RagWorkspace } from './components/RagWorkspace';
-import { SurfaceFallback } from './components/SurfaceFallback';
+import { LazySurface } from './components/LazySurface';
 import { WorkbenchContext, type OpenOverlayOptions, type OverlayTarget } from './WorkbenchContext';
 import { api } from './services/api';
 
@@ -133,20 +133,20 @@ export const App: React.FC = () => {
     switch (activeLens) {
       case 'corpus':
         return (
-          <Suspense fallback={<SurfaceFallback label="Corpus" />}>
+          <LazySurface key="corpus" label="Corpus">
             <IngestionStudio
               tenantId={tenantId}
               focusedDocumentId={focusedDocumentId}
               focusedChunkId={focusedChunkId}
               onDismissFocus={clearCitationFocus}
             />
-          </Suspense>
+          </LazySurface>
         );
       case 'operate':
         return (
-          <Suspense fallback={<SurfaceFallback label="Guardrails" />}>
+          <LazySurface key="guardrails" label="Guardrails">
             <GuardrailsStudio tenantId={tenantId} />
-          </Suspense>
+          </LazySurface>
         );
       case 'ask':
       default:
@@ -161,38 +161,38 @@ export const App: React.FC = () => {
     switch (activeOverlay) {
       case 'corpus':
         return (
-          <Suspense fallback={<SurfaceFallback label="Corpus" />}>
+          <LazySurface key="corpus" label="Corpus">
             <IngestionStudio
               tenantId={tenantId}
               focusedDocumentId={focusedDocumentId}
               focusedChunkId={focusedChunkId}
               onDismissFocus={clearCitationFocus}
             />
-          </Suspense>
+          </LazySurface>
         );
       case 'index':
         return (
-          <Suspense fallback={<SurfaceFallback label="Index & Storage" />}>
+          <LazySurface key="index" label="Index & Storage">
             <IndexStorageStudio tenantId={tenantId} />
-          </Suspense>
+          </LazySurface>
         );
       case 'guardrails':
         return (
-          <Suspense fallback={<SurfaceFallback label="Guardrails" />}>
+          <LazySurface key="guardrails" label="Guardrails">
             <GuardrailsStudio tenantId={tenantId} />
-          </Suspense>
+          </LazySurface>
         );
       case 'review':
         return (
-          <Suspense fallback={<SurfaceFallback label="Review Queue" />}>
+          <LazySurface key="review" label="Review Queue">
             <ReviewQueue tenantId={tenantId} />
-          </Suspense>
+          </LazySurface>
         );
       case 'metrics':
         return (
-          <Suspense fallback={<SurfaceFallback label="Metrics" />}>
+          <LazySurface key="metrics" label="Metrics">
             <MetricsDashboard tenantId={tenantId} />
-          </Suspense>
+          </LazySurface>
         );
       default:
         return null;

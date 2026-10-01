@@ -116,7 +116,10 @@ export const Overlay: React.FC<OverlayProps> = ({
           className,
         )}
       >
-        <header className="flex items-start justify-between gap-3 border-b border-hairline px-4 py-3">
+        {/* A div, not a <header>: inside a dialog a <header> still maps to the
+            `banner` landmark, so every open overlay would put a second banner on
+            the page and break landmark navigation. */}
+        <div className="flex items-start justify-between gap-3 border-b border-hairline px-4 py-3">
           <div className="min-w-0">
             {breadcrumb ? (
               <div
@@ -136,7 +139,7 @@ export const Overlay: React.FC<OverlayProps> = ({
           >
             <X className="size-4" aria-hidden="true" />
           </button>
-        </header>
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{children}</div>
         {footer ? <div className="border-t border-hairline px-4 py-3">{footer}</div> : null}
       </div>

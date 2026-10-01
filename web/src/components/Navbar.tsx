@@ -1,5 +1,6 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Bot, Crosshair, Database, ShieldAlert, Settings, Zap } from 'lucide-react';
+import { LazySurface } from './LazySurface';
 import { StatusChip, type StatusChipVariant } from './StatusChip';
 import { api } from '../services/api';
 import type { BackendHealth } from '../App';
@@ -152,7 +153,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       {/* Mounted only once the gear asks for it: rendering a closed dialog
           still costs a fetch, because the chunk is what mounts. */}
       {showSettingsModal ? (
-        <Suspense fallback={null}>
+        <LazySurface label="Settings">
           <SettingsModal
             isOpen
             onClose={() => {
@@ -162,7 +163,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             platformApiKey={apiKey}
             onSavePlatformApiKey={setApiKey}
           />
-        </Suspense>
+        </LazySurface>
       ) : null}
     </header>
   );
