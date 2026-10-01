@@ -64,15 +64,21 @@ export const TopBar: React.FC<TopBarProps> = ({
     setLocalTenant(tenantId);
   }, [tenantId]);
 
-  // Debounce tenantId changes before propagating up
+  // Debounce tenantId changes before propagating up. A blank or whitespace-only
+  // tenant is never propagated: the backend substitutes "default" for an empty
+  // X-Tenant-Id, so sending one would leave the field reading blank while every
+  // surface quietly reported the default tenant's data.
   useEffect(() => {
     const handler = setTimeout(() => {
-      if (localTenant !== tenantId) {
-        setTenantId(localTenant);
+      const next = localTenant.trim();
+      if (next && next !== tenantId) {
+        setTenantId(next);
       }
     }, 300);
     return () => clearTimeout(handler);
   }, [localTenant, tenantId, setTenantId]);
+
+  const tenantInvalid = localTenant.trim() === '';
 
   const fetchSettings = () => {
     api.getLLMSettings()
@@ -99,7 +105,11 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div className="shrink-0 self-stretch w-px bg-hairline" aria-hidden="true" />
 
       {/* Tenant switcher — a text well, not a labelled cluster */}
-      <label className="flex shrink-0 items-center gap-1.5 rounded-sm border border-hairline bg-surface px-2 py-1 focus-within:border-accent">
+      <label
+        className={`flex shrink-0 items-center gap-1.5 rounded-sm border bg-surface px-2 py-1 focus-within:border-accent ${
+          tenantInvalid ? 'border-fail' : 'border-hairline'
+        }`}
+      >
         <span className="label-section text-faint">Tenant</span>
         <input
           type="text"
@@ -108,7 +118,18 @@ export const TopBar: React.FC<TopBarProps> = ({
           className="id-mono w-24 rounded-sm bg-transparent text-ink outline-none placeholder:text-faint"
           placeholder="tenant_id"
           aria-label="Tenant Identifier"
+          aria-invalid={tenantInvalid}
+          aria-describedby={tenantInvalid ? 'tenant-error' : undefined}
         />
+        {tenantInvalid ? (
+          <span
+            id="tenant-error"
+            role="alert"
+            className="shrink-0 text-micro font-semibold text-fail"
+          >
+            Tenant identifier is required
+          </span>
+        ) : null}
       </label>
 
       <div className="shrink-0 self-stretch w-px bg-hairline" aria-hidden="true" />

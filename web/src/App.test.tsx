@@ -226,6 +226,37 @@ describe('App shell: the top bar is one line', () => {
     expect(screen.getAllByLabelText('Tenant Identifier')).toHaveLength(1);
     expect(screen.getAllByRole('status')).toHaveLength(1);
   });
+
+  it('refuses a blank tenant instead of silently reading another tenant', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const field = screen.getByLabelText('Tenant Identifier');
+    await user.clear(field);
+    await user.type(field, '   ');
+
+    // The backend substitutes "default" for an empty X-Tenant-Id, so a blank
+    // field quietly shows the default tenant's data. Say so, and keep reading
+    // the tenant the field last named.
+    await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'));
+    expect(screen.getByText(/Tenant identifier is required/i)).toBeInTheDocument();
+    expect(api.getDocuments).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid tenant and stops reporting the error', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const field = screen.getByLabelText('Tenant Identifier');
+    await user.clear(field);
+    await user.type(field, '  ');
+    await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'));
+
+    await user.type(field, 'acme');
+
+    await waitFor(() => expect(field).not.toHaveAttribute('aria-invalid', 'true'));
+    expect(screen.queryByText(/Tenant identifier is required/i)).toBeNull();
+  });
 });
 
 describe('App shell: the health chip reports real state only', () => {
