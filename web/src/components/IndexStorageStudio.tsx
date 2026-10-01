@@ -163,7 +163,8 @@ export const IndexStorageStudio: React.FC<IndexStorageStudioProps> = ({ tenantId
                     >
                       <span className="id-mono text-ink">{name}</span>
                       <span className="num text-readout font-semibold text-ink">
-                        {formatCount(status.vector.points_per_collection[name]) ?? '—'}
+                        {formatCount(status.vector.points_per_collection[name]) ??
+                          <Unavailable />}
                       </span>
                     </li>
                   ))}

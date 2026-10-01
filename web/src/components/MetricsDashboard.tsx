@@ -141,8 +141,12 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
     fetchMetrics();
   }, [tenantId]);
 
+  // Unmeasured telemetry is not a measurement of zero. `metrics` is null on
+  // first paint and after a failed fetch, and the strip used to render 0 req /
+  // 0 tok / $0.0000 for both — asserting a number nobody measured. The em-dash
+  // is this file's own convention for a count the backend could not observe.
   const kpiValue = (key: string): string => {
-    if (!metrics) return key === 'cost' ? formatCost(0) : '0';
+    if (!metrics) return '—';
     if (key === 'total-requests') return metrics.total_requests.toLocaleString();
     if (key === 'total-tokens') return metrics.total_tokens.toLocaleString();
     return formatCost(metrics.total_cost_usd);

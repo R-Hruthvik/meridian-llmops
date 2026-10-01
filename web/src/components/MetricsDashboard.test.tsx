@@ -141,8 +141,23 @@ describe('MetricsDashboard', () => {
       expect(screen.getByTestId('kpi-total-tokens')).toHaveTextContent('500');
     });
 
-    it('formats cost to fixed precision instead of leaking a raw float', async () => {
-      (api.getMetrics as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    it('reports unmeasured telemetry as unavailable, never as a measured zero', async () => {
+      (api.getMetrics as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error('telemetry down'),
+      );
+      render(<MetricsDashboard tenantId="default" />);
+
+      await screen.findByRole('alert');
+
+      // The file's own rule, 70 lines below: "the unavailable case shows an
+      // em-dash, never a fake 0". A KPI strip that reads 0 req / 0 tok / $0.0000
+      // after a failed fetch asserts unmeasured data as measured.
+      expect(screen.getByTestId('kpi-total-requests')).toHaveTextContent('—');
+      expect(screen.getByTestId('kpi-total-tokens')).toHaveTextContent('—');
+      expect(screen.getByTestId('kpi-cost')).toHaveTextContent('—');
+    });
+
+    it('formats cost to fixed precision instead of leaking a raw float', async () => {      (api.getMetrics as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         tenant_id: 'default',
         total_requests: 10,
         total_tokens: 500,

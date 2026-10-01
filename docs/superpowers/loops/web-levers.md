@@ -2,9 +2,21 @@
 
 > SEED ONLY — see `.opencode/loop.md` §1. Fix seeds when hit, but every tick MUST add fresh senior-expert findings.
 
-- [ ] OPEN — Seed: B5 lazy-mount — verify no always-mounted studios remain (`App.tsx`), measure live DOM/JS on load via browser-harness.
-- [ ] OPEN — Seed: B3 header/body contradiction — prove refusal vs success header states with screenshots.
-- [ ] OPEN — Seed: forensics rail — cycle timeline + per-chunk fusion breakdown + critic verdict + citation→chunk click-through (DIRECTION 4.2A).
+- [x] DONE 61b7c57 — Seed: B5 lazy-mount. DOM was gated, the import graph was not; React.lazy for all 5 studios + SettingsModal. Entry 382.61→298.40 kB.
+- [x] DONE 70780e7 — Seed: B3 refusal contradiction (verdict precedence). Refusal state proven live.
+- [ ] OPEN — Seed: B3 remainder: VERIFIED GROUNDED success-state screenshot — BLOCKED, the LLM endpoint (kilo :20128) is down so no non-refusal answer can be produced honestly. Re-run when a provider is reachable.
+- [ ] OPEN — Seed: forensics rail — cycle timeline + per-chunk fusion breakdown + critic verdict + citation→chunk click-through (DIRECTION 4.2A). BLOCKED ON A CONTRACT, checked in t5: `QueryResponse` (packages/core/models.py) carries only `cycle_count: int` — there is no per-cycle trace, no per-chunk fusion score (chunks have just `score` + `retrieval_method`) and no critic verdict. Every part of the rail except citation→chunk click-through needs new rag_engine fields first, so do not start this in PART=web. Citation→chunk click-through already exists (App.test.tsx "citation drill-through to the Corpus overlay").
+- [ ] OPEN — Fresh (from t1 screenshot): the lens rail is 3 bare icons — no visible label for Ask/Corpus/Operate. Owner has to guess what the app is.
+- [ ] OPEN — Fresh (from t1 screenshot): the Ask canvas wastes ~600px of horizontal space at 1536w; one narrow column in a wide frame.
+- [ ] OPEN — Fresh (from t1 screenshot): "Guardrails Active" chip sits inside the Ask panel but describes the gateway, not the query.
+- [x] DONE 1b957ea — Fresh: health chip read Online on an empty `services` map. Added an `unknown` (faint) state; no evidence is no longer good news.
+- [x] DONE 08d8a7a — Fresh: `marked` was in the entry chunk via MarkdownRenderer. Now its own 44.56 kB chunk, fetched on answer. Entry 298.40->245.64 kB.
+- [x] NOT A BUG (t3) — /health is 2.6 ms (probes run once at boot, not per request), so the 10 s interval cannot overlap. Measured, not guessed.
+- [ ] OPEN — OWNER DECISION: the lens rail is 3 unlabelled glyphs, but spec §6 says "icon + tooltip" on purpose. Adding visible labels contradicts the written spec — ask the owner before changing it.
+- [ ] OPEN — NOT A BUG (t3): the Ask canvas caps its column on wide viewports; that is a reading-width cap, not dead space. Verified against the 1536w screenshot.
 - [ ] OPEN — Fresh slot: audit one surface for identity/typography/layout language (owner 2/10) + propose minimal token change.
-- [ ] OPEN — Fresh slot: convert one plain form-field ability into a real tool surface with validation + loading + error states.
-- [ ] OPEN — Fresh slot: perf/a11y pass on one canvas (keyboard, focus, contrast, redundant live regions).
+- [x] DONE 3854bcc — Fresh: the tenant field was a bare form field; a blank value silently read the default tenant. Now validated with aria-invalid + inline alert, last valid tenant retained.
+- [x] DONE 5ef1d90 — Fresh: a failed dynamic chunk unmounted the whole app (no error boundary). Added LazySurface + SurfaceErrorBoundary.
+- [x] DONE 5ef1d90 — Fresh a11y: `Overlay`'s `<header>` mapped to a second `banner` landmark on every open overlay. Now a div.
+- [x] DONE 1cd6773 — Fresh: "Guardrails Active" checkbox read as a status readout. Now "Enforce guardrails on this query", with a test on the payload it sends.
+- [ ] OPEN — Fresh slot: perf/a11y pass on one canvas (keyboard, focus, contrast, redundant live regions) — Overlay.tsx still needs a full pass beyond the landmark fix.
