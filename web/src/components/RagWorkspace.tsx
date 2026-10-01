@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -8,10 +8,17 @@ import {
   Send,
 } from 'lucide-react';
 import { api, ApiError } from '../services/api';
-import { MarkdownRenderer } from './MarkdownRenderer';
 import { StatusChip, type StatusChipVariant } from './StatusChip';
 import { useWorkbench } from '../WorkbenchContext';
 import type { QueryResponse } from '../types/api';
+
+// The markdown parser is the single heaviest dependency in the app and there is
+// nothing to parse until an answer exists. Deferring it keeps it out of first
+// paint; the answer body falls back to the raw text for the frame or two it
+// takes to arrive, so the box is never empty.
+const MarkdownRenderer = React.lazy(() =>
+  import('./MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
+);
 
 interface RagWorkspaceProps {
   tenantId: string;
@@ -383,7 +390,11 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                 {response.degraded_reason ? `: ${response.degraded_reason}` : ' (generation_error/placeholder).'}
               </p>
             ) : (
-              <MarkdownRenderer content={response.answer} />
+              <Suspense
+                fallback={<p className="answer-prose text-ink">{response.answer}</p>}
+              >
+                <MarkdownRenderer content={response.answer} />
+              </Suspense>
             )}
           </div>
         </>

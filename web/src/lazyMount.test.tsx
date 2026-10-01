@@ -32,6 +32,25 @@ vi.mock('./components/SettingsModal', () => {
   evaluated.push('settings');
   return { SettingsModal: () => <div data-testid="settings-surface" /> };
 });
+vi.mock('./components/MarkdownRenderer', () => {
+  evaluated.push('markdown');
+  return { MarkdownRenderer: () => <div data-testid="markdown-surface">answer body</div> };
+});
+
+const ANSWER = {
+  query: 'What storage engines?',
+  answer: 'Qdrant and Neo4j.',
+  source_chunks: [
+    { chunk_id: 'chunk-a', document_id: 'doc-a', text: 'alpha', score: 0.4, retrieval_method: 'hybrid_rrf' },
+  ],
+  entities: [{ name: 'Qdrant', entity_type: 'concept' }],
+  cycle_count: 1,
+  verified: true,
+  refusal: false,
+  execution_time_ms: 900,
+  serving: { provider: 'openai', model: 'gpt-4o-mini', fresh: true },
+  degraded_reason: null,
+};
 
 vi.mock('./services/api', () => ({
   api: {
@@ -45,7 +64,7 @@ vi.mock('./services/api', () => ({
       services: { qdrant: { reachable: true } },
     })),
     getLLMSettings: vi.fn(async () => ({ active_provider: 'openai', default_model: 'gpt-4o-mini' })),
-    query: vi.fn(),
+    query: vi.fn(async () => ANSWER),
     getDocuments: vi.fn(),
     getMetrics: vi.fn(),
     getIndexStatus: vi.fn(),
@@ -132,5 +151,26 @@ describe('a pending surface is labelled, not blank', () => {
 
     expect(await screen.findByTestId('metrics-surface')).toBeInTheDocument();
     expect(screen.queryByTestId('surface-fallback')).toBeNull();
+  });
+});
+
+describe('the answer body is deferred until an answer exists', () => {
+  it('does not evaluate the markdown renderer on first paint', () => {
+    render(<App />);
+
+    expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
+    expect(AT_MODULE_LOAD).not.toContain('markdown');
+    expect(evaluated).not.toContain('markdown');
+  });
+
+  it('evaluates it once an answer has been returned', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'What storage engines?');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+
+    expect(await screen.findByTestId('markdown-surface')).toBeInTheDocument();
+    expect(evaluated).toContain('markdown');
   });
 });
