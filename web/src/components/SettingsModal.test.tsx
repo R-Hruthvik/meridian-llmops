@@ -1,14 +1,22 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SettingsModal } from './SettingsModal';
-import { api } from '../services/api';
+import { api, ApiError } from '../services/api';
 
 vi.mock('../services/api', () => ({
   api: {
     getLLMSettings: vi.fn(),
     updateLLMSettings: vi.fn(),
     testAndFetchModels: vi.fn(),
+    testLLMConnection: vi.fn(),
+    getProviders: vi.fn(),
+  },
+  ApiError: class ApiError extends Error {
+    constructor(message: string, public status: number, public detail?: string) {
+      super(message);
+      this.name = 'ApiError';
+    }
   },
 }));
 
@@ -26,6 +34,7 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
     localStorage.clear();
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
     (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
   });
 
   it('does not write provider API keys to localStorage on save', async () => {
@@ -222,8 +231,7 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
     expect(saveButton).toBeDisabled();
   });
 
-  it('closes modal on successful save', async () => {
-    const user = userEvent.setup();
+  it('closes modal on successful save', async () => {    const user = userEvent.setup();
     const mockOnClose = vi.fn();
 
     (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
@@ -248,5 +256,399 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
     await waitFor(() => {
       expect(mockOnClose).toHaveBeenCalled();
     }, { timeout: 1000 });
+  });
+});
+
+describe('SettingsModal - masked settings contract (F1/F2/F3/F5)', () => {
+  const mockGet = {
+    active_provider: 'openai',
+    default_model: 'gpt-4o-mini',
+    custom_base_url: 'https://api.groq.com/openai/v1',
+    providers_configured: { openai: true, anthropic: false, groq: true, custom: false, ollama: true },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
+  });
+
+  it('F1: save payload drops openai_proj_id and litellm_base_url', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    // Project ID stays test-call-only: fill it, it must not reach the save payload
+    await user.type(screen.getByPlaceholderText('proj-...'), 'proj-should-stay-local');
+    // LiteLLM gateway URL input was removed (not a backend settings field)
+    expect(screen.queryByLabelText(/LiteLLM Gateway Base URL/i)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalled();
+    });
+    const payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).not.toHaveProperty('openai_proj_id');
+    expect(payload).not.toHaveProperty('litellm_base_url');
+  });
+
+  it('F2: custom_api_key/custom_base_url only for the OpenAI-compatible family', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    // Default provider openai: no custom fields even though defaults are set
+    const saveButton = screen.getByRole('button', { name: /Save & Apply/i });
+    await user.click(saveButton);
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalled();
+    });
+    let payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).not.toHaveProperty('custom_api_key');
+    expect(payload).not.toHaveProperty('custom_base_url');
+
+    // Groq: both custom fields sent
+    vi.clearAllMocks();
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
+    // Success state disables Save for 600ms — wait for re-enable before re-saving
+    await waitFor(() => expect(saveButton).not.toBeDisabled(), { timeout: 2000 });
+    const providerSelect = screen.getAllByRole('combobox')[0];
+    await user.selectOptions(providerSelect, 'groq');
+    await user.type(screen.getByPlaceholderText(/Enter API key or leave blank/i), 'gsk-test-key');
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalled();
+    });
+    payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload.groq_api_key).toBe('gsk-test-key');
+    expect(payload.custom_api_key).toBe('gsk-test-key');
+    expect(payload.custom_base_url).toBeTruthy();
+  });
+
+  it('F2: ollama sends custom_base_url but never a key', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    const providerSelect = screen.getAllByRole('combobox')[0];
+    await user.selectOptions(providerSelect, 'ollama');
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalled();
+    });
+    const payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload.custom_base_url).toBe('http://localhost:11434');
+    expect(payload).not.toHaveProperty('custom_api_key');
+  });
+
+  it('F3: shows per-provider Configured status without filling password inputs', async () => {
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    // StatusChip nests a decorative dot inside the chip, so the label is
+    // disambiguated by its slot. The masked-view contract is unchanged: the
+    // chip still reads "Configured ••••" and the input is still never filled.
+    expect(
+      await screen.findByText('Configured ••••', { selector: '[data-slot="label"]' }),
+    ).toBeInTheDocument();
+    const openaiInput = screen.getByPlaceholderText('sk-proj-...') as HTMLInputElement;
+    expect(openaiInput.value).toBe('');
+  });
+
+  it('F5: surfaces 422 detail inline on save failure', async () => {
+    const user = userEvent.setup();
+    (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError('openai_proj_id: Extra inputs are not permitted', 422, 'openai_proj_id: Extra inputs are not permitted'),
+    );
+
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+
+    expect(await screen.findByText(/Extra inputs are not permitted/)).toBeInTheDocument();
+  });
+});
+
+describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
+  const mockGet = {
+    active_provider: 'openai',
+    default_model: 'gpt-4o-mini',
+    providers_configured: { openai: true, ollama: true },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
+    (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'success',
+      message: 'Successfully connected to gpt-4o-mini via openai',
+      latency_ms: 87.4,
+    });
+  });
+
+  it('G4: advanced collapsible wires timeout/max_cycles/guardrails into the save payload', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Advanced: timeout, guardrails/i }));
+    await user.type(screen.getByLabelText(/Timeout \(seconds/i), '60');
+    await user.type(screen.getByLabelText(/Max cycles/i), '5');
+
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timeout_seconds: 60,
+          max_cycles: 5,
+          enforce_guardrails: true,
+        }),
+      );
+    });
+  });
+
+  it('G4: blank advanced fields are omitted from the save payload', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalled();
+    });
+    const payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).not.toHaveProperty('timeout_seconds');
+    expect(payload).not.toHaveProperty('max_cycles');
+    expect(payload).not.toHaveProperty('enforce_guardrails');
+  });
+
+  it('G4: default save omits enforce_guardrails while interacted Advanced includes it', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    // Default save (Advanced never opened): guardrails must be omitted.
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalledTimes(1);
+    });
+    let payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).not.toHaveProperty('enforce_guardrails');
+
+    // Interacted Advanced (opened, checkbox toggled): guardrails included.
+    await waitFor(() => expect(screen.getByRole('button', { name: /Save & Apply/i })).not.toBeDisabled(), { timeout: 2000 });
+    await user.click(screen.getByRole('button', { name: /Advanced: timeout, guardrails/i }));
+    const guardrailsCheckbox = screen.getByRole('checkbox') as HTMLInputElement;
+    await user.click(guardrailsCheckbox);
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalledTimes(2);
+    });
+    payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[1][0];
+    expect(payload).toHaveProperty('enforce_guardrails', false);
+  });
+
+  it('G4: expand Advanced without editing omits all pipeline fields on save', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    // Expand Advanced but change nothing, then save.
+    await user.click(screen.getByRole('button', { name: /Advanced: timeout, guardrails/i }));
+    expect(screen.getByLabelText(/Timeout \(seconds/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Save & Apply/i }));
+
+    await waitFor(() => {
+      expect(api.updateLLMSettings).toHaveBeenCalledTimes(1);
+    });
+    const payload = (api.updateLLMSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(payload).not.toHaveProperty('enforce_guardrails');
+    expect(payload).not.toHaveProperty('timeout_seconds');
+    expect(payload).not.toHaveProperty('max_cycles');
+  });
+
+  it('G5: the saved-config check calls testLLMConnection and shows latency inline', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByRole('button', { name: /check saved config/i }));
+
+    await waitFor(() => {
+      expect(api.testLLMConnection).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByText(/Successfully connected.*87 ms/)).toBeInTheDocument();
+  });
+});
+
+describe('SettingsModal - connection actions, footer, platform key (H1-H4)', () => {
+  const mockGet = {
+    active_provider: 'openai',
+    default_model: 'gpt-4o-mini',
+    providers_configured: { openai: true, ollama: true },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
+      active_provider: 'openai',
+      providers: [],
+    });
+    (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'success',
+      message: 'Successfully connected to gpt-4o-mini via openai',
+      latency_ms: 87.4,
+    });
+  });
+
+  const openModal = async () => {
+    render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+    await waitFor(() => {
+      expect(api.getLLMSettings).toHaveBeenCalled();
+    });
+  };
+
+  it('H1: one labelled connection group holds both checks with distinct, self-contained copy', async () => {
+    await openModal();
+
+    const group = screen.getByTestId('connection-group');
+
+    const savedCheck = within(group).getByRole('button', { name: /check saved config/i });
+    const typedCheck = within(group).getByRole('button', { name: /validate typed values/i });
+
+    // Each action's own block says what that action reads and what it does.
+    expect(savedCheck.closest('div')).toHaveTextContent(/already stored on the server/i);
+    expect(savedCheck.closest('div')).toHaveTextContent(/ignores the values you just typed/i);
+    expect(typedCheck.closest('div')).toHaveTextContent(/values you just typed/i);
+    expect(typedCheck.closest('div')).toHaveTextContent(/model list/i);
+
+    // No tip anywhere that points at a control in another part of the modal.
+    expect(screen.queryByText(/💡/)).toBeNull();
+    expect(screen.queryByText(/below to validate/i)).toBeNull();
+  });
+
+  it('H2: a failed saved-config check shows no latency suffix', async () => {
+    const user = userEvent.setup();
+    (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'failed',
+      message: 'Missing API Key. Please enter an API key for the selected provider.',
+      latency_ms: 0,
+    });
+
+    await openModal();
+    await user.click(screen.getByRole('button', { name: /check saved config/i }));
+
+    expect(await screen.findByText(/Missing API Key/i)).toBeInTheDocument();
+    expect(screen.queryByText(/\(\d+\s*ms\)/)).toBeNull();
+  });
+
+  it('H2: a successful saved-config check still reports the latency', async () => {
+    const user = userEvent.setup();
+
+    await openModal();
+    await user.click(screen.getByRole('button', { name: /check saved config/i }));
+
+    expect(await screen.findByText(/Successfully connected.*87 ms/)).toBeInTheDocument();
+  });
+
+  it('H3: the fixed footer carries exactly Cancel and Save & Apply', async () => {
+    await openModal();
+
+    const footer = screen.getByTestId('settings-modal-footer');
+    const labels = within(footer)
+      .getAllByRole('button')
+      .map((b) => b.textContent?.trim());
+    expect(labels).toEqual(['Cancel', 'Save & Apply']);
+
+    // Neither connection check competes for the footer — both live in the body.
+    expect(within(footer).queryByRole('button', { name: /check saved config/i })).toBeNull();
+    expect(within(footer).queryByRole('button', { name: /validate typed values/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /check saved config/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /validate typed values/i })).toBeInTheDocument();
+  });
+
+  it('H4: the platform key field carries a single title', async () => {
+    const user = userEvent.setup();
+
+    await openModal();
+    await user.click(screen.getByRole('button', { name: /What is the Meridian Platform Key/i }));
+
+    const panel = screen.getByTestId('platform-key-panel');
+    // One title for one control: the disclosure above it, never a second
+    // heading or a second visible label inside the panel.
+    expect(within(panel).queryByRole('heading')).toBeNull();
+    expect(within(panel).queryByText('Meridian Platform Key (X-API-Key)')).toBeNull();
+    expect(within(panel).queryByText('Platform key')).toBeNull();
+
+    // The explanation and the field itself are untouched.
+    expect(within(panel).getByText(/Internal security token/)).toBeInTheDocument();
+    expect(within(panel).getByLabelText('Meridian Platform Key')).toBeInTheDocument();
   });
 });

@@ -18,4 +18,5 @@ class RagAgentState(TypedDict):
     tenant_id: str
     claims: list[dict[str, Any]]
     verification_result: dict[str, Any] | None
+    generation_error: str | None
 

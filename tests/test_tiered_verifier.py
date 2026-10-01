@@ -1,6 +1,5 @@
 """Unit tests for 3-Tier Citation Verification Engine."""
 
-import pytest
 from packages.verification.tiered_verifier import TieredCitationVerifier
 
 
@@ -42,5 +41,5 @@ def test_verify_claim_unsupported():
         {"id": "chunk_1", "content": "Company policy allows 15 days of paid vacation annually."}
     ]
 
-    claim_schema, status = verifier.verify_claim(claim, chunks)
+    _, status = verifier.verify_claim(claim, chunks)
     assert status == "unsupported" or status == "partially_supported"

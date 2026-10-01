@@ -1,6 +1,7 @@
 """Structural chunker splitting documents by headings and semantic hierarchy."""
 
 import re
+import uuid
 
 from packages.core.models import Chunk, Document
 
@@ -31,7 +32,7 @@ class StructuralChunker:
                     if text_block:
                         chunks.append(
                             Chunk(
-                                id=f"{doc.id}-chunk-{chunk_index}",
+                                id=uuid.uuid4().hex,
                                 document_id=doc.id,
                                 text=text_block,
                                 chunk_index=chunk_index,
@@ -52,7 +53,7 @@ class StructuralChunker:
                 if text_block:
                     chunks.append(
                         Chunk(
-                            id=f"{doc.id}-chunk-{chunk_index}",
+                            id=uuid.uuid4().hex,
                             document_id=doc.id,
                             text=text_block,
                             chunk_index=chunk_index,
@@ -69,7 +70,7 @@ class StructuralChunker:
             if text_block:
                 chunks.append(
                     Chunk(
-                        id=f"{doc.id}-chunk-{chunk_index}",
+                        id=uuid.uuid4().hex,
                         document_id=doc.id,
                         text=text_block,
                         chunk_index=chunk_index,

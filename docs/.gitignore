@@ -1,0 +1,11 @@
+# Scoped ignores for docs/ — versioned specs, ADRs and agent guidance are tracked.
+# The root .gitignore has a global `*.md` rule; re-include markdown here.
+!*.md
+
+# generated / scratch output only
+agent-results/
+
+# scratch / superseded working notes
+spec.md
+PRODUCTION_STORAGE_AND_GATEWAY_PLAN.md
+plan-for-project.txt

@@ -5,6 +5,7 @@ import re
 
 from packages.core.config import get_settings
 from packages.core.models import Entity, Relationship
+from packages.core.retry_config import retry_on_connection_failure
 
 logger = logging.getLogger("meridian.ingestion.graph_store")
 
@@ -22,27 +23,54 @@ class KnowledgeGraphStore:
         self.driver: object | None = None
         self._neo4j_available: bool = False
         self._neo4j_fallback: bool = False
+        self._entity_names_lower: dict[str, str] = {}
 
         if not self.in_memory:
-            try:
-                from neo4j import GraphDatabase  # type: ignore[import-untyped]
+            from neo4j import GraphDatabase  # type: ignore[import-untyped]
 
-                settings = get_settings()
+            settings = get_settings()
+            # Fail-closed: require explicit password configuration
+            if not settings.neo4j_password:
+                import os as _os
+                if _os.environ.get("APP_ENV") == "testing":
+                    # In testing, use in-memory fallback instead of connecting
+                    logger.info("Neo4j password not configured in testing mode - using in-memory fallback")
+                    self._neo4j_fallback = True
+                    return  # Exit init, stay in memory mode
+                else:
+                    raise ValueError(
+                        "NEO4J_PASSWORD environment variable is required. "
+                        "Set it in your .env file or environment."
+                    )
+
+            # Bounded retry with tenacity: container may still be initializing (Bolt not yet serving)
+            @retry_on_connection_failure(max_attempts=3)
+            def _connect_neo4j():
                 self.driver = GraphDatabase.driver(
                     settings.neo4j_uri,
-                    auth=(settings.neo4j_user, settings.neo4j_password or "meridian_password"),
+                    auth=(settings.neo4j_user, settings.neo4j_password),
+                    connection_timeout=10.0,
+                    connection_acquisition_timeout=15.0,
+                    request_timeout=30.0,
+                    max_transaction_retry_time=60.0,
+                    max_connection_pool_size=50,
                 )
                 # Test connectivity
                 self.driver.verify_connectivity()  # type: ignore[attr-defined]
                 self._neo4j_available = True
                 logger.info("Neo4j connected at %s", settings.neo4j_uri)
+
+            try:
+                _connect_neo4j()
             except Exception as e:  # noqa: BLE001
-                logger.warning("Neo4j unavailable - using in-memory fallback: %s", e)
                 self.driver = None
                 self._neo4j_available = False
+                logger.warning("Neo4j unavailable - using in-memory fallback: %s", e)
                 self._neo4j_fallback = True
         else:
             logger.info("KnowledgeGraphStore in-memory mode (forced)")
+
+        self._build_entity_index()
 
     def extract_entities_and_relations(self, text: str) -> tuple[list[Entity], list[Relationship]]:
         # Hybrid NER pattern extractor for systems, components, and concepts
@@ -104,24 +132,41 @@ class KnowledgeGraphStore:
         if self._neo4j_available and self.driver is not None:
             try:
                 with self.driver.session() as session:  # type: ignore[attr-defined]
-                    for e in entities:
+                    if entities:
                         session.run(  # type: ignore[attr-defined]
-                            "MERGE (e:Entity {name: $name}) ON CREATE SET e.type = $entity_type, e.created_at = datetime(), e.doc_id = $doc_id",
-                            name=e.name,
-                            entity_type=e.entity_type,
-                            doc_id=doc_id,
+                            """
+                            UNWIND $entities AS ent
+                            MERGE (e:Entity {name: ent.name})
+                            ON CREATE SET e.type = ent.entity_type, e.created_at = datetime(), e.doc_id = ent.doc_id
+                            """,
+                            entities=[
+                                {"name": e.name, "entity_type": e.entity_type, "doc_id": doc_id}
+                                for e in entities
+                            ],
                         )
-                    for r in relations:
+                    if relations:
                         session.run(  # type: ignore[attr-defined]
-                            "MATCH (s:Entity {name: $source}), (t:Entity {name: $target}) MERGE (s)-[rel:RELATION {type: $rel_type}]->(t) ON CREATE SET rel.created_at = datetime(), rel.doc_id = $doc_id",
-                            source=r.source_entity,
-                            target=r.target_entity,
-                            rel_type=r.relation_type,
-                            doc_id=doc_id,
+                            """
+                            UNWIND $relations AS rel
+                            MATCH (s:Entity {name: rel.source})
+                            MATCH (t:Entity {name: rel.target})
+                            MERGE (s)-[r:RELATION {type: rel.rel_type}]->(t)
+                            ON CREATE SET r.created_at = datetime(), r.doc_id = rel.doc_id
+                            """,
+                            relations=[
+                                {
+                                    "source": r.source_entity,
+                                    "target": r.target_entity,
+                                    "rel_type": r.relation_type,
+                                    "doc_id": doc_id,
+                                }
+                                for r in relations
+                            ],
                         )
             except Exception as e:  # noqa: BLE001
                 logger.warning("Neo4j extract_and_store failed for %s: %s", doc_id, e)
 
+        self._build_entity_index()
         return entities, relations
 
     def delete_by_document(self, doc_id: str) -> int:
@@ -141,7 +186,9 @@ class KnowledgeGraphStore:
         for name in list(doc_ents):
             if name not in remaining_ents and name in self.entities:
                 del self.entities[name]
+                self._entity_names_lower.pop(name.lower(), None)
                 removed += 1
+        self._build_entity_index()
         # If Neo4j client exists (non in_memory), delete via Cypher
         if self._neo4j_available and self.driver is not None:
             try:
@@ -200,6 +247,17 @@ class KnowledgeGraphStore:
 
     def query_neighborhood(self, entity_name: str) -> list[Relationship]:
         return self.query_entity_neighborhood(entity_name)
+
+    def _build_entity_index(self) -> None:
+        self._entity_names_lower.clear()
+        for name in self.entities:
+            self._entity_names_lower[name.lower()] = name
+
+    def get_entity_by_lowercase_name(self, name_lower: str) -> Entity | None:
+        original_name = self._entity_names_lower.get(name_lower)
+        if original_name:
+            return self.entities.get(original_name)
+        return None
 
     @property
     def is_fallback(self) -> bool:

@@ -24,9 +24,19 @@ class HybridRetriever:
         self.reranker = reranker or CrossEncoderReranker()
 
     def update_chunks(self, chunks: list[Chunk]):
-        self.chunks = chunks
-        self.chunk_map = {c.id: c for c in chunks}
-        self.bm25_index = BM25Index(chunks)
+        if not self.chunks:
+            # First time—full build
+            self.chunks = chunks
+            self.chunk_map = {c.id: c for c in chunks}
+            self.bm25_index = BM25Index(chunks)
+        else:
+            # Incremental update
+            existing_ids = {c.id for c in self.chunks}
+            new_chunks = [c for c in chunks if c.id not in existing_ids]
+            self.chunks = chunks
+            self.chunk_map = {c.id: c for c in chunks}
+            if new_chunks:
+                self.bm25_index.add_chunks(new_chunks)
 
     def retrieve(self, query: str, top_k: int = 5) -> list[SearchResult]:
         # 1. Dense vector search

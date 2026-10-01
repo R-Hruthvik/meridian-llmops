@@ -1,18 +1,23 @@
 import type {
   DocumentDetail,
   DocumentListResponse,
-  GuardrailCheckRequest,
   GuardrailResult,
   HealthStatus,
   IngestRequest,
   IngestResponse,
-  LLMSettings,
+  IndexStatusResponse,
+  LLMPingResponse,
+  LLMSettingsGet,
+  MaskedLLMSettings,
   LLMTestAndFetchRequest,
   LLMTestAndFetchResponse,
   ProvidersResponse,
   QueryRequest,
   QueryResponse,
+  ReviewItem,
+  ReviewItemActionPayload,
   TenantMetrics,
+  UpdateLLMSettingsPayload,
 } from '../types/api';
 
 /**
@@ -31,6 +36,30 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Normalizes FastAPI error details to a displayable string.
+ * 422 responses carry `detail` as an array of {loc, msg, type} objects —
+ * join them so the UI never renders "[object Object]".
+ */
+export function normalizeDetail(detail: unknown, fallback: string): string {
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail.map((d) => {
+      if (typeof d === 'string') return d;
+      if (d && typeof d === 'object') {
+        const loc = Array.isArray((d as { loc?: unknown[] }).loc)
+          ? (d as { loc: unknown[] }).loc.filter((p) => p !== 'body').join('.')
+          : '';
+        const msg = (d as { msg?: unknown }).msg;
+        return loc && typeof msg === 'string' ? `${loc}: ${msg}` : typeof msg === 'string' ? msg : JSON.stringify(d);
+      }
+      return String(d);
+    });
+    if (parts.length > 0) return parts.join('; ');
+  }
+  return fallback;
+}
+
 class MeridianApiClient {
   private apiKey: string;
   private baseUrl: string;
@@ -47,6 +76,10 @@ class MeridianApiClient {
     this.apiKey = key;
   }
 
+  setBaseUrl(baseUrl: string): void {
+    this.baseUrl = baseUrl;
+  }
+
   getApiKey(): string {
     return this.apiKey;
   }
@@ -60,10 +93,14 @@ class MeridianApiClient {
   }
 
   private async requestJSON<T>(url: string, init: RequestInit, errorFallback: string): Promise<T> {
+    // NOTE: empty baseUrl is intentional — relative fetch is same-origin in prod
+    // (FastAPI serves web/dist) and vite-proxied to :8000 in dev. setBaseUrl()
+    // is an opt-in override for remote backends only.
     const res = await fetch(url, init);
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new ApiError(errorData.detail || `${errorFallback}: ${res.statusText}`, res.status, errorData.detail);
+      const detail = normalizeDetail(errorData?.detail, `${errorFallback}: ${res.statusText}`);
+      throw new ApiError(detail, res.status, detail);
     }
     return res.json() as Promise<T>;
   }
@@ -102,15 +139,32 @@ class MeridianApiClient {
     );
   }
 
-  async checkGuardrails(req: GuardrailCheckRequest, tenantId: string = 'default'): Promise<GuardrailResult> {
+  async checkGuardrails(text: string, tenantId: string = 'default'): Promise<GuardrailResult> {
+    // Canonical contract: GET /v1/guardrails/check?text= (POST is a deprecated alias).
     return this.requestJSON<GuardrailResult>(
-      `${this.baseUrl}/v1/guardrails/check`,
+      `${this.baseUrl}/v1/guardrails/check?text=${encodeURIComponent(text)}`,
       {
-        method: 'POST',
+        method: 'GET',
         headers: this.getHeaders(tenantId),
-        body: JSON.stringify(req),
       },
       'Guardrail check failed',
+    );
+  }
+
+  /**
+   * GET /v1/index/status — read-only live inspection of every storage subsystem.
+   * Non-throwing by contract: a down backend arrives as is_fallback + detail,
+   * so a 200 here does NOT mean the data is persisted. Only auth/transport
+   * failures (401, 500, network) throw.
+   */
+  async getIndexStatus(tenantId: string = 'default'): Promise<IndexStatusResponse> {
+    return this.requestJSON<IndexStatusResponse>(
+      `${this.baseUrl}/v1/index/status`,
+      {
+        method: 'GET',
+        headers: this.getHeaders(tenantId),
+      },
+      'Index status fetch failed',
     );
   }
 
@@ -125,8 +179,8 @@ class MeridianApiClient {
     );
   }
 
-  async getLLMSettings(): Promise<LLMSettings> {
-    return this.requestJSON<LLMSettings>(
+  async getLLMSettings(): Promise<LLMSettingsGet> {
+    return this.requestJSON<LLMSettingsGet>(
       `${this.baseUrl}/v1/settings/llm`,
       {
         method: 'GET',
@@ -136,8 +190,8 @@ class MeridianApiClient {
     );
   }
 
-  async updateLLMSettings(settings: Partial<LLMSettings>): Promise<LLMSettings> {
-    return this.requestJSON<LLMSettings>(
+  async updateLLMSettings(settings: UpdateLLMSettingsPayload): Promise<MaskedLLMSettings> {
+    return this.requestJSON<MaskedLLMSettings>(
       `${this.baseUrl}/v1/settings/llm`,
       {
         method: 'POST',
@@ -168,43 +222,84 @@ class MeridianApiClient {
     );
   }
 
-  async getDocuments(): Promise<DocumentListResponse> {
+  async getDocuments(tenantId: string = 'default'): Promise<DocumentListResponse> {
     return this.requestJSON<DocumentListResponse>(
       `${this.baseUrl}/v1/documents`,
-      { method: 'GET', headers: this.getHeaders() },
+      { method: 'GET', headers: this.getHeaders(tenantId) },
       'Documents list fetch failed',
     );
   }
 
-  async getDocument(docId: string): Promise<DocumentDetail> {
+  async getDocument(docId: string, tenantId: string = 'default'): Promise<DocumentDetail> {
     return this.requestJSON<DocumentDetail>(
       `${this.baseUrl}/v1/documents/${encodeURIComponent(docId)}`,
-      { method: 'GET', headers: this.getHeaders() },
+      { method: 'GET', headers: this.getHeaders(tenantId) },
       'Document details fetch failed',
     );
   }
 
-  async deleteDocument(docId: string): Promise<{ status: string; document_id: string; message: string }> {
+  async deleteDocument(
+    docId: string,
+    tenantId: string = 'default',
+  ): Promise<{ status: string; document_id: string; message: string }> {
     return this.requestJSON<{ status: string; document_id: string; message: string }>(
       `${this.baseUrl}/v1/documents/${encodeURIComponent(docId)}`,
-      { method: 'DELETE', headers: this.getHeaders() },
+      { method: 'DELETE', headers: this.getHeaders(tenantId) },
       'Document delete failed',
     );
   }
 
-  async clearAllDocuments(): Promise<{ status: string; deleted_count: number; message: string }> {
+  async clearAllDocuments(
+    tenantId: string = 'default',
+  ): Promise<{ status: string; deleted_count: number; message: string }> {
     return this.requestJSON<{ status: string; deleted_count: number; message: string }>(
       `${this.baseUrl}/v1/documents`,
-      { method: 'DELETE', headers: this.getHeaders() },
+      { method: 'DELETE', headers: this.getHeaders(tenantId) },
       'Clear documents failed',
     );
   }
 
-  async seedSampleDocuments(): Promise<{ status: string; documents_seeded: number }> {
+  async seedSampleDocuments(
+    tenantId: string = 'default',
+  ): Promise<{ status: string; documents_seeded: number }> {
     return this.requestJSON<{ status: string; documents_seeded: number }>(
       `${this.baseUrl}/v1/documents/seed-samples`,
-      { method: 'POST', headers: this.getHeaders() },
+      { method: 'POST', headers: this.getHeaders(tenantId) },
       'Seed sample documents failed',
+    );
+  }
+
+  async testLLMConnection(): Promise<LLMPingResponse> {
+    // Quick ping against the saved provider config (empty body — server
+    // resolves active provider/model from runtime settings).
+    return this.requestJSON<LLMPingResponse>(
+      `${this.baseUrl}/v1/settings/llm/test`,
+      { method: 'POST', headers: this.getHeaders() },
+      'LLM connection test failed',
+    );
+  }
+
+  async listReviewItems(tenantId: string = 'default'): Promise<ReviewItem[]> {
+    return this.requestJSON<ReviewItem[]>(
+      `${this.baseUrl}/v1/review/items`,
+      { method: 'GET', headers: this.getHeaders(tenantId) },
+      'Review queue fetch failed',
+    );
+  }
+
+  async reviewItemAction(
+    itemId: string,
+    action: ReviewItemActionPayload,
+    tenantId: string = 'default',
+  ): Promise<ReviewItem> {
+    return this.requestJSON<ReviewItem>(
+      `${this.baseUrl}/v1/review/items/${encodeURIComponent(itemId)}/action`,
+      {
+        method: 'POST',
+        headers: this.getHeaders(tenantId),
+        body: JSON.stringify(action),
+      },
+      'Review action failed',
     );
   }
 }

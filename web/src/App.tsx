@@ -1,25 +1,83 @@
-import React, { useEffect, useState } from 'react';
-import { GuardrailsStudio } from './components/GuardrailsStudio';
-import { IngestionStudio } from './components/IngestionStudio';
-import { MetricsDashboard } from './components/MetricsDashboard';
-import { Navbar } from './components/Navbar';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChartNoAxesColumn, Database, FileText, ListChecks, ShieldAlert } from 'lucide-react';
+import { LensRail, TopBar, type LensId } from './components/Navbar';
+import { Overlay } from './components/Overlay';
 import { RagWorkspace } from './components/RagWorkspace';
+import { LazySurface } from './components/LazySurface';
+import { WorkbenchContext, type OpenOverlayOptions, type OverlayTarget } from './WorkbenchContext';
 import { api } from './services/api';
 
+// Only the Ask canvas ships with the first paint. Every other surface is
+// reachable, but not by default: each is a separate chunk fetched the first time
+// it is opened, so the initial bundle carries the lens the user lands on and
+// nothing else.
+const IngestionStudio = React.lazy(() =>
+  import('./components/IngestionStudio').then((m) => ({ default: m.IngestionStudio })),
+);
+const GuardrailsStudio = React.lazy(() =>
+  import('./components/GuardrailsStudio').then((m) => ({ default: m.GuardrailsStudio })),
+);
+const IndexStorageStudio = React.lazy(() =>
+  import('./components/IndexStorageStudio').then((m) => ({ default: m.IndexStorageStudio })),
+);
+const ReviewQueue = React.lazy(() =>
+  import('./components/ReviewQueue').then((m) => ({ default: m.ReviewQueue })),
+);
+const MetricsDashboard = React.lazy(() =>
+  import('./components/MetricsDashboard').then((m) => ({ default: m.MetricsDashboard })),
+);
+
+export type BackendHealth = 'online' | 'degraded' | 'offline' | 'unknown';
+
+/** Every non-lens capability, and where it is reachable from. */
+const CAPABILITIES: readonly { target: OverlayTarget; label: string; icon: React.ElementType }[] = [
+  { target: 'corpus', label: 'Corpus', icon: FileText },
+  { target: 'index', label: 'Index & Storage', icon: Database },
+  { target: 'guardrails', label: 'Guardrails', icon: ShieldAlert },
+  { target: 'review', label: 'Review Queue', icon: ListChecks },
+  { target: 'metrics', label: 'Metrics', icon: ChartNoAxesColumn },
+];
+
+/** The dialog's accessible name for each destination. */
+const OVERLAY_TITLE: Record<OverlayTarget, string> = {
+  corpus: 'Corpus',
+  index: 'Index & Storage',
+  guardrails: 'Guardrails',
+  review: 'Review Queue',
+  metrics: 'Metrics',
+  settings: 'Settings',
+};
+
+/** Breadcrumb used when an overlay is opened without naming its origin. */
+const LENS_LABEL: Record<LensId, string> = { ask: 'ASK', corpus: 'CORPUS', operate: 'OPERATE' };
+
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('rag');
+  const [activeLens, setActiveLens] = useState<LensId>('ask');
+  const [activeOverlay, setActiveOverlay] = useState<OverlayTarget | null>(null);
+  const [overlayOpts, setOverlayOpts] = useState<OpenOverlayOptions>({});
+  const [focusedDocumentId, setFocusedDocumentId] = useState<string | null>(null);
+  const [focusedChunkId, setFocusedChunkId] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState('default');
   const [apiKey, setApiKey] = useState(api.getApiKey());
-  const [isBackendHealthy, setIsBackendHealthy] = useState(true);
+  const [backendHealth, setBackendHealth] = useState<BackendHealth>('offline');
 
-  // Health check polling
+  // Health check polling (driven by /health services map)
   useEffect(() => {
     const check = async () => {
       try {
-        await api.checkHealth();
-        setIsBackendHealthy(true);
+        const h = await api.checkHealth();
+        const services = h.services ?? {};
+        // No evidence is not good news. `services` is optional in HealthStatus,
+        // and an empty map made `some()` false — which read as "nothing is
+        // down" and put a green Online on a backend that had told us nothing.
+        const checked = Object.values(services);
+        if (checked.length === 0) {
+          setBackendHealth('unknown');
+          return;
+        }
+        setBackendHealth(checked.some((s) => !s.reachable) ? 'degraded' : 'online');
       } catch {
-        setIsBackendHealthy(false);
+        setBackendHealth('offline');
       }
     };
 
@@ -33,34 +91,163 @@ export const App: React.FC = () => {
     api.setApiKey(key);
   };
 
+  const clearCitationFocus = useCallback(() => {
+    setFocusedDocumentId(null);
+    setFocusedChunkId(null);
+  }, []);
+
+  const openOverlay = useCallback((target: OverlayTarget, opts?: OpenOverlayOptions) => {
+    if (opts?.documentId !== undefined) setFocusedDocumentId(opts.documentId);
+    if (opts?.chunkId !== undefined) setFocusedChunkId(opts.chunkId);
+    setOverlayOpts(opts ?? {});
+    setActiveOverlay(target);
+  }, []);
+
+  const closeOverlay = useCallback(() => {
+    setActiveOverlay(null);
+    setOverlayOpts({});
+    clearCitationFocus();
+  }, [clearCitationFocus]);
+
+  const workbench = useMemo(
+    () => ({ openOverlay, closeOverlay, activeOverlay }),
+    [openOverlay, closeOverlay, activeOverlay],
+  );
+
+  // Changing lens dismisses the overlay: the two hosts share a canvas, and
+  // leaving the surface underneath would mount it twice.
+  const selectLens = (lens: LensId) => {
+    setActiveLens(lens);
+    closeOverlay();
+  };
+
+  // A citation is a jump, not a screen change: the canvas asks for the Corpus
+  // overlay and the canvas stays where it is underneath it.
+  const openCapability = (target: OverlayTarget) =>
+    openOverlay(target, { breadcrumb: LENS_LABEL[activeLens] });
+
+  // B5: only the active lens's studio is mounted, so inactive studios never
+  // fetch and their DOM is genuinely gone. Each one is also a lazy chunk, so
+  // "not mounted" also means "not downloaded". Same rule for the overlay host.
+  const canvas = (() => {
+    switch (activeLens) {
+      case 'corpus':
+        return (
+          <LazySurface key="corpus" label="Corpus">
+            <IngestionStudio
+              tenantId={tenantId}
+              focusedDocumentId={focusedDocumentId}
+              focusedChunkId={focusedChunkId}
+              onDismissFocus={clearCitationFocus}
+            />
+          </LazySurface>
+        );
+      case 'operate':
+        return (
+          <LazySurface key="guardrails" label="Guardrails">
+            <GuardrailsStudio tenantId={tenantId} />
+          </LazySurface>
+        );
+      case 'ask':
+      default:
+        // The canvas drives the overlay through WorkbenchContext itself; the
+        // shell only hosts the surface it asks for.
+        return <RagWorkspace tenantId={tenantId} />;
+    }
+  })();
+
+  const overlaySurface = (() => {
+    if (!activeOverlay) return null;
+    switch (activeOverlay) {
+      case 'corpus':
+        return (
+          <LazySurface key="corpus" label="Corpus">
+            <IngestionStudio
+              tenantId={tenantId}
+              focusedDocumentId={focusedDocumentId}
+              focusedChunkId={focusedChunkId}
+              onDismissFocus={clearCitationFocus}
+            />
+          </LazySurface>
+        );
+      case 'index':
+        return (
+          <LazySurface key="index" label="Index & Storage">
+            <IndexStorageStudio tenantId={tenantId} />
+          </LazySurface>
+        );
+      case 'guardrails':
+        return (
+          <LazySurface key="guardrails" label="Guardrails">
+            <GuardrailsStudio tenantId={tenantId} />
+          </LazySurface>
+        );
+      case 'review':
+        return (
+          <LazySurface key="review" label="Review Queue">
+            <ReviewQueue tenantId={tenantId} />
+          </LazySurface>
+        );
+      case 'metrics':
+        return (
+          <LazySurface key="metrics" label="Metrics">
+            <MetricsDashboard tenantId={tenantId} />
+          </LazySurface>
+        );
+      default:
+        return null;
+    }
+  })();
+
   return (
-    <div className="min-h-screen bg-meridian-bg text-meridian-text flex flex-col selection:bg-meridian-blossom selection:text-meridian-primary">
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        tenantId={tenantId}
-        setTenantId={setTenantId}
-        isBackendHealthy={isBackendHealthy}
-        apiKey={apiKey}
-        setApiKey={handleSetApiKey}
-      />
+    <WorkbenchContext.Provider value={workbench}>
+      <div className="flex min-h-screen flex-col bg-surface text-ink">
+        <TopBar
+          tenantId={tenantId}
+          setTenantId={setTenantId}
+          backendHealth={backendHealth}
+          apiKey={apiKey}
+          setApiKey={handleSetApiKey}
+        />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8">
-        {activeTab === 'rag' && <RagWorkspace tenantId={tenantId} />}
-        {activeTab === 'ingest' && <IngestionStudio tenantId={tenantId} />}
-        {activeTab === 'guardrails' && <GuardrailsStudio tenantId={tenantId} />}
-        {activeTab === 'metrics' && <MetricsDashboard tenantId={tenantId} />}
-      </main>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+          <LensRail activeLens={activeLens} onSelectLens={selectLens} />
 
-      <footer className="border-t border-meridian-border bg-white/60 backdrop-blur-sm py-4 px-6 text-center text-xs font-semibold text-meridian-textMuted">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <span className="text-meridian-text font-bold">Meridian Enterprise LLMOps Platform</span>
-          <span className="text-meridian-primary font-bold">
-            Self-Healing Agentic RAG • AI Gateway • Continuous Eval
-          </span>
+          <main className="min-w-0 flex-1 overflow-y-auto bg-surface p-4 md:p-6">
+            {/* Capability destinations. These are the rail's second tier: the
+                lenses change the canvas, these slide a surface over it. */}
+            <nav
+              aria-label="Capability overlays"
+              className="mb-4 flex flex-wrap items-center gap-1.5 border-b border-hairline pb-3"
+            >
+              {CAPABILITIES.map(({ target, label, icon: Icon }) => (
+                <button
+                  key={target}
+                  type="button"
+                  onClick={() => openCapability(target)}
+                  className="label-section flex items-center gap-1.5 rounded-sm border border-hairline px-2 py-1 text-muted transition-colors hover:border-hairline-strong hover:bg-accent-wash hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <Icon className="size-3.5" aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </nav>
+
+            {canvas}
+          </main>
         </div>
-      </footer>
-    </div>
+
+        {/* The single overlay host: one sheet at a time, over the canvas. */}
+        <Overlay
+          open={activeOverlay !== null}
+          onClose={closeOverlay}
+          title={activeOverlay ? OVERLAY_TITLE[activeOverlay] : ''}
+          breadcrumb={overlayOpts.breadcrumb ?? (activeOverlay ? LENS_LABEL[activeLens] : undefined)}
+        >
+          {overlaySurface}
+        </Overlay>
+      </div>
+    </WorkbenchContext.Provider>
   );
 };
 

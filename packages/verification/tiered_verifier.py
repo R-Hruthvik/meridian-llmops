@@ -1,8 +1,9 @@
 """3-Tier Citation Verification Engine: Tier 1 Heuristics -> Tier 2 NLI Model -> Tier 3 LLM Judge."""
 
 import re
-from typing import List, Dict, Any, Tuple
-from packages.core.schemas import ClaimSchema, CitationSchema, VerificationResult
+from typing import Any
+
+from packages.core.schemas import CitationSchema, ClaimSchema, VerificationResult
 
 
 class TieredCitationVerifier:
@@ -10,15 +11,15 @@ class TieredCitationVerifier:
 
     def verify_claims(
         self,
-        claims_list: List[str],
-        cited_chunks: List[Dict[str, Any]]
+        claims_list: list[str],
+        cited_chunks: list[dict[str, Any]]
     ) -> VerificationResult:
         """Verifies multiple claims against cited context chunks."""
-        verified_claims: List[ClaimSchema] = []
-        overall_scores: List[float] = []
+        verified_claims: list[ClaimSchema] = []
+        overall_scores: list[float] = []
 
         for claim_text in claims_list:
-            claim_schema, status = self.verify_claim(claim_text, cited_chunks)
+            claim_schema, _status = self.verify_claim(claim_text, cited_chunks)
             verified_claims.append(claim_schema)
             if claim_schema.citations:
                 max_score = max(c.support_score for c in claim_schema.citations)
@@ -35,7 +36,7 @@ class TieredCitationVerifier:
             overall_confidence=round(avg_confidence, 4)
         )
 
-    def verify_claim(self, claim_text: str, cited_chunks: List[Dict[str, Any]]) -> Tuple[ClaimSchema, str]:
+    def verify_claim(self, claim_text: str, cited_chunks: list[dict[str, Any]]) -> tuple[ClaimSchema, str]:
         """Verifies a single claim against cited context chunks using 3-tier pipeline."""
         if not cited_chunks:
             return ClaimSchema(
@@ -63,8 +64,7 @@ class TieredCitationVerifier:
             else:
                 final_score = combined_score
 
-            if final_score > best_support_score:
-                best_support_score = final_score
+            best_support_score = max(best_support_score, final_score)
 
             status = "supported" if final_score >= 0.60 else ("partially_supported" if final_score >= 0.35 else "unsupported")
 

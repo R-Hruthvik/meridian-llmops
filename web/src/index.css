@@ -2,20 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Instrument console typefaces — self-hosted, no CDN, no network at runtime.
+   font-display: swap keeps first paint unblocked; the system stack below is the
+   fallback if the binaries are missing.
+   --------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/geist-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/geist-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./assets/fonts/geist-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/geist-latin-700-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/geist-mono-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/geist-mono-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./assets/fonts/geist-mono-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/geist-mono-latin-700-normal.woff2') format('woff2');
+}
+
 :root {
   color-scheme: light;
+
+  /* Surfaces and text — rgb channel triplets, NOT hex. Tailwind's opacity
+     modifier expands to `<color>/<alpha-value>`; a bare `var(--fail)` yields
+     the invalid `var(--fail)/0.3` and the whole rule is silently dropped. The
+     config reads these as `rgb(var(--x) / <alpha-value>)` so `/30` works. */
+  --surface: 247 247 245;         /* #F7F7F5 */
+  --surface-raised: 255 255 255;  /* #FFFFFF */
+  --surface-sunken: 239 238 236;  /* #EFEEEC */
+  --border: 222 221 217;          /* #DEDDD9 */
+  --border-strong: 196 195 190;   /* #C4C3BE */
+  --text: 22 21 15;               /* #16150F */
+  --text-muted: 107 106 99;       /* #6B6A63 */
+  --text-faint: 154 153 146;      /* #9A9992 */
+
+  /* Accent — the only accent, app-wide */
+  --accent: 232 89 12;            /* #E8590C */
+  --accent-ink: 179 71 8;         /* #B34708 */
+  --accent-wash: 255 241 232;     /* #FFF1E8 */
+
+  /* Status — real state only, never decorative */
+  --ok: 31 122 77;                /* #1F7A4D */
+  --warn: 178 107 0;              /* #B26B00 */
+  --fail: 179 38 30;              /* #B3261E */
+  --ok-wash: 234 244 238;         /* #EAF4EE */
+  --warn-wash: 251 242 226;       /* #FBF2E2 */
+  --fail-wash: 249 236 235;       /* #F9ECEB */
 }
 
 body {
   margin: 0;
-  background-color: #FAF8FF;
-  background-image: 
-    radial-gradient(at 15% 15%, rgba(255, 219, 253, 0.45) 0px, transparent 50%),
-    radial-gradient(at 85% 85%, rgba(201, 190, 255, 0.45) 0px, transparent 50%),
-    radial-gradient(at 50% 50%, rgba(132, 148, 255, 0.15) 0px, transparent 60%);
-  background-attachment: fixed;
-  color: #1E2050;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: rgb(var(--surface));
+  color: rgb(var(--text));
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -27,21 +110,93 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #FAF8FF;
+  background: rgb(var(--surface));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #C9BEFF;
+  background: rgb(var(--border-strong));
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #8494FF;
+  background: rgb(var(--text-faint));
 }
 
 .glass-panel {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid #D6CEFF;
+  border: 1px solid rgb(var(--border));
+}
+
+@layer components {
+  /* §5 section label — 11px / 700 / uppercase / 0.12em. Colour is the caller's. */
+  .label-section {
+    @apply text-[11px] font-bold uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  /* §5 verdict state — 13px / 700 / mono / uppercase / 0.08em. Colour is the caller's. */
+  .label-verdict {
+    @apply font-mono text-[13px] font-bold uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* §5 identifiers — 12px / 500 / mono. Colour is the caller's. */
+  .id-mono {
+    @apply font-mono text-[12px] font-medium;
+  }
+
+  /* §9 every number, id, score, timestamp, count, port, endpoint. No exceptions. */
+  .num {
+    @apply font-mono;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1, 'zero' 1;
+  }
+
+  /* §9 prose capped at 68ch at 14px/1.65 */
+  .answer-prose {
+    @apply text-[14px] leading-[1.65] text-ink;
+    max-width: 68ch;
+  }
+}
+
+@layer utilities {
+  /* §6 overlays slide in from the right; motion is opt-in via reduced-motion. */
+  .overlay-panel {
+    @apply fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-hairline bg-surface-raised shadow-overlay md:my-auto md:h-auto;
+    animation: overlay-slide-in 180ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .overlay-scrim {
+    @apply fixed inset-0 z-40 bg-[rgba(22,21,15,0.32)];
+    animation: overlay-scrim-in 180ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .overlay-panel,
+    .overlay-scrim {
+      animation: none;
+    }
+  }
+}
+
+@keyframes overlay-slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes overlay-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }

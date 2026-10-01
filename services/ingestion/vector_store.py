@@ -1,31 +1,52 @@
 """Dense Vector Store Manager for Qdrant with in-memory fallback for local testing."""
 
 import logging
+import uuid
+import zlib
+from functools import lru_cache
 
 import numpy as np
 
 from packages.core.config import get_settings
 from packages.core.models import Chunk, SearchResult
+from packages.core.retry_config import retry_on_api_error
 
 logger = logging.getLogger("meridian.ingestion.vector_store")
 
 
-def generate_embedding(text: str, dim: int = 1024) -> list[float]:
-    """Generates a normalized dense vector embedding (deterministic pseudo-embedding fallback for tests)."""
+def _qdrant_point_id(chunk_id: str) -> str:
+    """Normalize chunk IDs to a Qdrant-compatible UUID string.
+
+    New chunks already use UUID hex IDs. Older persisted chunks used strings
+    like ``doc-<uuid>-chunk-<n>`` which Qdrant rejects. We map any non-UUID
+    id to a deterministic UUID5 so re-ingestion is idempotent.
+    """
+    try:
+        return str(uuid.UUID(chunk_id))
+    except ValueError:
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
+
+
+@lru_cache(maxsize=1000)
+def generate_embedding(text: str, dim: int = 1024) -> tuple[float, ...]:
+    """Generates a normalized dense vector embedding (deterministic pseudo-embedding fallback for tests).
+
+    Uses zlib.crc32 rather than hash(): Python randomizes str hashes per process,
+    which silently invalidated every stored vector across backend restarts."""
     # Use deterministic token hashing to produce consistent dense vectors
     vec = np.zeros(dim, dtype=np.float32)
     tokens = text.lower().split()
     if not tokens:
-        return vec.tolist()
+        return tuple(vec.tolist())
 
     for idx, token in enumerate(tokens):
-        h = hash(token) % dim
+        h = zlib.crc32(token.encode("utf-8")) % dim
         vec[h] += 1.0 / (idx + 1.0)
 
     norm = np.linalg.norm(vec)
     if norm > 0:
         vec = vec / norm
-    return vec.tolist()
+    return tuple(vec.tolist())
 
 
 class VectorStoreManager:
@@ -49,11 +70,17 @@ class VectorStoreManager:
         if not self.in_memory:
             try:
                 from qdrant_client import QdrantClient  # type: ignore[import-untyped]
-                from qdrant_client.models import Distance, VectorParams  # type: ignore[import-untyped]  # noqa: I001
+                from qdrant_client.models import (  # type: ignore[import-untyped]
+                    Distance,
+                    VectorParams,
+                )
             except Exception as e:  # noqa: BLE001
                 logger.warning("qdrant-client not installed - using in-memory fallback: %s", e)
+                self._qdrant_fallback = True
                 return
-            try:
+
+            @retry_on_api_error(max_attempts=3)
+            def _connect_qdrant():
                 self.client = QdrantClient(
                     host=self.settings.qdrant_host,
                     port=self.settings.qdrant_port,
@@ -77,6 +104,9 @@ class VectorStoreManager:
                     self.settings.qdrant_port,
                     self.collection_name,
                 )
+
+            try:
+                _connect_qdrant()
             except Exception as e:  # noqa: BLE001
                 logger.warning(
                     "Qdrant unavailable at %s:%s - using in-memory fallback: %s",
@@ -94,7 +124,9 @@ class VectorStoreManager:
         # Always populate in-memory cache for fallback reads
         for chunk in chunks:
             if not chunk.embedding:
-                chunk.embedding = generate_embedding(chunk.text, dim=self.dim)
+                # generate_embedding returns a hashable tuple so lru_cache can memoize it;
+                # Chunk.embedding is a list, so convert on the way in.
+                chunk.embedding = list(generate_embedding(chunk.text, dim=self.dim))
             self._memory_chunks[chunk.id] = chunk
             self._memory_vectors[chunk.id] = np.array(chunk.embedding, dtype=np.float32)
 
@@ -112,10 +144,12 @@ class VectorStoreManager:
                         "text": chunk.text,
                         "source": chunk.metadata.get("source", chunk.document_id) if chunk.metadata else chunk.document_id,
                     }
+                    # Guaranteed non-None by the cache-fill loop above; Qdrant rejects null vectors.
+                    vector = chunk.embedding or []
                     points.append(
                         PointStruct(
-                            id=chunk.id,
-                            vector=chunk.embedding or generate_embedding(chunk.text, dim=self.dim),
+                            id=_qdrant_point_id(chunk.id),
+                            vector=vector,
                             payload=payload,
                         )
                     )
@@ -125,10 +159,11 @@ class VectorStoreManager:
                 self._qdrant_fallback = True
         return len(chunks)
 
+    @retry_on_api_error(max_attempts=3)
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         if self._qdrant_available and self.client is not None:
             try:
-                query_vec = generate_embedding(query, dim=self.dim)
+                query_vec = list(generate_embedding(query, dim=self.dim))
                 # Use search API (qdrant-client 1.8) with fallback to query_points
                 try:
                     hits = self.client.search(  # type: ignore[attr-defined]
@@ -230,12 +265,15 @@ class VectorStoreManager:
         if self._qdrant_available and self.client is not None:
             try:
                 # Delete and recreate collection for clean slate
-                from qdrant_client.models import Distance, VectorParams  # type: ignore[import-untyped]
+                from qdrant_client.models import (  # type: ignore[import-untyped]
+                    Distance,
+                    VectorParams,
+                )
 
                 try:
                     self.client.delete_collection(collection_name=self.collection_name)  # type: ignore[attr-defined]
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as cleanup_error:  # noqa: BLE001 - best-effort delete before recreate
+                    logger.debug("Collection delete before recreate failed: %s", cleanup_error)
                 self.client.create_collection(  # type: ignore[attr-defined]
                     collection_name=self.collection_name,
                     vectors_config=VectorParams(size=self.dim, distance=Distance.COSINE),

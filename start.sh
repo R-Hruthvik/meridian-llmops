@@ -39,6 +39,21 @@ print_help() {
     echo ""
 }
 
+# Bring up supporting Docker services (Qdrant, Neo4j, litellm, Langfuse) if Docker is available.
+# `up -d` is idempotent: no-op if already running. Left running on exit (persistent data layer).
+start_docker_stack() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo -e "${YELLOW}Docker not found — skipping containers (in-memory fallback may be used).${NC}"
+        return 0
+    fi
+    if ! docker compose ps >/dev/null 2>&1; then
+        echo -e "${YELLOW}Docker daemon not running — skipping containers.${NC}"
+        return 0
+    fi
+    echo -e "${BLUE}Starting Docker services (Qdrant, Neo4j, litellm, Langfuse)...${NC}"
+    docker compose up -d || echo -e "${YELLOW}Some Docker services failed to start; continuing.${NC}"
+}
+
 # Parse Python executable
 if [ -f "$ROOT_DIR/.venv/bin/python" ]; then
     PYTHON_CMD="$ROOT_DIR/.venv/bin/python"
@@ -54,8 +69,18 @@ fi
 PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
 VITE_PORT="${VITE_PORT:-5173}"
-export API_KEY_SECRET="${API_KEY_SECRET:-meridian-test-secret-key-2026}"
-export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-sk-litellm-master-key}"
+# Secrets: no shared test defaults. Production requires explicit secrets
+# (app boot also fails closed via validate_production); local dev gets an
+# ephemeral generated value per run unless already exported (dev-only).
+if [ "${APP_ENV:-development}" = "production" ]; then
+    if [ -z "${API_KEY_SECRET:-}" ] || [ -z "${LITELLM_MASTER_KEY:-}" ]; then
+        echo -e "${RED}Error: API_KEY_SECRET and LITELLM_MASTER_KEY must be set in production.${NC}"
+        exit 1
+    fi
+else
+    export API_KEY_SECRET="${API_KEY_SECRET:-$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')}"
+    export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-sk-dev-$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')}"
+fi
 export VITE_MERIDIAN_API_KEY="${VITE_MERIDIAN_API_KEY:-$API_KEY_SECRET}"
 
 MODE="dev"
@@ -92,6 +117,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 print_banner
+
+# Start the data-layer containers before launching the app services.
+start_docker_stack
 
 # Trap function to clean up background processes on Ctrl+C / kill
 cleanup() {
