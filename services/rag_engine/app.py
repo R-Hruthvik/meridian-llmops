@@ -13,6 +13,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from qdrant_client import QdrantClient
 
 from packages.core.db import AsyncSessionLocal, init_db
 from packages.core.models import (
@@ -36,7 +37,7 @@ from services.gateway.guardrails.output_rails import OutputGuardrails
 from services.ingestion.embedder import FastEmbedEmbedder
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.pipeline import IngestionPipeline
-from services.ingestion.vector_store import VectorStoreManager
+from services.ingestion.vector_store import QdrantChunkStore
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.index_inspector import build_index_status
 from services.rag_engine.observability.langfuse_client import MeridianTracer
@@ -49,15 +50,16 @@ async def lifespan(app: FastAPI):
     """Initialize the semantic model once before serving or loading persisted chunks."""
     settings = _core_get_settings()
     _validate_production(settings)
-    if vector_store.embedder is None:
+    if ingestion_pipeline.embedder is None:
         embedder = await asyncio.to_thread(
             FastEmbedEmbedder,
             settings.embedding_model,
             cache_path=settings.fastembed_cache_path,
             expected_dim=settings.qdrant_vector_dim,
         )
-        vector_store.embedder = embedder
-        vector_store.dim = embedder.dim
+        ingestion_pipeline.embedder = embedder
+    retriever.embedder = ingestion_pipeline.embedder
+    await asyncio.to_thread(vector_store.ensure_collection)
     docs_loaded = await asyncio.to_thread(ingestion_pipeline.load_persisted_knowledge_base)
     logger.info("Hydrated %d documents from dedicated storage.", docs_loaded)
     retriever.update_chunks(vector_store.get_all_chunks())
@@ -78,12 +80,17 @@ app = FastAPI(
 app.include_router(review_router)
 
 
-# Core singletons - in_memory forced only during testing, otherwise try real Docker services with fallback
+# Qdrant uses an explicit backend; service failures never switch backends.
 _is_testing = os.environ.get("APP_ENV") == "testing"
-vector_store = VectorStoreManager(in_memory=_is_testing)
+_settings = _core_get_settings()
+_qdrant_client = ((QdrantClient(':memory:') if _settings.qdrant_local_path == ':memory:'
+                   else QdrantClient(path=_settings.qdrant_local_path))
+                  if _settings.vector_backend == 'qdrant_local'
+                  else QdrantClient(host=_settings.qdrant_host, port=_settings.qdrant_port, timeout=5))
+vector_store = QdrantChunkStore(_qdrant_client, _settings.qdrant_collection, _settings.qdrant_vector_dim)
 graph_store = KnowledgeGraphStore(in_memory=_is_testing)
 ingestion_pipeline = IngestionPipeline(vector_store=vector_store, graph_store=graph_store)
-retriever = HybridRetriever(vector_store=vector_store)
+retriever = HybridRetriever(vector_store=vector_store, chunks=[])
 input_guardrails = InputGuardrails()
 output_guardrails = OutputGuardrails()
 tracer = MeridianTracer()
@@ -136,7 +143,7 @@ def _log_service_banner(statuses: dict[str, Any]) -> None:
     lines = ["", "=" * 62, " Meridian Service Readiness Check", "=" * 62]
     for name, info in statuses.items():
         icon = "✓" if info["reachable"] else "✗"
-        state = "REACHABLE" if info["reachable"] else "DEGRADED (fallback active)"
+        state = "REACHABLE" if info["reachable"] else "DEGRADED"
         lines.append(f"  {icon} {name:10s} [{state:30s}] {info['endpoint']}")
     if all(v["reachable"] for v in statuses.values()):
         lines.append("  All Docker services reachable - production mode")

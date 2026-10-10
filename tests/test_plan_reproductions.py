@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from services.ingestion.vector_store import _qdrant_point_id
+from services.ingestion.vector_store import point_id
 from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.app import app
 
@@ -25,7 +25,7 @@ def test_f01_old_hash_vectors_differ_between_processes():
 @pytest.mark.xfail(strict=True, reason="Legacy chunk IDs are normalized to Qdrant UUIDs in current code.")
 def test_f03_old_chunk_id_is_used_directly_as_qdrant_id():
     legacy_id = "doc-00000000-0000-0000-0000-000000000001-chunk-0"
-    assert _qdrant_point_id(legacy_id) == legacy_id
+    assert point_id(legacy_id) == legacy_id
 
 
 @pytest.mark.xfail(strict=True, reason="Current /v1/ingest accepts JSON text; multipart upload is not wired.")
@@ -43,15 +43,15 @@ async def test_f11_provider_failure_is_not_returned_as_refusal(monkeypatch):
     monkeypatch.delenv("APP_ENV", raising=False)
     from packages.core.models import Chunk
     from services.ingestion.graph_store import KnowledgeGraphStore
-    from services.ingestion.vector_store import VectorStoreManager
     from services.rag_engine.agent.graph import build_rag_agent_graph
     from services.rag_engine.retrieval.hybrid import HybridRetriever
-    from tests.fakes import FakeEmbedder
+    from tests.fakes import FakeEmbedder, make_vector_store
 
     chunks = [Chunk(id="repro", document_id="repro", text="Meridian uses LiteLLM for gateway routing.")]
-    vector_store = VectorStoreManager(in_memory=True, embedder=FakeEmbedder())
-    vector_store.index_chunks(chunks)
-    retriever = HybridRetriever(vector_store=vector_store, chunks=chunks)
+    embedder = FakeEmbedder()
+    vector_store = make_vector_store(embedder)
+    vector_store.upsert_chunks(chunks, embedder.embed_passages([c.text for c in chunks]))
+    retriever = HybridRetriever(vector_store=vector_store, embedder=embedder, chunks=chunks)
     graph_store = KnowledgeGraphStore(in_memory=True)
 
     class FailingClient:

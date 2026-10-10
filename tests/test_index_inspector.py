@@ -84,17 +84,18 @@ async def test_relational_row_counts_reflect_rows_written_by_the_test(db_session
 
 
 @pytest.mark.asyncio
-async def test_vector_section_is_fallback_when_backend_unreachable(db_session):
-    """A dead Qdrant is labelled a fallback instead of reporting invented collections."""
+async def test_vector_section_reports_unavailable_without_fallback(db_session):
+    """A dead Qdrant must not advertise a removed in-process fallback."""
     status = await build_index_status(
         vector_store=_DeadStore(), graph_store=_DeadStore(), retriever=_DeadStore(), db=db_session
     )
 
-    assert status.vector.is_fallback is True
+    assert status.vector.is_fallback is False
+    assert status.vector.total_points is None
     assert status.vector.collections == []
     assert status.vector.points_per_collection == {}
     assert status.backends["vector"].reachable is False
-    assert status.backends["vector"].is_fallback is True
+    assert status.backends["vector"].is_fallback is False
     assert status.backends["vector"].detail
 
 

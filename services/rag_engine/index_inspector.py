@@ -43,35 +43,24 @@ def _graph_endpoint() -> str:
 
 
 def _read_vector(vector_store: Any) -> tuple[VectorIndexStatus, BackendHealth]:
-    """Reads Qdrant collections and point counts; falls back to the in-process cache."""
+    """Reads Qdrant collections and point counts; failed reads stay unknown."""
     endpoint = _vector_endpoint()
     client = _safe_attr(vector_store, "client")
-    live = client is not None and not _safe_attr(vector_store, "is_fallback", False)
-
-    if not live:
-        cached = _safe_attr(vector_store, "get_all_chunks")
-        try:
-            total = len(cached()) if callable(cached) else None
-        except Exception as e:  # noqa: BLE001
-            logger.debug("In-memory chunk count unavailable: %s", e)
-            total = None
+    if client is None:
         return (
             VectorIndexStatus(
                 collections=[],
                 points_per_collection={},
-                total_points=total,
+                total_points=None,
                 vector_dimension=_safe_attr(vector_store, "dim"),
-                is_fallback=True,
-                detail=(
-                    "No live Qdrant client in use; collections are not reported. "
-                    f"total_points is the in-process fallback cache ({total} chunks), not persisted state."
-                ),
+                is_fallback=False,
+                detail="Qdrant client is unavailable; collection counts are unknown.",
             ),
             BackendHealth(
                 reachable=False,
-                is_fallback=True,
+                is_fallback=False,
                 endpoint=endpoint,
-                detail="Qdrant unreachable or not in use - serving the in-memory vector fallback.",
+                detail="Qdrant client is unavailable; vector retrieval is unavailable.",
             ),
         )
 
@@ -105,11 +94,11 @@ def _read_vector(vector_store: Any) -> tuple[VectorIndexStatus, BackendHealth]:
         return (
             VectorIndexStatus(
                 collections=[], points_per_collection={},
-                total_points=None, vector_dimension=None, is_fallback=True,
+                total_points=None, vector_dimension=None, is_fallback=False,
                 detail=f"Qdrant query failed, so no collection data is reported: {e}",
             ),
             BackendHealth(
-                reachable=False, is_fallback=True, endpoint=endpoint,
+                reachable=False, is_fallback=False, endpoint=endpoint,
                 detail=f"Qdrant query failed: {e}",
             ),
         )

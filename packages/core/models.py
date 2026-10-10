@@ -172,7 +172,7 @@ class VectorIndexStatus(BaseModel):
     points_per_collection: dict[str, int] = Field(default_factory=dict, description="Live point count per collection")
     total_points: int | None = Field(None, description="Total live points, or in-process chunk count when falling back")
     vector_dimension: int | None = Field(None, description="Embedding dimension reported by the live collection")
-    is_fallback: bool = Field(False, description="True when no live Qdrant client is in use")
+    is_fallback: bool = Field(False, description="Always false; dense retrieval uses the configured Qdrant backend")
     detail: str = Field("", description="How these numbers were obtained")
 
 

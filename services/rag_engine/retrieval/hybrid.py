@@ -2,7 +2,8 @@
 
 
 from packages.core.models import Chunk, SearchResult
-from services.ingestion.vector_store import VectorStoreManager
+from services.ingestion.embedder import Embedder
+from services.ingestion.vector_store import QdrantChunkStore
 from services.rag_engine.retrieval.bm25 import BM25Index
 from services.rag_engine.retrieval.fusion import reciprocal_rank_fusion
 from services.rag_engine.retrieval.reranker import CrossEncoderReranker
@@ -13,12 +14,14 @@ class HybridRetriever:
 
     def __init__(
         self,
-        vector_store: VectorStoreManager,
+        vector_store: QdrantChunkStore,
         chunks: list[Chunk] | None = None,
         reranker: CrossEncoderReranker | None = None,
+        embedder: Embedder | None = None,
     ):
         self.vector_store = vector_store
-        self.chunks = chunks or vector_store.get_all_chunks()
+        self.embedder = embedder
+        self.chunks = chunks if chunks is not None else vector_store.get_all_chunks()
         self.chunk_map: dict[str, Chunk] = {c.id: c for c in self.chunks}
         self.bm25_index = BM25Index(self.chunks)
         self.reranker = reranker or CrossEncoderReranker()
@@ -40,8 +43,11 @@ class HybridRetriever:
 
     def retrieve(self, query: str, top_k: int = 5) -> list[SearchResult]:
         # 1. Dense vector search
-        dense_results = self.vector_store.search(query, top_k=top_k * 2)
-        dense_ranked = [(r.chunk_id, r.score) for r in dense_results]
+        if self.embedder is None:
+            raise RuntimeError('Embedder must be initialized at startup or explicitly injected')
+        dense_results = self.vector_store.search(self.embedder.embed_query(query), k=top_k * 2,
+                                                tenant_id='default')
+        dense_ranked = [(r.chunk.id, r.score) for r in dense_results]
 
         # 2. Sparse BM25 search
         sparse_results = self.bm25_index.search(query, top_k=top_k * 2)

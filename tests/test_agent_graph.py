@@ -4,11 +4,10 @@ import pytest
 
 from packages.core.models import Chunk
 from services.ingestion.graph_store import KnowledgeGraphStore
-from services.ingestion.vector_store import VectorStoreManager
 from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.retrieval.hybrid import HybridRetriever
-from tests.fakes import FakeEmbedder
+from tests.fakes import FakeEmbedder, make_vector_store
 
 
 @pytest.fixture
@@ -27,13 +26,14 @@ def populated_retriever_and_graph():
             section_heading="Storage",
         ),
     ]
-    vstore = VectorStoreManager(in_memory=True, embedder=FakeEmbedder())
-    vstore.index_chunks(chunks)
+    embedder = FakeEmbedder()
+    vstore = make_vector_store(embedder)
+    vstore.upsert_chunks(chunks, embedder.embed_passages([c.text for c in chunks]))
 
     gstore = KnowledgeGraphStore(in_memory=True)
     gstore.extract_and_store("d1", "LiteLLM connects to Qdrant. Neo4j stores relationships.")
 
-    retriever = HybridRetriever(vector_store=vstore, chunks=chunks)
+    retriever = HybridRetriever(vector_store=vstore, embedder=embedder, chunks=chunks)
     return retriever, gstore
 
 

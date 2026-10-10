@@ -3,12 +3,11 @@
 import pytest
 
 from packages.core.models import Chunk
-from services.ingestion.vector_store import VectorStoreManager
 from services.rag_engine.retrieval.bm25 import BM25Index
 from services.rag_engine.retrieval.fusion import reciprocal_rank_fusion
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 from services.rag_engine.retrieval.reranker import CrossEncoderReranker
-from tests.fakes import FakeEmbedder
+from tests.fakes import FakeEmbedder, make_vector_store
 
 
 @pytest.fixture
@@ -72,10 +71,11 @@ def test_cross_encoder_reranker(sample_chunks):
 
 
 def test_hybrid_retriever_end_to_end(sample_chunks):
-    vstore = VectorStoreManager(in_memory=True, embedder=FakeEmbedder())
-    vstore.index_chunks(sample_chunks)
+    embedder = FakeEmbedder()
+    vstore = make_vector_store(embedder)
+    vstore.upsert_chunks(sample_chunks, embedder.embed_passages([c.text for c in sample_chunks]))
 
-    retriever = HybridRetriever(vector_store=vstore, chunks=sample_chunks)
+    retriever = HybridRetriever(vector_store=vstore, embedder=embedder, chunks=sample_chunks)
     results = retriever.retrieve("Which tool blocks prompt injection at the gateway?", top_k=2)
 
     assert len(results) > 0

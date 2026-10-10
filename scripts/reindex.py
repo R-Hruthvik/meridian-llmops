@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import sys
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,13 +18,13 @@ if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, UpdateStatus, VectorParams
+from qdrant_client.models import VectorParams
 
 from packages.core.settings import Settings, get_settings
 from services.ingestion.embedder import Embedder, FastEmbedEmbedder
 from services.ingestion.manifest import CHUNKER_VERSION, IndexManifest, write_manifest
 from services.ingestion.storage import DocumentStorageManager, get_default_storage_root
-from services.ingestion.vector_store import _qdrant_point_id
+from services.ingestion.vector_store import QdrantChunkStore, point_id
 
 
 def reindex(
@@ -56,6 +57,7 @@ def reindex(
         temporary.replace(checkpoint_path)
 
     offset = 0
+    store = QdrantChunkStore(client, settings.qdrant_collection, embedder.dim)
     if resume:
         checkpoint = json.loads(checkpoint_path.read_text(encoding='utf-8'))
         if any(checkpoint.get(key) != value for key, value in provenance.items()):
@@ -72,7 +74,7 @@ def reindex(
             raise ValueError('Cannot resume: invalid checkpoint offset')
         # A total count can hide replaced points. Verify every committed ID.
         for start in range(0, offset, 64):
-            expected_ids = {_qdrant_point_id(chunk.id) for chunk in chunks[start:min(start + 64, offset)]}
+            expected_ids = {point_id(chunk.id) for chunk in chunks[start:min(start + 64, offset)]}
             records = client.retrieve(settings.qdrant_collection, ids=list(expected_ids),
                                       with_payload=False, with_vectors=False)
             if {str(record.id) for record in records} != expected_ids:
@@ -82,28 +84,18 @@ def reindex(
         (storage.root_dir / 'index_manifest.json').unlink(missing_ok=True)
         if client.collection_exists(settings.qdrant_collection):
             client.delete_collection(settings.qdrant_collection)
-        client.create_collection(
-            settings.qdrant_collection,
-            vectors_config=VectorParams(size=embedder.dim, distance=Distance.COSINE),
-        )
         save_checkpoint(0)
 
+    store.ensure_collection()
+    counts = Counter((str(c.metadata.get('tenant_id', 'default')), c.document_id) for c in chunks[:offset])
     for start in range(offset, len(chunks), 64):
         batch = chunks[start:start + 64]
         vectors = embedder.embed_passages([chunk.text for chunk in batch])
-        points = []
-        for chunk, vector in zip(batch, vectors, strict=True):
-            payload = chunk.model_dump(exclude={'embedding'})
-            payload['chunk_id'] = chunk.id
-            payload['tenant_id'] = chunk.metadata.get('tenant_id', 'default')
-            payload['filename'] = chunk.metadata.get('filename', chunk.metadata.get('source', ''))
-            points.append(PointStruct(id=_qdrant_point_id(chunk.id), vector=vector.tolist(), payload=payload))
-        result = client.upsert(settings.qdrant_collection, points=points, wait=True)
-        if result.status != UpdateStatus.COMPLETED:
-            raise RuntimeError(f'Qdrant did not complete upsert: {result.status}')
+        counts.update((str(c.metadata.get('tenant_id', 'default')), c.document_id) for c in batch)
+        store.upsert_chunks(batch, vectors, document_counts=counts)
         save_checkpoint(start + len(batch))
 
-    count = client.count(settings.qdrant_collection, exact=True).count
+    count = store.count()
     if count != len(chunks):
         raise RuntimeError(f'Reindex count mismatch: Qdrant={count}, disk={len(chunks)}')
     storage.remove_legacy_embeddings()

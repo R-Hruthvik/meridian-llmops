@@ -6,12 +6,13 @@ from typing import Any
 
 logger = logging.getLogger("meridian.ingestion.pipeline")
 
-from packages.core.models import Document, DocumentFormat
+from packages.core.models import Chunk, Document, DocumentFormat
 from services.ingestion.chunker import StructuralChunker
+from services.ingestion.embedder import Embedder
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.parsers import parse_document
 from services.ingestion.storage import DocumentStorageManager
-from services.ingestion.vector_store import VectorStoreManager
+from services.ingestion.vector_store import QdrantChunkStore
 
 
 class IngestionPipeline:
@@ -19,23 +20,31 @@ class IngestionPipeline:
 
     def __init__(
         self,
-        vector_store: VectorStoreManager | None = None,
+        vector_store: QdrantChunkStore,
         graph_store: KnowledgeGraphStore | None = None,
         storage_manager: DocumentStorageManager | None = None,
         in_memory: bool = True,
         storage_root: Path | str | None = None,
+        embedder: Embedder | None = None,
     ):
-        self.vector_store = vector_store or VectorStoreManager(in_memory=in_memory)
+        self.vector_store = vector_store
+        self.embedder = embedder
         self.graph_store = graph_store or KnowledgeGraphStore(in_memory=in_memory)
         self.storage = storage_manager or DocumentStorageManager(storage_root=storage_root)
         self.chunker = StructuralChunker()
+
+    def _index_chunks(self, chunks: list[Chunk]) -> int:
+        if self.embedder is None:
+            raise RuntimeError('Embedder must be initialized at startup or explicitly injected')
+        vectors = self.embedder.embed_passages([chunk.text for chunk in chunks])
+        return self.vector_store.upsert_chunks(chunks, vectors)
 
     def load_persisted_knowledge_base(self) -> int:
         """Hydrates vector store and knowledge graph from dedicated disk storage on startup."""
         # Perf: prefer single-pass load_all_chunks to avoid N*2 file IO; doc_id→chunk_ids index hint
         all_chunks = self.storage.load_all_chunks()
         if all_chunks:
-            self.vector_store.index_chunks(all_chunks)
+            self._index_chunks(all_chunks)
             total_chunks = len(all_chunks)
             # Still need per-doc text for graph reconstruction (single scan of metadata)
             for meta in self.storage.list_documents():
@@ -52,7 +61,7 @@ class IngestionPipeline:
             doc_id = meta["id"]
             chunks = self.storage.get_document_chunks(doc_id)
             if chunks:
-                self.vector_store.index_chunks(chunks)
+                self._index_chunks(chunks)
                 total_chunks += len(chunks)
             full_doc = self.storage.get_document(doc_id)
             if full_doc and full_doc.get("text"):
@@ -78,7 +87,7 @@ class IngestionPipeline:
 
     def ingest_document(self, doc: Document, persist: bool = True) -> dict[str, Any]:
         chunks = self.chunker.chunk(doc)
-        indexed_count = self.vector_store.index_chunks(chunks)
+        indexed_count = self._index_chunks(chunks)
         entities, relations = self.graph_store.extract_and_store(doc.id, doc.text)
 
         meta_record = {}
@@ -112,7 +121,7 @@ class IngestionPipeline:
         """Permanently removes document, raw files, and chunks from storage, vector and graph memory."""
         deleted = self.storage.delete_document(doc_id)
         if deleted:
-            self.vector_store.delete_chunks_by_document(doc_id)
+            self.vector_store.delete_document(doc_id, tenant_id='default')
             # Graph cleanup: prefer dedicated method, fallback to manual filter
             if hasattr(self.graph_store, "delete_by_document"):
                 self.graph_store.delete_by_document(doc_id)

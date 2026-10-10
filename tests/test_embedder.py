@@ -72,18 +72,20 @@ def test_embedder_deterministic_across_processes(semantic_embedder):
     np.testing.assert_array_equal(vectors[0], vectors[1])
 
 
-def test_vector_store_reembeds_legacy_vectors():
+def test_pipeline_reembeds_legacy_vectors(tmp_path):
     from packages.core.models import Chunk
-    from services.ingestion.vector_store import VectorStoreManager
-    from tests.fakes import FakeEmbedder
+    from services.ingestion.pipeline import IngestionPipeline
+    from tests.fakes import FakeEmbedder, make_vector_store
 
     embedder = FakeEmbedder(8)
     chunk = Chunk(id='c1', document_id='d1', text='semantic answer', chunk_index=0, embedding=[1.] * 1024)
-    store = VectorStoreManager(in_memory=True, embedder=embedder)
-    store.index_chunks([chunk])
+    store = make_vector_store(embedder)
+    pipeline = IngestionPipeline(vector_store=store, embedder=embedder, storage_root=tmp_path)
+    pipeline._index_chunks([chunk])
     assert store.dim == 8
-    np.testing.assert_allclose(chunk.embedding, embedder.embed_passages([chunk.text])[0])
-    assert store.search('semantic answer')[0].score == pytest.approx(1.)
+    result = store.search(embedder.embed_query('semantic answer'), 5, 'default')[0]
+    assert result.score == pytest.approx(1.)
+    assert result.chunk.embedding is None
 
 
 @pytest.mark.asyncio
@@ -100,11 +102,11 @@ async def test_app_lifespan_initializes_model_once(monkeypatch):
     async def init_db():
         pass
 
-    monkeypatch.setattr(app_module.vector_store, 'embedder', None)
+    monkeypatch.setattr(app_module.ingestion_pipeline, 'embedder', None)
     monkeypatch.setattr(app_module, 'FastEmbedEmbedder', create_embedder)
     monkeypatch.setattr(app_module, 'init_db', init_db)
     monkeypatch.setattr(app_module.ingestion_pipeline, 'load_persisted_knowledge_base', lambda: 0)
     async with app_module.lifespan(app_module.app):
-        assert app_module.vector_store.embedder is not None
+        assert app_module.ingestion_pipeline.embedder is not None
     async with app_module.lifespan(app_module.app):
         assert len(initialized) == 1

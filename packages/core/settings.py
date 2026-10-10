@@ -7,6 +7,7 @@ remains only as a re-export shim until migration completes.
 
 import os
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -44,6 +45,8 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     qdrant_collection: str = "meridian_documents"
     qdrant_vector_dim: int = 384
+    vector_backend: Literal['qdrant', 'qdrant_local'] = 'qdrant'
+    qdrant_local_path: str = 'storage/qdrant'
 
     # Neo4j Knowledge Graph
     neo4j_uri: str = "bolt://localhost:7687"

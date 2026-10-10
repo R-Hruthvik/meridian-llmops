@@ -1,267 +1,212 @@
-"""Dense Vector Store Manager for Qdrant with in-memory fallback for local testing."""
+"""Qdrant chunk persistence with explicit dependencies and no alternate backend."""
 
-import logging
 import uuid
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+from qdrant_client import QdrantClient, models
 
-from packages.core.config import get_settings
-from packages.core.models import Chunk, SearchResult
-from packages.core.retry_config import retry_on_api_error
-from services.ingestion.embedder import Embedder
+from packages.core.errors import IndexMismatchError, IndexReadError, IndexWriteError
+from packages.core.models import Chunk
 
-logger = logging.getLogger("meridian.ingestion.vector_store")
-
-
-def _qdrant_point_id(chunk_id: str) -> str:
-    """Normalize chunk IDs to a Qdrant-compatible UUID string.
-
-    New chunks already use UUID hex IDs. Older persisted chunks used strings
-    like ``doc-<uuid>-chunk-<n>`` which Qdrant rejects. We map any non-UUID
-    id to a deterministic UUID5 so re-ingestion is idempotent.
-    """
-    try:
-        return str(uuid.UUID(chunk_id))
-    except ValueError:
-        return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
+# Stable across deployments: changing this value requires rebuilding the index.
+POINT_NAMESPACE = uuid.UUID('67adac87-77a1-5d8d-901c-b99471d49131')
 
 
-class VectorStoreManager:
-    """Manages Qdrant vector collection indexing and similarity search."""
+def point_id(chunk_id: str) -> str:
+    return str(uuid.uuid5(POINT_NAMESPACE, chunk_id))
 
-    def __init__(self, in_memory: bool = False, embedder: Embedder | None = None):
-        self.settings = get_settings()
-        self.in_memory = in_memory
-        self.embedder = embedder
-        self.dim = embedder.dim if embedder is not None else self.settings.qdrant_vector_dim
-        self.collection_name = self.settings.qdrant_collection
 
-        # Local in-memory storage for test isolation / fallback cache
-        self._memory_chunks: dict[str, Chunk] = {}
-        self._memory_vectors: dict[str, np.ndarray] = {}
+@dataclass(frozen=True)
+class ChunkHit:
+    chunk: Chunk
+    score: float
 
-        # Qdrant client handling
-        self._qdrant_available: bool = False
-        self._qdrant_fallback: bool = False
-        self.client: object | None = None
 
-        if not self.in_memory:
-            try:
-                from qdrant_client import QdrantClient  # type: ignore[import-untyped]
-                from qdrant_client.models import (  # type: ignore[import-untyped]
-                    Distance,
-                    VectorParams,
-                )
-            except Exception as e:  # noqa: BLE001
-                logger.warning("qdrant-client not installed - using in-memory fallback: %s", e)
-                self._qdrant_fallback = True
-                return
+class QdrantChunkStore:
+    """Store complete chunk payloads; the caller owns client and embedder lifetimes."""
 
-            @retry_on_api_error(max_attempts=3)
-            def _connect_qdrant():
-                self.client = QdrantClient(
-                    host=self.settings.qdrant_host,
-                    port=self.settings.qdrant_port,
-                    timeout=5,
-                )
-                # Test connectivity
-                self.client.get_collections()  # type: ignore[attr-defined]
-                # Ensure collection exists
-                try:
-                    self.client.get_collection(collection_name=self.collection_name)  # type: ignore[attr-defined]
-                except Exception:  # noqa: BLE001
-                    self.client.create_collection(  # type: ignore[attr-defined]
-                        collection_name=self.collection_name,
-                        vectors_config=VectorParams(size=self.dim, distance=Distance.COSINE),
-                    )
-                    logger.info("Created Qdrant collection %s", self.collection_name)
-                self._qdrant_available = True
-                logger.info(
-                    "Qdrant connected at %s:%s collection=%s",
-                    self.settings.qdrant_host,
-                    self.settings.qdrant_port,
-                    self.collection_name,
-                )
+    def __init__(self, client: QdrantClient, collection_name: str, dim: int):
+        self.client = client
+        self.collection_name = collection_name
+        self.dim = dim
 
-            try:
-                _connect_qdrant()
-            except Exception as e:  # noqa: BLE001
-                logger.warning(
-                    "Qdrant unavailable at %s:%s - using in-memory fallback: %s",
-                    self.settings.qdrant_host,
-                    self.settings.qdrant_port,
-                    e,
-                )
-                self.client = None
-                self._qdrant_available = False
-                self._qdrant_fallback = True
-        else:
-            logger.info("VectorStore in-memory mode (forced)")
-
-    def index_chunks(self, chunks: list[Chunk]) -> int:
-        if self.embedder is None:
-            raise RuntimeError("Embedder must be initialized at app startup or explicitly injected")
-        # Re-embed persisted chunks as well: legacy records contain hash vectors.
-        vectors = self.embedder.embed_passages([chunk.text for chunk in chunks])
-        for chunk, vector in zip(chunks, vectors, strict=True):
-            chunk.embedding = vector.tolist()
-            self._memory_chunks[chunk.id] = chunk
-            self._memory_vectors[chunk.id] = np.array(chunk.embedding, dtype=np.float32)
-
-        if self._qdrant_available and self.client is not None:
-            try:
-                from qdrant_client.models import PointStruct  # type: ignore[import-untyped]
-
-                points = []
-                for chunk in chunks:
-                    payload = {
-                        "document_id": chunk.document_id,
-                        "chunk_id": chunk.id,
-                        "chunk_index": chunk.chunk_index,
-                        "section_heading": chunk.section_heading,
-                        "text": chunk.text,
-                        "source": chunk.metadata.get("source", chunk.document_id) if chunk.metadata else chunk.document_id,
-                    }
-                    # Guaranteed non-None by the cache-fill loop above; Qdrant rejects null vectors.
-                    vector = chunk.embedding or []
-                    points.append(
-                        PointStruct(
-                            id=_qdrant_point_id(chunk.id),
-                            vector=vector,
-                            payload=payload,
-                        )
-                    )
-                self.client.upsert(collection_name=self.collection_name, points=points)  # type: ignore[attr-defined]
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Qdrant index_chunks failed, falling back to in-memory: %s", e)
-                self._qdrant_fallback = True
-        return len(chunks)
-
-    @retry_on_api_error(max_attempts=3)
-    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        if self.embedder is None:
-            raise RuntimeError("Embedder must be initialized at app startup or explicitly injected")
-        query_vector = self.embedder.embed_query(query)
-        if self._qdrant_available and self.client is not None:
-            try:
-                query_vec = query_vector.tolist()
-                # Use search API (qdrant-client 1.8) with fallback to query_points
-                try:
-                    hits = self.client.search(  # type: ignore[attr-defined]
-                        collection_name=self.collection_name,
-                        query_vector=query_vec,
-                        limit=top_k,
-                    )
-                except Exception:  # noqa: BLE001
-                    # Newer client uses query_points
-                    resp = self.client.query_points(  # type: ignore[attr-defined]
-                        collection_name=self.collection_name,
-                        query=query_vec,
-                        limit=top_k,
-                    )
-                    hits = getattr(resp, "points", resp)
-
-                results: list[SearchResult] = []
-                for hit in hits:  # type: ignore[assignment]
-                    payload = getattr(hit, "payload", {}) or {}
-                    if isinstance(hit, dict):
-                        payload = hit.get("payload", {})
-                        score = hit.get("score", 0.0)
-                        hit_id = str(hit.get("id", payload.get("chunk_id", "")))
-                    else:
-                        score = getattr(hit, "score", 0.0)
-                        hit_id = str(getattr(hit, "id", payload.get("chunk_id", "")))
-                    text = payload.get("text", "")
-                    if not text and hit_id in self._memory_chunks:
-                        text = self._memory_chunks[hit_id].text
-                    results.append(
-                        SearchResult(
-                            chunk_id=payload.get("chunk_id", hit_id),
-                            document_id=payload.get("document_id", ""),
-                            text=text,
-                            score=float(score),
-                            retrieval_method="dense_vector",
-                            metadata=payload,
-                        )
-                    )
-                if results:
-                    return results
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Qdrant search failed, falling back to in-memory: %s", e)
-
-        # In-memory fallback scoring
-        query_vec_fallback = query_vector
-        scores: list[tuple[str, float]] = []
-
-        for chunk_id, vec in self._memory_vectors.items():
-            dot = float(np.dot(query_vec_fallback, vec))
-            scores.append((chunk_id, dot))
-
-        scores.sort(key=lambda x: x[1], reverse=True)
-        results_fallback: list[SearchResult] = []
-
-        for chunk_id, score in scores[:top_k]:
-            chunk = self._memory_chunks[chunk_id]
-            results_fallback.append(
-                SearchResult(
-                    chunk_id=chunk.id,
-                    document_id=chunk.document_id,
-                    text=chunk.text,
-                    score=score,
-                    retrieval_method="dense_vector",
-                    metadata=chunk.metadata,
-                )
+    def _check_schema(self, collection: models.CollectionInfo) -> None:
+        vectors = collection.config.params.vectors
+        if (not isinstance(vectors, models.VectorParams) or vectors.size != self.dim
+                or vectors.distance != models.Distance.COSINE):
+            raise IndexMismatchError(
+                f'Collection {self.collection_name!r} requires unnamed cosine vectors '
+                f'of dimension {self.dim}; found {vectors}. Run scripts/reindex.py.'
             )
-        return results_fallback
 
-    def get_all_chunks(self) -> list[Chunk]:
-        return list(self._memory_chunks.values())
-
-    def get_chunks_by_document(self, doc_id: str) -> list[Chunk]:
-        return [c for c in self._memory_chunks.values() if c.document_id == doc_id]
-
-    def delete_chunks_by_document(self, doc_id: str) -> int:
-        to_delete = [c_id for c_id, c in self._memory_chunks.items() if c.document_id == doc_id]
-        for c_id in to_delete:
-            self._memory_chunks.pop(c_id, None)
-            self._memory_vectors.pop(c_id, None)
-
-        if self._qdrant_available and self.client is not None:
-            try:
-                from qdrant_client.models import FieldCondition, Filter, MatchValue  # type: ignore[import-untyped]  # noqa: I001
-
-                self.client.delete(  # type: ignore[attr-defined]
-                    collection_name=self.collection_name,
-                    points_selector=Filter(
-                        must=[FieldCondition(key="document_id", match=MatchValue(value=doc_id))]
-                    ),
+    def ensure_collection(self) -> None:
+        try:
+            if not self.client.collection_exists(self.collection_name):
+                created = self.client.create_collection(
+                    self.collection_name,
+                    vectors_config=models.VectorParams(size=self.dim, distance=models.Distance.COSINE),
                 )
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Qdrant delete failed for %s: %s", doc_id, e)
-        return len(to_delete)
-
-    def clear(self) -> None:
-        self._memory_chunks.clear()
-        self._memory_vectors.clear()
-        if self._qdrant_available and self.client is not None:
-            try:
-                # Delete and recreate collection for clean slate
-                from qdrant_client.models import (  # type: ignore[import-untyped]
-                    Distance,
-                    VectorParams,
+                if not created:
+                    raise IndexWriteError(f'Qdrant did not create {self.collection_name!r}')
+            collection = self.client.get_collection(self.collection_name)
+            self._check_schema(collection)
+            for field in ('document_id', 'tenant_id', 'filename'):
+                schema = collection.payload_schema.get(field)
+                if schema is not None:
+                    if schema.data_type != models.PayloadSchemaType.KEYWORD:
+                        raise IndexMismatchError(f'Payload index {field!r} must be keyword')
+                    continue
+                result = self.client.create_payload_index(
+                    collection_name=self.collection_name, field_name=field,
+                    field_schema=models.PayloadSchemaType.KEYWORD, wait=True,
                 )
+                self._require_completed(result)
+        except (IndexMismatchError, IndexWriteError):
+            raise
+        except Exception as error:
+            raise IndexWriteError(f'Qdrant collection initialization failed: {error}') from error
 
-                try:
-                    self.client.delete_collection(collection_name=self.collection_name)  # type: ignore[attr-defined]
-                except Exception as cleanup_error:  # noqa: BLE001 - best-effort delete before recreate
-                    logger.debug("Collection delete before recreate failed: %s", cleanup_error)
-                self.client.create_collection(  # type: ignore[attr-defined]
-                    collection_name=self.collection_name,
-                    vectors_config=VectorParams(size=self.dim, distance=Distance.COSINE),
+    @staticmethod
+    def _filter(tenant_id: str | None = None, document_id: str | None = None,
+                filters: Mapping[str, str] | None = None) -> models.Filter:
+        # Separate mandatory conditions mean filters can never replace the tenant scope.
+        must = [models.FieldCondition(key=key, match=models.MatchValue(value=value))
+                for key, value in (filters or {}).items()]
+        if tenant_id is not None:
+            must.append(models.FieldCondition(key='tenant_id', match=models.MatchValue(value=tenant_id)))
+        if document_id is not None:
+            must.append(models.FieldCondition(key='document_id', match=models.MatchValue(value=document_id)))
+        return models.Filter(must=must)
+
+    @staticmethod
+    def _require_completed(result: models.UpdateResult) -> None:
+        if result.status != models.UpdateStatus.COMPLETED:
+            raise IndexWriteError(f'Qdrant operation did not complete: {result.status}')
+
+    @staticmethod
+    def _payload(chunk: Chunk) -> dict[str, Any]:
+        payload = chunk.model_dump(exclude={'embedding'})
+        payload.update(chunk_id=chunk.id, tenant_id=chunk.metadata.get('tenant_id', 'default'),
+                       filename=chunk.metadata.get('filename', chunk.metadata.get('source', '')))
+        return payload
+
+    @staticmethod
+    def _chunk(payload: dict[str, Any] | None) -> Chunk:
+        if payload is None:
+            raise ValueError('Qdrant hit is missing its chunk payload')
+        return Chunk.model_validate({**payload, 'id': payload['chunk_id'], 'embedding': None})
+
+    def upsert_chunks(
+        self, chunks: list[Chunk], vectors: Sequence[Sequence[float]] | np.ndarray, *,
+        document_counts: Mapping[tuple[str, str], int] | None = None,
+    ) -> int:
+        """Write complete documents and verify counts per tenant/document.
+
+        Reindex writes resumable batches and supplies cumulative document_counts
+        for the prefix already committed. Normal ingestion supplies whole documents.
+        """
+        if not chunks:
+            if len(vectors):
+                raise IndexWriteError('Vectors supplied without chunks')
+            return 0
+        try:
+            matrix = np.asarray(vectors, dtype=np.float32)
+            if matrix.shape != (len(chunks), self.dim) or not np.isfinite(matrix).all():
+                raise ValueError(f'Expected {len(chunks)} finite vectors of dimension {self.dim}')
+            counts = Counter((str(c.metadata.get('tenant_id', 'default')), c.document_id) for c in chunks)
+            for start in range(0, len(chunks), 64):
+                points = [models.PointStruct(id=point_id(chunk.id), vector=vector.tolist(),
+                                              payload=self._payload(chunk))
+                          for chunk, vector in zip(chunks[start:start + 64], matrix[start:start + 64], strict=True)]
+                result = self.client.upsert(collection_name=self.collection_name, points=points, wait=True)
+                self._require_completed(result)
+            for (tenant, document), expected in counts.items():
+                if document_counts is not None:
+                    expected = document_counts[(tenant, document)]
+                actual = self.count(tenant_id=tenant, document_id=document)
+                if actual != expected:
+                    raise IndexWriteError(f'Qdrant document {document!r} count mismatch: '
+                                          f'expected {expected}, found {actual}')
+            return len(chunks)
+        except IndexWriteError:
+            raise
+        except Exception as error:
+            raise IndexWriteError(f'Qdrant upsert failed: {error}') from error
+
+    def search(self, query_vector: Sequence[float] | np.ndarray, k: int, tenant_id: str,
+               filters: Mapping[str, str] | None = None) -> list[ChunkHit]:
+        try:
+            vector = np.asarray(query_vector, dtype=np.float32)
+            if vector.shape != (self.dim,) or not np.isfinite(vector).all():
+                raise ValueError(f'Expected a finite query vector of dimension {self.dim}')
+            response = self.client.query_points(
+                collection_name=self.collection_name, query=vector.tolist(), limit=k,
+                query_filter=self._filter(tenant_id, filters=filters),
+                with_payload=True, with_vectors=False,
+            )
+            return [ChunkHit(chunk=self._chunk(hit.payload), score=hit.score) for hit in response.points]
+        except Exception as error:
+            raise IndexReadError(f'Qdrant search failed: {error}') from error
+
+    def count(self, tenant_id: str | None = None, document_id: str | None = None) -> int:
+        try:
+            return self.client.count(self.collection_name, count_filter=self._filter(tenant_id, document_id),
+                                     exact=True).count
+        except Exception as error:
+            raise IndexReadError(f'Qdrant count failed: {error}') from error
+
+    def delete_document(self, document_id: str, tenant_id: str) -> int:
+        try:
+            before = self.count(tenant_id, document_id)
+            result = self.client.delete(
+                collection_name=self.collection_name, points_selector=self._filter(tenant_id, document_id),
+                wait=True,
+            )
+            self._require_completed(result)
+            if self.count(tenant_id, document_id) != 0:
+                raise IndexWriteError(f'Qdrant did not delete all chunks of {document_id!r}')
+            return before
+        except IndexWriteError:
+            raise
+        except Exception as error:
+            raise IndexWriteError(f'Qdrant delete failed: {error}') from error
+
+    def get_all_chunks(self, tenant_id: str = 'default') -> list[Chunk]:
+        """Read payloads for existing catalog callers; there is no process cache."""
+        chunks: list[Chunk] = []
+        offset = None
+        try:
+            while True:
+                records, offset = self.client.scroll(
+                    self.collection_name, scroll_filter=self._filter(tenant_id), limit=256,
+                    offset=offset, with_payload=True, with_vectors=False,
                 )
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Qdrant clear failed: %s", e)
+                chunks.extend(self._chunk(record.payload) for record in records)
+                if offset is None:
+                    return chunks
+        except Exception as error:
+            raise IndexReadError(f'Qdrant chunk read failed: {error}') from error
 
-    @property
-    def is_fallback(self) -> bool:
-        return self._qdrant_fallback or not self._qdrant_available and not self.in_memory
+    def clear(self, tenant_id: str = 'default') -> None:
+        """Clear the current tenant without dropping the shared collection."""
+        try:
+            result = self.client.delete(self.collection_name, points_selector=self._filter(tenant_id), wait=True)
+            self._require_completed(result)
+            if self.count(tenant_id) != 0:
+                raise IndexWriteError('Qdrant clear left chunks behind')
+        except IndexWriteError:
+            raise
+        except Exception as error:
+            raise IndexWriteError(f'Qdrant clear failed: {error}') from error
+
+    def health(self, tenant_id: str | None = None) -> dict[str, Any]:
+        try:
+            collection = self.client.get_collection(self.collection_name)
+            self._check_schema(collection)
+            return {'status': 'ready', 'count': self.count(tenant_id), 'error': None}
+        except Exception as error:  # noqa: BLE001 - readiness reports the actual backend failure
+            return {'status': 'unavailable', 'count': None, 'error': str(error)}

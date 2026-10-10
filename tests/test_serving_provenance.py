@@ -119,22 +119,22 @@ async def test_client_records_empty_upstream_content_as_unusable(monkeypatch):
 def seeded_client(monkeypatch, tmp_path):
     from services.ingestion.graph_store import KnowledgeGraphStore
     from services.ingestion.pipeline import IngestionPipeline
-    from services.ingestion.vector_store import VectorStoreManager
     from services.rag_engine import app as app_module
     from services.rag_engine.agent.graph import build_rag_agent_graph
     from services.rag_engine.retrieval.hybrid import HybridRetriever
-    from tests.fakes import FakeEmbedder
+    from tests.fakes import FakeEmbedder, make_vector_store
 
     # Provenance tests own their corpus; earlier API tests persist unrelated documents.
-    store = VectorStoreManager(in_memory=True, embedder=FakeEmbedder(384))
+    embedder = FakeEmbedder(384)
+    store = make_vector_store(embedder)
     graph_store = KnowledgeGraphStore(in_memory=True)
-    pipeline = IngestionPipeline(vector_store=store, graph_store=graph_store, storage_root=tmp_path)
+    pipeline = IngestionPipeline(vector_store=store, embedder=embedder, graph_store=graph_store, storage_root=tmp_path)
     pipeline.ingest_text(
         title="Serving Provenance Fixture",
         text="Meridian platform uses Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.",
         source="test_serving_provenance.md",
     )
-    isolated_retriever = HybridRetriever(vector_store=store)
+    isolated_retriever = HybridRetriever(vector_store=store, embedder=embedder)
     monkeypatch.setattr(app_module, "vector_store", store)
     monkeypatch.setattr(app_module, "graph_store", graph_store)
     monkeypatch.setattr(app_module, "ingestion_pipeline", pipeline)

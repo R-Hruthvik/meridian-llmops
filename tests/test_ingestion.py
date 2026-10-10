@@ -5,8 +5,7 @@ from services.ingestion.chunker import StructuralChunker
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.parsers import parse_document
 from services.ingestion.pipeline import IngestionPipeline
-from services.ingestion.vector_store import VectorStoreManager
-from tests.fakes import FakeEmbedder
+from tests.fakes import FakeEmbedder, make_vector_store
 
 
 def test_markdown_parser_and_structural_chunking():
@@ -58,7 +57,8 @@ def test_html_parser():
 
 
 def test_vector_store_in_memory_or_qdrant():
-    vstore = VectorStoreManager(in_memory=True, embedder=FakeEmbedder())
+    embedder = FakeEmbedder()
+    vstore = make_vector_store(embedder)
     doc = Document(
         id="doc-test-1",
         title="RAG Guide",
@@ -67,12 +67,12 @@ def test_vector_store_in_memory_or_qdrant():
     )
     chunker = StructuralChunker()
     chunks = chunker.chunk(doc)
-    vstore.index_chunks(chunks)
+    vstore.upsert_chunks(chunks, embedder.embed_passages([c.text for c in chunks]))
 
-    results = vstore.search("semantic retrieval", top_k=2)
+    results = vstore.search(embedder.embed_query("semantic retrieval"), 2, "default")
     assert len(results) > 0
-    assert results[0].document_id == "doc-test-1"
-    assert "semantic retrieval" in results[0].text
+    assert results[0].chunk.document_id == "doc-test-1"
+    assert "semantic retrieval" in results[0].chunk.text
 
 
 def test_knowledge_graph_extraction_and_storage():
@@ -85,8 +85,9 @@ def test_knowledge_graph_extraction_and_storage():
     assert len(relationships) >= 1
 
 
-def test_full_ingestion_pipeline():
-    pipeline = IngestionPipeline(vector_store=VectorStoreManager(in_memory=True, embedder=FakeEmbedder()), in_memory=True)
+def test_full_ingestion_pipeline(tmp_path):
+    embedder = FakeEmbedder()
+    pipeline = IngestionPipeline(vector_store=make_vector_store(embedder), embedder=embedder, in_memory=True, storage_root=tmp_path)
     sample_text = """# Meridian Self-Healing RAG
 Meridian RAG uses LangGraph cyclic orchestration.
 The Critic Agent checks whether answers are grounded in Qdrant and Neo4j.

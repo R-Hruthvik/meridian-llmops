@@ -8,11 +8,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from qdrant_client import QdrantClient
+
 from packages.core.config import get_settings
 from packages.core.models import Chunk
 from services.ingestion.embedder import FastEmbedEmbedder
 from services.ingestion.graph_store import KnowledgeGraphStore
-from services.ingestion.vector_store import VectorStoreManager
+from services.ingestion.vector_store import QdrantChunkStore
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 
@@ -31,9 +33,10 @@ async def main():
         cache_path=settings.fastembed_cache_path,
         expected_dim=settings.qdrant_vector_dim,
     )
-    vector_store = VectorStoreManager(in_memory=True, embedder=embedder)
-    vector_store.index_chunks(chunks)
-    retriever = HybridRetriever(vector_store=vector_store, chunks=chunks)
+    vector_store = QdrantChunkStore(QdrantClient(':memory:'), 'repro', embedder.dim)
+    vector_store.ensure_collection()
+    vector_store.upsert_chunks(chunks, embedder.embed_passages([chunk.text for chunk in chunks]))
+    retriever = HybridRetriever(vector_store=vector_store, chunks=chunks, embedder=embedder)
     graph = build_rag_agent_graph(retriever, KnowledgeGraphStore(in_memory=True), llm_client=FailingClient())
     state = await graph.ainvoke({
         "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",

@@ -3,6 +3,15 @@
 import hashlib
 
 import numpy as np
+from qdrant_client import QdrantClient
+
+from services.ingestion.vector_store import QdrantChunkStore
+
+
+def make_vector_store(embedder):
+    store = QdrantChunkStore(QdrantClient(':memory:'), 'test_chunks', embedder.dim)
+    store.ensure_collection()
+    return store
 
 
 class FakeEmbedder:

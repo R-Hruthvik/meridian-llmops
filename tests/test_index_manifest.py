@@ -223,15 +223,15 @@ def test_resume_rejects_invalid_checkpoint_offset(tmp_path, monkeypatch, offset)
 def test_resume_rejects_replacement_points_with_same_count(tmp_path, monkeypatch):
     from qdrant_client.models import PointIdsList, PointStruct
 
-    from services.ingestion.vector_store import _qdrant_point_id
+    from services.ingestion.vector_store import point_id
 
     storage = DocumentStorageManager(tmp_path)
     with closing(QdrantClient(':memory:')) as client:
         interrupted_rebuild(storage, client, monkeypatch)
         client.delete(settings().qdrant_collection,
-                      PointIdsList(points=[_qdrant_point_id('c0')]), wait=True)
+                      PointIdsList(points=[point_id('c0')]), wait=True)
         client.upsert(settings().qdrant_collection, points=[
-            PointStruct(id=_qdrant_point_id('unrelated'), vector=[1.] + [0.] * 7,
+            PointStruct(id=point_id('unrelated'), vector=[1.] + [0.] * 7,
                         payload={'text': 'unrelated'}),
         ], wait=True)
         assert client.count(settings().qdrant_collection, exact=True).count == 64
