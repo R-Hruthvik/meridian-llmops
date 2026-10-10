@@ -8,3 +8,9 @@
 - Evidence after: `.venv/bin/mypy ...` -> blocked by NumPy `.pyi` syntax incompatibility. `npm --prefix web test -- --run` -> 13 files passed, 2 failed; 254 tests passed, 3 failed out of 257. `npm --prefix web run build` -> succeeded. Historical probes -> 5 xfailed strict; all five standalone scripts completed.
 - Deviations from plan: F-01/F-03/F-05/F-17/F-22 are fixed or materially changed; corresponding historical repros need assertions aligned to current behavior. Avoid committing obsolete failing bug repros.
 - Open risks / follow-ups: app route import cannot run until `NEO4J_PASSWORD` is set; resolve frontend failures and mypy environment as their relevant work is reached.
+
+### Phase 0 gate
+
+- All F-01..F-30 have current classifications and evidence. Five repro scripts and five strict xfail tests are committed (`b71a135`).
+- Baseline is recorded, including the three pre-existing frontend failures, mypy stub parser blocker, and Qdrant client/server compatibility warning.
+- No target architecture mismatch was found; code changes since the reviewed commit are stale fixes already captured in the verification matrix. Proceeding to Phase 1 while carrying those baseline failures forward.
