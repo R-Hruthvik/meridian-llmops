@@ -69,7 +69,6 @@ class DocumentStorageManager:
                 "text": c.text,
                 "char_count": len(c.text),
                 "metadata": c.metadata,
-                "embedding": c.embedding,
             }
             for c in chunks
         ]
@@ -138,6 +137,8 @@ class DocumentStorageManager:
             if chunks_file.exists():
                 with open(chunks_file, "r", encoding="utf-8") as f:
                     chunks = json.load(f)
+                    for chunk in chunks:
+                        chunk.pop("embedding", None)
 
             # Load raw document text
             filename = meta.get("filename")
@@ -154,7 +155,7 @@ class DocumentStorageManager:
             logger.error("Failed to load document %s: %s", doc_id, e)
             return None
 
-    def get_document_chunks(self, doc_id: str) -> list[Chunk]:
+    def get_document_chunks(self, doc_id: str, *, strict: bool = False) -> list[Chunk]:
         """Loads and reconstructs Chunk domain objects for a document from storage."""
         chunks_file = self.chunks_dir / f"{doc_id}.json"
         if not chunks_file.exists():
@@ -173,22 +174,42 @@ class DocumentStorageManager:
                         chunk_index=c.get("chunk_index", 0),
                         section_heading=c.get("section_heading"),
                         metadata=c.get("metadata", {}),
-                        embedding=c.get("embedding"),
                     )
                 )
         except (OSError, ValueError, KeyError) as e:
+            if strict:
+                raise
             logger.error("Failed to load chunks for doc %s: %s", doc_id, e)
 
         return chunks
 
-    def load_all_chunks(self) -> list[Chunk]:
+    def load_all_chunks(self, *, strict: bool = False) -> list[Chunk]:
         """Loads all chunks across all stored documents in storage/chunks/."""
         all_chunks: list[Chunk] = []
-        for chunks_file in self.chunks_dir.glob("*.json"):
+        for chunks_file in sorted(self.chunks_dir.glob("*.json")):
             doc_id = chunks_file.stem
-            chunks = self.get_document_chunks(doc_id)
+            chunks = self.get_document_chunks(doc_id, strict=strict)
             all_chunks.extend(chunks)
         return all_chunks
+
+    def has_legacy_embeddings(self) -> bool:
+        """Legacy disk vectors cannot prove semantic index provenance."""
+        for path in self.chunks_dir.glob("*.json"):
+            records = json.loads(path.read_text(encoding="utf-8"))
+            if any("embedding" in record for record in records):
+                return True
+        return False
+
+    def remove_legacy_embeddings(self) -> None:
+        """Strip old vectors only after a successful reindex."""
+        for path in self.chunks_dir.glob("*.json"):
+            records = json.loads(path.read_text(encoding="utf-8"))
+            if any("embedding" in record for record in records):
+                for record in records:
+                    record.pop("embedding", None)
+                temporary = path.with_suffix(".json.tmp")
+                temporary.write_text(json.dumps(records, indent=2), encoding="utf-8")
+                temporary.replace(path)
 
     def delete_document(self, doc_id: str) -> bool:
         """Permanently deletes a document, its raw file, chunks, and metadata from disk."""
