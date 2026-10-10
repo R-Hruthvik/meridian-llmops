@@ -22,7 +22,7 @@ from qdrant_client.models import Distance, PointStruct, UpdateStatus, VectorPara
 from packages.core.settings import Settings, get_settings
 from services.ingestion.embedder import Embedder, FastEmbedEmbedder
 from services.ingestion.manifest import CHUNKER_VERSION, IndexManifest, write_manifest
-from services.ingestion.storage import DocumentStorageManager
+from services.ingestion.storage import DocumentStorageManager, get_default_storage_root
 from services.ingestion.vector_store import _qdrant_point_id
 
 
@@ -66,9 +66,17 @@ def reindex(
         vectors_config = collection.config.params.vectors
         if not isinstance(vectors_config, VectorParams) or vectors_config.size != embedder.dim:
             raise ValueError('Cannot resume: target collection dimension changed')
-        offset = checkpoint['offset']
-        if client.count(settings.qdrant_collection, exact=True).count < offset:
-            raise ValueError('Cannot resume: previously written points missing')
+        offset = checkpoint.get('offset')
+        if (type(offset) is not int or not 0 <= offset <= len(chunks)
+                or (offset != len(chunks) and offset % 64 != 0)):
+            raise ValueError('Cannot resume: invalid checkpoint offset')
+        # A total count can hide replaced points. Verify every committed ID.
+        for start in range(0, offset, 64):
+            expected_ids = {_qdrant_point_id(chunk.id) for chunk in chunks[start:min(start + 64, offset)]}
+            records = client.retrieve(settings.qdrant_collection, ids=list(expected_ids),
+                                      with_payload=False, with_vectors=False)
+            if {str(record.id) for record in records} != expected_ids:
+                raise ValueError('Cannot resume: previously written points missing')
     else:
         # Invalidate readiness before replacing any vectors.
         (storage.root_dir / 'index_manifest.json').unlink(missing_ok=True)
@@ -113,6 +121,10 @@ def main() -> int:
     parser.add_argument('--yes', action='store_true', help='Confirm collection replacement')
     parser.add_argument('--resume', action='store_true', help='Continue an interrupted rebuild')
     args = parser.parse_args()
+    if args.qdrant_path and (
+        args.storage_root is None or args.storage_root.resolve() == get_default_storage_root().resolve()
+    ):
+        parser.error('--qdrant-path requires an isolated --storage-root outside default storage')
     settings = get_settings()
     storage = DocumentStorageManager(args.storage_root)
     if not args.resume:

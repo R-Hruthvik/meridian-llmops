@@ -71,7 +71,11 @@ def check_consistency(
         if manifest.chunk_count != disk_count:
             reasons.append(f'count mismatch: manifest={manifest.chunk_count}, disk={disk_count}')
     try:
-        if DocumentStorageManager(storage_root).has_legacy_embeddings():
+        storage = DocumentStorageManager(storage_root)
+        actual_disk_count = len(storage.load_all_chunks(strict=True))
+        if actual_disk_count != disk_count:
+            reasons.append(f'count mismatch: disk records={actual_disk_count}, reported disk={disk_count}')
+        if storage.has_legacy_embeddings():
             reasons.append('legacy embeddings require reindex')
     except (OSError, ValueError, KeyError, TypeError):
         reasons.append('disk records unreadable')

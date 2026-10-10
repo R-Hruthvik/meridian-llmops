@@ -38,3 +38,11 @@
 - Evidence after: 15 temporary-directory/in-memory Qdrant regression tests passed; combined manifest/embedder/historical probe suite -> 21 passed, 5 strict xfailed. Existing ingestion/index-inspector suite -> 12 passed. Scoped Ruff passed; mypy `--python-version 3.12` passed for manifest/storage/reindex (configured 3.11 parser blocker remains as recorded in Phase 0).
 - Self-review: no calls touched the current storage or server collection; no silent vector fallback in reindex, no manifest published after a failed batch, and corrupt disk input stops before collection replacement. The CLI cancellation test proves refusal happens before loading the model or creating a client.
 - Dependencies: Task 1.3 must retain/update reindex's deterministic point-ID helper and enforce actual Qdrant schema dimension; Task 1.6 must call `check_consistency(settings, qdrant_count, disk_count, storage_root=storage.root_dir)` at startup and wire `ok/reasons` into readiness/query gating. Current chunker provenance is `structural-v1`; bump it when the chunking algorithm changes.
+
+### Task 1.2 review follow-up — resume and provenance safeguards
+
+- Reviewer reproduced three gaps: a replaced Qdrant point with unchanged total count could pass resume; `--qdrant-path` could overwrite the default backend's manifest; malformed disk records `[{}]` could pass readiness at zero counts. Added regression tests first; the new cases failed before fixes.
+- Resume now validates integer checkpoint bounds and batch boundaries, and retrieves every previously committed point ID in batches before continuing. Equal-count replacements fail before publishing a manifest.
+- Local backend CLI usage now requires an explicit storage root distinct from default storage (resolved paths, including aliases). Its manifest stays isolated; a temporary local-Qdrant CLI test confirms the default manifest remains byte-for-byte unchanged.
+- Consistency strictly reconstructs every disk chunk record and checks the actual count; invalid record fields, non-list JSON, and unreadable records fail readiness.
+- Evidence: manifest/reindex + existing ingestion/index-inspector tests -> 39 passed. Scoped Ruff and mypy `--python-version 3.12` passed. All indexes involved were in-memory or under pytest temporary directories; current disk storage and real Qdrant were untouched.

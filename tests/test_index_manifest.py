@@ -30,6 +30,7 @@ def manifest(count=1):
 
 
 def test_manifest_roundtrip(tmp_path):
+    seed(DocumentStorageManager(tmp_path))
     write_manifest(tmp_path, manifest())
     assert read_manifest(tmp_path) == manifest()
     assert check_consistency(settings(), 1, 1, storage_root=tmp_path).ok
@@ -175,3 +176,102 @@ def test_cli_cancel_does_not_create_embedder_or_client(tmp_path, monkeypatch):
     monkeypatch.setattr(script, 'FastEmbedEmbedder', lambda *args, **kwargs: pytest.fail('model must not load'))
     monkeypatch.setattr(script, 'QdrantClient', lambda *args, **kwargs: pytest.fail('client must not connect'))
     assert script.main() == 1
+
+
+@pytest.mark.parametrize('records', ['[{}]', '{}', 'null'])
+def test_invalid_disk_record_cannot_pass_zero_counts(tmp_path, records):
+    storage = DocumentStorageManager(tmp_path)
+    (storage.chunks_dir / 'broken.json').write_text(records)
+    write_manifest(tmp_path, manifest(count=0))
+    report = check_consistency(settings(), 0, 0, storage_root=tmp_path)
+    assert not report.ok
+    assert 'disk records unreadable' in report.reasons
+
+
+def interrupted_rebuild(storage, client, monkeypatch):
+    seed(storage, count=65)
+    original = client.upsert
+    calls = 0
+
+    def fail_second(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError('interrupted')
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(client, 'upsert', fail_second)
+    with pytest.raises(RuntimeError, match='interrupted'):
+        reindex(storage, client, settings(), FakeEmbedder(8))
+    monkeypatch.setattr(client, 'upsert', original)
+
+
+@pytest.mark.parametrize('offset', [-1, 66, 1, '64', True])
+def test_resume_rejects_invalid_checkpoint_offset(tmp_path, monkeypatch, offset):
+    storage = DocumentStorageManager(tmp_path)
+    with closing(QdrantClient(':memory:')) as client:
+        interrupted_rebuild(storage, client, monkeypatch)
+        path = tmp_path / 'reindex_checkpoint.json'
+        checkpoint = json.loads(path.read_text())
+        checkpoint['offset'] = offset
+        path.write_text(json.dumps(checkpoint))
+        with pytest.raises(ValueError, match='offset'):
+            reindex(storage, client, settings(), FakeEmbedder(8), resume=True)
+        assert read_manifest(tmp_path) is None
+
+
+def test_resume_rejects_replacement_points_with_same_count(tmp_path, monkeypatch):
+    from qdrant_client.models import PointIdsList, PointStruct
+
+    from services.ingestion.vector_store import _qdrant_point_id
+
+    storage = DocumentStorageManager(tmp_path)
+    with closing(QdrantClient(':memory:')) as client:
+        interrupted_rebuild(storage, client, monkeypatch)
+        client.delete(settings().qdrant_collection,
+                      PointIdsList(points=[_qdrant_point_id('c0')]), wait=True)
+        client.upsert(settings().qdrant_collection, points=[
+            PointStruct(id=_qdrant_point_id('unrelated'), vector=[1.] + [0.] * 7,
+                        payload={'text': 'unrelated'}),
+        ], wait=True)
+        assert client.count(settings().qdrant_collection, exact=True).count == 64
+        with pytest.raises(ValueError, match='previously written points missing'):
+            reindex(storage, client, settings(), FakeEmbedder(8), resume=True)
+        assert read_manifest(tmp_path) is None
+
+
+@pytest.mark.parametrize('explicit_default', [False, True])
+def test_cli_local_backend_cannot_publish_default_manifest(tmp_path, monkeypatch, explicit_default):
+    import scripts.reindex as script
+
+    monkeypatch.setattr(script, 'get_default_storage_root', lambda: tmp_path)
+    argv = ['reindex.py', '--qdrant-path', str(tmp_path / 'local'), '--yes']
+    if explicit_default:
+        argv.extend(['--storage-root', str(tmp_path)])
+    monkeypatch.setattr('sys.argv', argv)
+    monkeypatch.setattr(script, 'FastEmbedEmbedder', lambda *args, **kwargs: pytest.fail('model must not load'))
+    monkeypatch.setattr(script, 'QdrantClient', lambda *args, **kwargs: pytest.fail('client must not connect'))
+    with pytest.raises(SystemExit) as error:
+        script.main()
+    assert error.value.code == 2
+    assert not (tmp_path / 'index_manifest.json').exists()
+
+
+def test_cli_local_backend_writes_only_isolated_manifest(tmp_path, monkeypatch):
+    import scripts.reindex as script
+
+    default_root = tmp_path / 'default-storage'
+    isolated_root = tmp_path / 'isolated-storage'
+    write_manifest(default_root, manifest())
+    original_manifest = (default_root / 'index_manifest.json').read_bytes()
+    seed(DocumentStorageManager(isolated_root))
+    monkeypatch.setattr(script, 'get_default_storage_root', lambda: default_root)
+    monkeypatch.setattr(script, 'get_settings', settings)
+    monkeypatch.setattr(script, 'FastEmbedEmbedder', lambda *args, **kwargs: FakeEmbedder(8))
+    monkeypatch.setattr('sys.argv', [
+        'reindex.py', '--qdrant-path', str(tmp_path / 'local-qdrant'),
+        '--storage-root', str(isolated_root), '--yes',
+    ])
+    assert script.main() == 0
+    assert read_manifest(isolated_root).chunk_count == 1
+    assert (default_root / 'index_manifest.json').read_bytes() == original_manifest

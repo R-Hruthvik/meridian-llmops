@@ -165,6 +165,8 @@ class DocumentStorageManager:
         try:
             with open(chunks_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            if strict and not isinstance(data, list):
+                raise ValueError(f"Chunk records in {chunks_file} must be a list")
             for c in data:
                 chunks.append(
                     Chunk(
