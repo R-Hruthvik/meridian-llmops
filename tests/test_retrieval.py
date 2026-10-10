@@ -8,6 +8,7 @@ from services.rag_engine.retrieval.bm25 import BM25Index
 from services.rag_engine.retrieval.fusion import reciprocal_rank_fusion
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 from services.rag_engine.retrieval.reranker import CrossEncoderReranker
+from tests.fakes import FakeEmbedder
 
 
 @pytest.fixture
@@ -71,7 +72,7 @@ def test_cross_encoder_reranker(sample_chunks):
 
 
 def test_hybrid_retriever_end_to_end(sample_chunks):
-    vstore = VectorStoreManager(in_memory=True)
+    vstore = VectorStoreManager(in_memory=True, embedder=FakeEmbedder())
     vstore.index_chunks(sample_chunks)
 
     retriever = HybridRetriever(vector_store=vstore, chunks=sample_chunks)

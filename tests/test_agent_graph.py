@@ -8,6 +8,7 @@ from services.ingestion.vector_store import VectorStoreManager
 from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.retrieval.hybrid import HybridRetriever
+from tests.fakes import FakeEmbedder
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ def populated_retriever_and_graph():
             section_heading="Storage",
         ),
     ]
-    vstore = VectorStoreManager(in_memory=True)
+    vstore = VectorStoreManager(in_memory=True, embedder=FakeEmbedder())
     vstore.index_chunks(chunks)
 
     gstore = KnowledgeGraphStore(in_memory=True)

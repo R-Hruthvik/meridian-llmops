@@ -46,9 +46,10 @@ async def test_f11_provider_failure_is_not_returned_as_refusal(monkeypatch):
     from services.ingestion.vector_store import VectorStoreManager
     from services.rag_engine.agent.graph import build_rag_agent_graph
     from services.rag_engine.retrieval.hybrid import HybridRetriever
+    from tests.fakes import FakeEmbedder
 
     chunks = [Chunk(id="repro", document_id="repro", text="Meridian uses LiteLLM for gateway routing.")]
-    vector_store = VectorStoreManager(in_memory=True)
+    vector_store = VectorStoreManager(in_memory=True, embedder=FakeEmbedder())
     vector_store.index_chunks(chunks)
     retriever = HybridRetriever(vector_store=vector_store, chunks=chunks)
     graph_store = KnowledgeGraphStore(in_memory=True)

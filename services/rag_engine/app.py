@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ from services.gateway.auth import verify_api_key
 from services.gateway.client import LiteLLMClient
 from services.gateway.guardrails.input_rails import InputGuardrails
 from services.gateway.guardrails.output_rails import OutputGuardrails
+from services.ingestion.embedder import FastEmbedEmbedder
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.pipeline import IngestionPipeline
 from services.ingestion.vector_store import VectorStoreManager
@@ -41,23 +43,39 @@ from services.rag_engine.observability.langfuse_client import MeridianTracer
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 from services.rag_engine.routers.review import router as review_router
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize the semantic model once before serving or loading persisted chunks."""
+    settings = _core_get_settings()
+    _validate_production(settings)
+    if vector_store.embedder is None:
+        embedder = await asyncio.to_thread(
+            FastEmbedEmbedder,
+            settings.embedding_model,
+            cache_path=settings.fastembed_cache_path,
+            expected_dim=settings.qdrant_vector_dim,
+        )
+        vector_store.embedder = embedder
+        vector_store.dim = embedder.dim
+    docs_loaded = await asyncio.to_thread(ingestion_pipeline.load_persisted_knowledge_base)
+    logger.info("Hydrated %d documents from dedicated storage.", docs_loaded)
+    retriever.update_chunks(vector_store.get_all_chunks())
+    try:
+        await init_db()
+    except Exception as e:  # noqa: BLE001 - preserve existing database startup behavior
+        logger.warning("Database initialization warning: %s", e)
+    yield
+
+
 app = FastAPI(
     title="Meridian LLMOps RAG Engine",
     version="0.1.0",
     description="Production-grade Self-Healing Agentic RAG Platform with Guardrails and Tracing",
+    lifespan=lifespan,
 )
 
 app.include_router(review_router)
-
-
-@app.on_event("startup")
-async def on_startup():
-    """Fail-fast secret check, then initializes relational database schema."""
-    _validate_production(_core_get_settings())
-    try:
-        await init_db()
-    except Exception as e:  # noqa: BLE001 - startup must never crash on DB hiccups
-        logger.warning(f"Database initialization warning: {e}")
 
 
 # Core singletons - in_memory forced only during testing, otherwise try real Docker services with fallback
@@ -325,10 +343,6 @@ try:
 except Exception as e:  # noqa: BLE001
     logger.warning("Service readiness check failed: %s", e)
 
-# Hydrate knowledge base from dedicated storage - clean start (zero mock data)
-_docs_loaded = ingestion_pipeline.load_persisted_knowledge_base()
-logger.info("Hydrated %d documents from dedicated storage (clean start - no mock seeding).", _docs_loaded)
-retriever.update_chunks(vector_store.get_all_chunks())
 agent_graph = build_rag_agent_graph(
     retriever=retriever,
     graph_store=graph_store,

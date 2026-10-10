@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from services.gateway.client import LiteLLMClient
-from services.rag_engine.app import app, ingestion_pipeline, retriever, vector_store
+from services.rag_engine.app import app, retriever
 
 API_KEY = "meridian-test-secret-key-2026"
 UPSTREAM_MODEL = "kilocode/kilo-auto/free"
@@ -116,14 +116,36 @@ async def test_client_records_empty_upstream_content_as_unusable(monkeypatch):
 
 
 @pytest.fixture
-def seeded_client():
-    if len(ingestion_pipeline.get_documents()) == 0:
-        ingestion_pipeline.ingest_text(
-            title="Serving Provenance Fixture",
-            text="Meridian platform uses Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.",
-            source="test_serving_provenance.md",
-        )
-        retriever.update_chunks(vector_store.get_all_chunks())
+def seeded_client(monkeypatch, tmp_path):
+    from services.ingestion.graph_store import KnowledgeGraphStore
+    from services.ingestion.pipeline import IngestionPipeline
+    from services.ingestion.vector_store import VectorStoreManager
+    from services.rag_engine import app as app_module
+    from services.rag_engine.agent.graph import build_rag_agent_graph
+    from services.rag_engine.retrieval.hybrid import HybridRetriever
+    from tests.fakes import FakeEmbedder
+
+    # Provenance tests own their corpus; earlier API tests persist unrelated documents.
+    store = VectorStoreManager(in_memory=True, embedder=FakeEmbedder(384))
+    graph_store = KnowledgeGraphStore(in_memory=True)
+    pipeline = IngestionPipeline(vector_store=store, graph_store=graph_store, storage_root=tmp_path)
+    pipeline.ingest_text(
+        title="Serving Provenance Fixture",
+        text="Meridian platform uses Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.",
+        source="test_serving_provenance.md",
+    )
+    isolated_retriever = HybridRetriever(vector_store=store)
+    monkeypatch.setattr(app_module, "vector_store", store)
+    monkeypatch.setattr(app_module, "graph_store", graph_store)
+    monkeypatch.setattr(app_module, "ingestion_pipeline", pipeline)
+    monkeypatch.setattr(app_module, "retriever", isolated_retriever)
+    monkeypatch.setitem(globals(), "retriever", isolated_retriever)
+    monkeypatch.setattr(app_module, "agent_graph", build_rag_agent_graph(
+        retriever=isolated_retriever,
+        graph_store=graph_store,
+        llm_client=app_module.llm_client,
+        llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
+    ))
     return TestClient(app)
 
 

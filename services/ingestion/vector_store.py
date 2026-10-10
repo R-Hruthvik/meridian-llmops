@@ -2,14 +2,13 @@
 
 import logging
 import uuid
-import zlib
-from functools import lru_cache
 
 import numpy as np
 
 from packages.core.config import get_settings
 from packages.core.models import Chunk, SearchResult
 from packages.core.retry_config import retry_on_api_error
+from services.ingestion.embedder import Embedder
 
 logger = logging.getLogger("meridian.ingestion.vector_store")
 
@@ -27,35 +26,14 @@ def _qdrant_point_id(chunk_id: str) -> str:
         return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
 
 
-@lru_cache(maxsize=1000)
-def generate_embedding(text: str, dim: int = 1024) -> tuple[float, ...]:
-    """Generates a normalized dense vector embedding (deterministic pseudo-embedding fallback for tests).
-
-    Uses zlib.crc32 rather than hash(): Python randomizes str hashes per process,
-    which silently invalidated every stored vector across backend restarts."""
-    # Use deterministic token hashing to produce consistent dense vectors
-    vec = np.zeros(dim, dtype=np.float32)
-    tokens = text.lower().split()
-    if not tokens:
-        return tuple(vec.tolist())
-
-    for idx, token in enumerate(tokens):
-        h = zlib.crc32(token.encode("utf-8")) % dim
-        vec[h] += 1.0 / (idx + 1.0)
-
-    norm = np.linalg.norm(vec)
-    if norm > 0:
-        vec = vec / norm
-    return tuple(vec.tolist())
-
-
 class VectorStoreManager:
     """Manages Qdrant vector collection indexing and similarity search."""
 
-    def __init__(self, in_memory: bool = False):
+    def __init__(self, in_memory: bool = False, embedder: Embedder | None = None):
         self.settings = get_settings()
         self.in_memory = in_memory
-        self.dim = self.settings.qdrant_vector_dim
+        self.embedder = embedder
+        self.dim = embedder.dim if embedder is not None else self.settings.qdrant_vector_dim
         self.collection_name = self.settings.qdrant_collection
 
         # Local in-memory storage for test isolation / fallback cache
@@ -121,12 +99,12 @@ class VectorStoreManager:
             logger.info("VectorStore in-memory mode (forced)")
 
     def index_chunks(self, chunks: list[Chunk]) -> int:
-        # Always populate in-memory cache for fallback reads
-        for chunk in chunks:
-            if not chunk.embedding:
-                # generate_embedding returns a hashable tuple so lru_cache can memoize it;
-                # Chunk.embedding is a list, so convert on the way in.
-                chunk.embedding = list(generate_embedding(chunk.text, dim=self.dim))
+        if self.embedder is None:
+            raise RuntimeError("Embedder must be initialized at app startup or explicitly injected")
+        # Re-embed persisted chunks as well: legacy records contain hash vectors.
+        vectors = self.embedder.embed_passages([chunk.text for chunk in chunks])
+        for chunk, vector in zip(chunks, vectors, strict=True):
+            chunk.embedding = vector.tolist()
             self._memory_chunks[chunk.id] = chunk
             self._memory_vectors[chunk.id] = np.array(chunk.embedding, dtype=np.float32)
 
@@ -161,9 +139,12 @@ class VectorStoreManager:
 
     @retry_on_api_error(max_attempts=3)
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        if self.embedder is None:
+            raise RuntimeError("Embedder must be initialized at app startup or explicitly injected")
+        query_vector = self.embedder.embed_query(query)
         if self._qdrant_available and self.client is not None:
             try:
-                query_vec = list(generate_embedding(query, dim=self.dim))
+                query_vec = query_vector.tolist()
                 # Use search API (qdrant-client 1.8) with fallback to query_points
                 try:
                     hits = self.client.search(  # type: ignore[attr-defined]
@@ -209,7 +190,7 @@ class VectorStoreManager:
                 logger.warning("Qdrant search failed, falling back to in-memory: %s", e)
 
         # In-memory fallback scoring
-        query_vec_fallback = np.array(generate_embedding(query, dim=self.dim), dtype=np.float32)
+        query_vec_fallback = query_vector
         scores: list[tuple[str, float]] = []
 
         for chunk_id, vec in self._memory_vectors.items():

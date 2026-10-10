@@ -35,14 +35,15 @@ class Settings(BaseSettings):
     litellm_master_key: str = Field(default_factory=lambda: os.environ.get("LITELLM_MASTER_KEY", ""))
     default_llm_model: str = "gpt-4o-mini"
     critic_llm_model: str = "gpt-4o-mini"
-    embedding_model: str = "BAAI/bge-m3"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    fastembed_cache_path: str = "storage/fastembed"
     reranker_model: str = "BAAI/bge-reranker-large"
 
     # Qdrant Vector Database
     qdrant_host: str = "localhost"
     qdrant_port: int = 6333
     qdrant_collection: str = "meridian_documents"
-    qdrant_vector_dim: int = 1024
+    qdrant_vector_dim: int = 384
 
     # Neo4j Knowledge Graph
     neo4j_uri: str = "bolt://localhost:7687"

@@ -14,3 +14,12 @@
 - All F-01..F-30 have current classifications and evidence. Five repro scripts and five strict xfail tests are committed (`b71a135`).
 - Baseline is recorded, including the three pre-existing frontend failures, mypy stub parser blocker, and Qdrant client/server compatibility warning.
 - No target architecture mismatch was found; code changes since the reviewed commit are stale fixes already captured in the verification matrix. Proceeding to Phase 1 while carrying those baseline failures forward.
+
+## Task 1.1 Semantic embedder (2026-10-10)
+
+- Verified before change: production dense vectors were CRC32 token hashes; model setting BAAI/bge-m3 was unused. New embedder tests failed because the module did not exist.
+- Change summary: pinned FastEmbed 0.9.0; added normalized float32 passage/query embedding protocol and wrapper; selected D1's BAAI/bge-small-en-v1.5 (384 dimensions); added FASTEMBED_CACHE_PATH configuration defaulting to storage/fastembed. App lifespan initializes and warms the model once before hydrating persisted chunks. Removed production hash embedding and re-embed legacy chunk vectors with the injected model.
+- Tests: SHA256 FakeEmbedder exists only in tests; unit stores explicitly inject it. Provenance HTTP fixtures now own their corpus and retrieval pipeline so unrelated persisted documents cannot alter critic outcomes. Real BGE tests cover process determinism, configured dimension, and semantic answer similarity. Added stale-vector replacement and startup initialization checks.
+- Evidence after: full Python suite -> 141 passed, 5 strict xfailed; Ruff -> all checks passed. Targeted mypy using --python-version 3.12 -> success for embedder/vector store/app; repository's configured 3.11 parser remains blocked by installed NumPy stub syntax as recorded in Phase 0.
+- Self-review: no production pseudo-embedding fallback; passage/query APIs verified in pinned installed release; cache persists on disk; model weights downloaded and real semantic checks passed. Selectively staged only FastEmbed-related lock packages/metadata while retaining pre-existing user lock edits.
+- Follow-up: existing Qdrant collection dimensions and index consistency remain Tasks 1.2/1.3; no automatic collection deletion added here.

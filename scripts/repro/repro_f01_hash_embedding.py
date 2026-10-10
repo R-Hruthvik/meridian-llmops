@@ -1,4 +1,4 @@
-"""Compare current deterministic pseudo-embeddings across fresh processes."""
+"""Compare semantic embeddings across fresh processes."""
 
 import json
 import subprocess
@@ -10,8 +10,8 @@ sys.path.insert(0, str(ROOT))
 
 
 code = (
-    "from services.ingestion.vector_store import generate_embedding; "
-    "v=generate_embedding('Qdrant vector database'); "
+    "from services.ingestion.embedder import FastEmbedEmbedder; from packages.core.config import get_settings; "
+    "s=get_settings(); e=FastEmbedEmbedder(s.embedding_model, cache_path=s.fastembed_cache_path, expected_dim=s.qdrant_vector_dim); v=e.embed_query('Qdrant vector database').tolist(); "
     "print(json.dumps([(i,x) for i,x in enumerate(v) if x]))"
 )
 results = [

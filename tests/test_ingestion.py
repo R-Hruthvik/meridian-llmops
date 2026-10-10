@@ -6,6 +6,7 @@ from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.parsers import parse_document
 from services.ingestion.pipeline import IngestionPipeline
 from services.ingestion.vector_store import VectorStoreManager
+from tests.fakes import FakeEmbedder
 
 
 def test_markdown_parser_and_structural_chunking():
@@ -57,7 +58,7 @@ def test_html_parser():
 
 
 def test_vector_store_in_memory_or_qdrant():
-    vstore = VectorStoreManager(in_memory=True)
+    vstore = VectorStoreManager(in_memory=True, embedder=FakeEmbedder())
     doc = Document(
         id="doc-test-1",
         title="RAG Guide",
@@ -85,7 +86,7 @@ def test_knowledge_graph_extraction_and_storage():
 
 
 def test_full_ingestion_pipeline():
-    pipeline = IngestionPipeline(in_memory=True)
+    pipeline = IngestionPipeline(vector_store=VectorStoreManager(in_memory=True, embedder=FakeEmbedder()), in_memory=True)
     sample_text = """# Meridian Self-Healing RAG
 Meridian RAG uses LangGraph cyclic orchestration.
 The Critic Agent checks whether answers are grounded in Qdrant and Neo4j.
