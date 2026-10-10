@@ -23,3 +23,9 @@
 - Evidence after: full Python suite -> 141 passed, 5 strict xfailed; Ruff -> all checks passed. Targeted mypy using --python-version 3.12 -> success for embedder/vector store/app; repository's configured 3.11 parser remains blocked by installed NumPy stub syntax as recorded in Phase 0.
 - Self-review: no production pseudo-embedding fallback; passage/query APIs verified in pinned installed release; cache persists on disk; model weights downloaded and real semantic checks passed. Selectively staged only FastEmbed-related lock packages/metadata while retaining pre-existing user lock edits.
 - Follow-up: existing Qdrant collection dimensions and index consistency remain Tasks 1.2/1.3; no automatic collection deletion added here.
+
+### Task 1.1 follow-up — provider-failure probe
+
+- Reviewer found the standalone F-11 probe still created a vector store without an embedder. Confirmed it stopped at indexing with `RuntimeError` before provider dispatch.
+- Injected a configured FastEmbedEmbedder into the probe; product behavior unchanged.
+- Evidence after: `scripts/repro/repro_f11_empty_draft.py` exits successfully, logs `repro provider failure`, and prints `is_refusal: true` plus the expected provider failure `generation_error`. Ruff for the probe passed.
