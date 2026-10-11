@@ -51,7 +51,9 @@ async def test_f11_provider_failure_is_not_returned_as_refusal(monkeypatch):
     embedder = FakeEmbedder()
     vector_store = make_vector_store(embedder)
     vector_store.upsert_chunks(chunks, embedder.embed_passages([c.text for c in chunks]))
-    retriever = HybridRetriever(vector_store=vector_store, embedder=embedder, chunks=chunks)
+    from services.rag_engine.retrieval.bm25 import BM25Index
+
+    retriever = HybridRetriever(embedder=embedder, vector_store=vector_store, bm25_index=BM25Index(chunks))
     graph_store = KnowledgeGraphStore(in_memory=True)
 
     class FailingClient:

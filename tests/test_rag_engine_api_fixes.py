@@ -12,9 +12,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from packages.core.models import SearchResult
+from packages.core.models import Chunk
 from services.gateway.guardrails.input_rails import InputGuardrails
 from services.rag_engine.agent.graph import build_rag_agent_graph
+from services.rag_engine.retrieval.hybrid import RankedChunk, RetrievalResult
 
 HEADERS = {"X-API-Key": "meridian-test-secret-key-2026", "X-Tenant-Id": "tenant-enterprise-1"}
 
@@ -93,19 +94,22 @@ class _RecordingRetriever:
     def __init__(self, corpus_size: int = 100):
         self.calls: list[int] = []
         self.results = [
-            SearchResult(
-                chunk_id=f"c{i}",
-                document_id="d1",
-                text=f"Meridian platform chunk {i} about gateway routing and guardrails.",
-                score=0.9,
-                retrieval_method="test",
+            RankedChunk(
+                chunk=Chunk(
+                    id=f"c{i}",
+                    document_id="d1",
+                    text=f"Meridian platform chunk {i} about gateway routing and guardrails.",
+                    section_heading="Gateway",
+                ),
+                rank=i + 1,
+                scores={"final": 0.9, "rrf": 0.9},
             )
             for i in range(corpus_size)
         ]
 
-    def retrieve(self, query: str, top_k: int = 5) -> list[SearchResult]:
+    def retrieve(self, query: str, top_k: int = 5, tenant_id: str = "default", debug: bool = False) -> RetrievalResult:
         self.calls.append(top_k)
-        return self.results[:top_k]
+        return RetrievalResult(query=query, top_k=top_k, chunks=self.results[:top_k], timings_ms={})
 
 
 def test_query_top_k_reaches_the_retriever(client, monkeypatch):

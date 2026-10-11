@@ -18,12 +18,14 @@ def populated_retriever_and_graph():
             document_id="d1",
             text="Meridian platform uses LiteLLM proxy for gateway routing and rate limiting.",
             section_heading="Gateway",
+            metadata={"tenant_id": "test-tenant"},
         ),
         Chunk(
             id="c2",
             document_id="d1",
             text="Qdrant provides vector search while Neo4j maintains entity relationships.",
             section_heading="Storage",
+            metadata={"tenant_id": "test-tenant"},
         ),
     ]
     embedder = FakeEmbedder()
@@ -33,7 +35,9 @@ def populated_retriever_and_graph():
     gstore = KnowledgeGraphStore(in_memory=True)
     gstore.extract_and_store("d1", "LiteLLM connects to Qdrant. Neo4j stores relationships.")
 
-    retriever = HybridRetriever(vector_store=vstore, embedder=embedder, chunks=chunks)
+    from services.rag_engine.retrieval.bm25 import BM25Index
+
+    retriever = HybridRetriever(embedder=embedder, vector_store=vstore, bm25_index=BM25Index(chunks))
     return retriever, gstore
 
 

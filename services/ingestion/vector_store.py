@@ -175,8 +175,11 @@ class QdrantChunkStore:
         except Exception as error:
             raise IndexWriteError(f'Qdrant delete failed: {error}') from error
 
-    def get_all_chunks(self, tenant_id: str = 'default') -> list[Chunk]:
-        """Read payloads for existing catalog callers; there is no process cache."""
+    def get_all_chunks(self, tenant_id: str | None = None) -> list[Chunk]:
+        """Read payloads for existing catalog callers; there is no process cache.
+
+        ``tenant_id=None`` reads every tenant (startup hydration, lexical rebuild).
+        """
         chunks: list[Chunk] = []
         offset = None
         try:

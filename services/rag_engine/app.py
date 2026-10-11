@@ -10,12 +10,14 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
 
 from packages.core.db import AsyncSessionLocal, init_db
+from packages.core.errors import IndexReadError, IndexWriteError
 from packages.core.models import (
     DocumentFormat,
     GuardrailResult,
@@ -36,6 +38,7 @@ from services.gateway.guardrails.input_rails import InputGuardrails
 from services.gateway.guardrails.output_rails import OutputGuardrails
 from services.ingestion.embedder import FastEmbedEmbedder
 from services.ingestion.graph_store import KnowledgeGraphStore
+from services.ingestion.manifest import ConsistencyReport, check_consistency
 from services.ingestion.pipeline import IngestionPipeline
 from services.ingestion.vector_store import QdrantChunkStore
 from services.rag_engine.agent.graph import build_rag_agent_graph
@@ -62,7 +65,17 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(vector_store.ensure_collection)
     docs_loaded = await asyncio.to_thread(ingestion_pipeline.load_persisted_knowledge_base)
     logger.info("Hydrated %d documents from dedicated storage.", docs_loaded)
-    retriever.update_chunks(vector_store.get_all_chunks())
+    retriever.update_chunks(vector_store.get_all_chunks(None))
+    global _index_consistency
+    disk_chunks = await asyncio.to_thread(lambda: len(ingestion_pipeline.storage.load_all_chunks()))
+    qdrant_points = await asyncio.to_thread(vector_store.count)
+    _index_consistency = await asyncio.to_thread(
+        check_consistency, settings, qdrant_points, disk_chunks
+    )
+    if _index_consistency.ok:
+        logger.info("Index consistent: %d chunks across disk and Qdrant.", disk_chunks)
+    else:
+        logger.error("Index inconsistent; queries are refused until reindex: %s", _index_consistency.reasons)
     try:
         await init_db()
     except Exception as e:  # noqa: BLE001 - preserve existing database startup behavior
@@ -80,6 +93,13 @@ app = FastAPI(
 app.include_router(review_router)
 
 
+@app.exception_handler(IndexWriteError)
+@app.exception_handler(IndexReadError)
+async def handle_index_error(request: Request, error: IndexWriteError | IndexReadError) -> JSONResponse:
+    code = 'index_write_error' if isinstance(error, IndexWriteError) else 'index_read_error'
+    return JSONResponse(status_code=503, content={'error': {'code': code, 'message': str(error)}})
+
+
 # Qdrant uses an explicit backend; service failures never switch backends.
 _is_testing = os.environ.get("APP_ENV") == "testing"
 _settings = _core_get_settings()
@@ -90,13 +110,16 @@ _qdrant_client = ((QdrantClient(':memory:') if _settings.qdrant_local_path == ':
 vector_store = QdrantChunkStore(_qdrant_client, _settings.qdrant_collection, _settings.qdrant_vector_dim)
 graph_store = KnowledgeGraphStore(in_memory=_is_testing)
 ingestion_pipeline = IngestionPipeline(vector_store=vector_store, graph_store=graph_store)
-retriever = HybridRetriever(vector_store=vector_store, chunks=[])
+retriever = HybridRetriever(embedder=None, vector_store=vector_store)
 input_guardrails = InputGuardrails()
 output_guardrails = OutputGuardrails()
 tracer = MeridianTracer()
 llm_client = LiteLLMClient()
 
 logger = logging.getLogger("meridian.rag_engine")
+
+# Startup consistency verdict; None until the lifespan has run.
+_index_consistency: ConsistencyReport | None = None
 
 # Service readiness tracking
 _service_status: dict[str, Any] = {
@@ -383,6 +406,87 @@ async def check_guardrails_post(
     return input_guardrails.evaluate(payload.text)
 
 
+class RetrieveRequest(BaseModel):
+    """Retrieval-only payload: no LLM call, just ranked chunks."""
+
+    query: str = Field(..., min_length=1, description="Search query")
+    top_k: int = Field(5, ge=1, le=20, description="Number of chunks to return")
+    debug: bool = Field(False, description="Include per-stage score detail")
+
+
+@app.post("/v1/retrieve")
+async def retrieve_endpoint(
+    payload: RetrieveRequest,
+    tenant_id: str = Depends(verify_api_key),
+):
+    """Runs hybrid retrieval only (dense + BM25 + RRF) and returns ranked chunks.
+
+    The primary debugging tool: inspect which chunks would reach the LLM,
+    with per-stage scores and stage timings, before involving generation.
+    """
+    blocked = _index_gate()
+    if blocked is not None:
+        return blocked
+    result = retriever.retrieve(payload.query, top_k=payload.top_k, tenant_id=tenant_id, debug=payload.debug)
+    return {
+        "query": result.query,
+        "top_k": result.top_k,
+        "chunks": [ranked.to_dict() for ranked in result.chunks],
+        "timings_ms": result.timings_ms,
+    }
+
+
+def _index_gate() -> JSONResponse | None:
+    """Refuse query/retrieve while the index cannot be trusted (no silent fallback)."""
+    report = _index_consistency
+    if report is not None and not report.ok:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "error": {
+                    "code": "index_inconsistent",
+                    "message": "The vector index is inconsistent with disk records; run scripts/reindex.py",
+                    "reasons": report.reasons,
+                }
+            },
+        )
+    return None
+
+
+@app.get("/health/live")
+async def health_live():
+    """Process liveness: the app is up and serving."""
+    return {"status": "alive", "service": "meridian-rag-engine"}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Real readiness checks; never claims health without evidence."""
+    settings = _core_get_settings()
+    qdrant_health = vector_store.health()
+    qdrant_points = vector_store.count()
+    disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
+    index_ok = _index_consistency.ok if _index_consistency is not None else False
+    llm_config = _resolve_active_llm_config_with_secrets()
+    llm_configured = bool(llm_config.get("api_key")) or llm_config.get("provider") == "ollama"
+    embedder = ingestion_pipeline.embedder
+    checks = {
+        "qdrant": {"ok": qdrant_health["status"] == "ready", "points": qdrant_points, "error": qdrant_health["error"]},
+        "embedder": {
+            "ok": embedder is not None,
+            "model": getattr(embedder, "model_name", None),
+            "dim": getattr(embedder, "dim", None),
+        },
+        "index_consistent": {"ok": index_ok, "disk_chunks": disk_chunks, "qdrant_points": qdrant_points},
+        "llm_configured": {"ok": llm_configured},
+        "neo4j": {"enabled": settings.graph_enabled},
+    }
+    # Readiness reflects serving-critical checks; a missing LLM key is
+    # informational (queries surface the provider error loudly instead).
+    ready = qdrant_health["status"] == "ready" and index_ok and embedder is not None
+    return {"ready": ready, "checks": checks}
+
+
 @app.get("/health")
 async def health_check():
     return {
@@ -405,8 +509,10 @@ async def ingest_document_endpoint(
     title = payload.title or "Uploaded Document"
     source = payload.source or "manual"
 
-    result = ingestion_pipeline.ingest_text(text=text, title=title, source=source)
-    retriever.update_chunks(vector_store.get_all_chunks())
+    result = ingestion_pipeline.ingest_text(
+        text=text, title=title, source=source, tenant_id=tenant_id
+    )
+    retriever.update_chunks(vector_store.get_all_chunks(None))
     return result
 
 
@@ -416,6 +522,9 @@ async def query_endpoint(
     tenant_id: str = Depends(verify_api_key),
 ):
     """Executes the self-healing Agentic RAG pipeline with guardrails and tracing."""
+    blocked = _index_gate()
+    if blocked is not None:
+        return blocked
     start_time = time.time()
     trace_ctx = tracer.trace(name="rag-query-pipeline", tenant_id=tenant_id)
     # Issue #35: provenance must come from the upstream response, not from config.
@@ -729,7 +838,7 @@ async def update_llm_settings(
 async def clear_all_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
     """Clears all documents and chunks from dedicated storage and active memory."""
     count = ingestion_pipeline.clear_all()
-    retriever.update_chunks(vector_store.get_all_chunks())
+    retriever.update_chunks(vector_store.get_all_chunks(None))
     return {"status": "cleared", "deleted_count": count, "message": f"All {count} documents removed from storage"}
 
 
@@ -746,9 +855,10 @@ async def seed_sample_documents_endpoint(tenant_id: str = Depends(verify_api_key
                 title=title,
                 doc_format=DocumentFormat.MARKDOWN,
                 source=str(doc_file.name),
+                tenant_id=tenant_id,
             )
             count += 1
-    retriever.update_chunks(vector_store.get_all_chunks())
+    retriever.update_chunks(vector_store.get_all_chunks(None))
     return {"status": "seeded", "documents_seeded": count}
 
 
@@ -814,7 +924,7 @@ async def delete_document_endpoint(doc_id: str, tenant_id: str = Depends(verify_
     deleted = ingestion_pipeline.delete_document(doc_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
-    retriever.update_chunks(vector_store.get_all_chunks())
+    retriever.update_chunks(vector_store.get_all_chunks(None))
     return {"status": "deleted", "document_id": doc_id, "message": "Document successfully deleted"}
 
 

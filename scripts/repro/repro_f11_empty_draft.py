@@ -36,7 +36,9 @@ async def main():
     vector_store = QdrantChunkStore(QdrantClient(':memory:'), 'repro', embedder.dim)
     vector_store.ensure_collection()
     vector_store.upsert_chunks(chunks, embedder.embed_passages([chunk.text for chunk in chunks]))
-    retriever = HybridRetriever(vector_store=vector_store, chunks=chunks, embedder=embedder)
+    from services.rag_engine.retrieval.bm25 import BM25Index
+
+    retriever = HybridRetriever(embedder=embedder, vector_store=vector_store, bm25_index=BM25Index(chunks))
     graph = build_rag_agent_graph(retriever, KnowledgeGraphStore(in_memory=True), llm_client=FailingClient())
     state = await graph.ainvoke({
         "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",

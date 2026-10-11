@@ -40,6 +40,7 @@ class DocumentStorageManager:
         entities: list[Entity],
         relationships: list[Relationship],
         raw_bytes: bytes | None = None,
+        tenant_id: str = "default",
     ) -> dict[str, Any]:
         """Saves raw file content, structural chunks, and metadata records permanently to disk."""
         now = datetime.now(UTC).isoformat()
@@ -82,6 +83,7 @@ class DocumentStorageManager:
         # 3. Save document metadata record to storage/metadata/{doc_id}.json
         meta_record = {
             "id": doc.id,
+            "tenant_id": tenant_id,
             "title": doc.title,
             "format": doc_format_str,
             "source": doc.source,

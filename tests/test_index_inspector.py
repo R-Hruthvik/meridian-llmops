@@ -144,7 +144,7 @@ async def test_lexical_corpus_size_is_read_from_the_live_retriever(db_session):
         text="Meridian inspects the BM25 sparse index with a real retrieval probe.",
         source="index_inspector_probe.md",
     )
-    retriever.update_chunks(vector_store.get_all_chunks())
+    retriever.update_chunks(vector_store.get_all_chunks(None))
 
     after = await build_index_status(
         vector_store=vector_store, graph_store=graph_store, retriever=retriever, db=db_session

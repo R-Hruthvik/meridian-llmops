@@ -13,6 +13,16 @@ def tokenize(text: str) -> list[str]:
     return re.findall(r"[a-zA-Z0-9_\-]+", text.lower())
 
 
+def index_text(chunk: Chunk) -> str:
+    """Text indexed by BM25: contextual header plus chunk text.
+
+    The header carries the same title/heading context the embedder sees, so
+    lexical and dense retrieval operate on comparable strings.
+    """
+    header = " > ".join(part for part in (chunk.metadata.get("title"), chunk.section_heading) if part)
+    return f"{header}\n{chunk.text}" if header else chunk.text
+
+
 class BM25Index:
     """BM25 sparse index over document chunks for high-recall keyword search."""
 
@@ -28,9 +38,13 @@ class BM25Index:
         if self.chunks:
             self._build_index()
 
+    def chunk_of(self, chunk_id: str) -> Chunk | None:
+        """Return the disk-record chunk for an id, or None if the corpus lacks it."""
+        return self.chunk_map.get(chunk_id)
+
     def _build_index(self) -> None:
         """Build full index from current corpus state."""
-        self._corpus = [tokenize(c.text) for c in self.chunks]
+        self._corpus = [tokenize(index_text(c)) for c in self.chunks]
         self._doc_lengths = [len(tokens) for tokens in self._corpus]
         self._df.clear()
         for tokens in self._corpus:
@@ -46,7 +60,7 @@ class BM25Index:
         self.chunk_map.update({c.id: c for c in new_chunks})
 
         for chunk in new_chunks:
-            tokens = tokenize(chunk.text)
+            tokens = tokenize(index_text(chunk))
             self._corpus.append(tokens)
             self._doc_lengths.append(len(tokens))
 

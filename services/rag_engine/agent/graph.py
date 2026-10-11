@@ -26,7 +26,28 @@ from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.agent.reformulator import QueryReformulator
 from services.rag_engine.agent.refusal import SafeRefusalGenerator
 from services.rag_engine.agent.state import RagAgentState
-from services.rag_engine.retrieval.hybrid import HybridRetriever
+from services.rag_engine.retrieval.hybrid import HybridRetriever, RankedChunk
+
+
+def _retrieval_state_dict(ranked: RankedChunk) -> dict[str, Any]:
+    """Flatten a ranked chunk into the graph state's dict shape.
+
+    Carries chunk_id and the fused score so downstream nodes and the API
+    response can cite the real chunk with its metadata, not a relabeled guess.
+    """
+    chunk = ranked.chunk
+    return {
+        "chunk_id": chunk.id,
+        "document_id": chunk.document_id,
+        "text": chunk.text,
+        "chunk_index": chunk.chunk_index,
+        "section_heading": chunk.section_heading,
+        "heading_path": chunk.section_heading or "",
+        "filename": ranked.filename,
+        "page_start": ranked.page_start,
+        "score": ranked.score,
+        "metadata": chunk.metadata,
+    }
 
 
 def _positive_int(value: Any) -> int | None:
@@ -82,8 +103,10 @@ def build_rag_agent_graph(
 
         top_k, recall_k = resolve_retrieval_breadth(config)
 
-        chunks = retriever.retrieve(query, top_k=recall_k)
-        chunk_dicts = [c.model_dump() for c in chunks[:top_k]]
+        result = retriever.retrieve(
+            query, top_k=recall_k, tenant_id=state.get("tenant_id", "default")
+        )
+        chunk_dicts = [_retrieval_state_dict(ranked) for ranked in result.chunks[:top_k]]
 
         # Extract graph neighborhood if entities match
         extracted_entities: list[dict[str, Any]] = []
@@ -178,7 +201,10 @@ def build_rag_agent_graph(
             }
 
         chunks = state.get("retrieved_chunks", [])
-        valid_chunks = [c for c in chunks if c.get("score", 0) >= 0.08]
+        # No lexical-score filter: after RRF fusion the graph hands over exactly
+        # the top_k chunks, and a threshold calibrated for lexical overlap
+        # (0.08) would silently reject RRF-scale scores (~0.03).
+        valid_chunks = list(chunks)
         if not valid_chunks:
             # No meaningful context retrieved
             return {
@@ -250,15 +276,13 @@ def build_rag_agent_graph(
     def critic_node(state: RagAgentState) -> dict[str, Any]:
         query = state["query"]
         draft = state.get("draft_answer", "")
-        chunks = state.get("retrieved_chunks", [])
-        valid_chunks = [c for c in chunks if c.get("score", 0) >= 0.08]
-        context = "\n".join([c.get("text", "") for c in valid_chunks])
+        context = "\n".join([c.get("text", "") for c in state.get("retrieved_chunks", [])])
 
         verdict = critic.evaluate(query=query, draft=draft, context=context)
 
         # Decompose draft into sentence claims and verify via 3-Tier Verifier
         sentences = [s.strip() for s in draft.split(".") if s.strip()]
-        verification_res = tiered_verifier.verify_claims(sentences, valid_chunks)
+        verification_res = tiered_verifier.verify_claims(sentences, state.get("retrieved_chunks", []))
 
         return {
             "critic_verdict": verdict.model_dump(),

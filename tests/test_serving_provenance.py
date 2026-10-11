@@ -121,6 +121,7 @@ def seeded_client(monkeypatch, tmp_path):
     from services.ingestion.pipeline import IngestionPipeline
     from services.rag_engine import app as app_module
     from services.rag_engine.agent.graph import build_rag_agent_graph
+    from services.rag_engine.retrieval.bm25 import BM25Index
     from services.rag_engine.retrieval.hybrid import HybridRetriever
     from tests.fakes import FakeEmbedder, make_vector_store
 
@@ -134,7 +135,7 @@ def seeded_client(monkeypatch, tmp_path):
         text="Meridian platform uses Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.",
         source="test_serving_provenance.md",
     )
-    isolated_retriever = HybridRetriever(vector_store=store, embedder=embedder)
+    isolated_retriever = HybridRetriever(embedder=embedder, vector_store=store, bm25_index=BM25Index(pipeline.storage.load_all_chunks()))
     monkeypatch.setattr(app_module, "vector_store", store)
     monkeypatch.setattr(app_module, "graph_store", graph_store)
     monkeypatch.setattr(app_module, "ingestion_pipeline", pipeline)
@@ -174,8 +175,8 @@ def _stub_upstream(monkeypatch, answer_builder, model=UPSTREAM_MODEL):
 
 def _grounded_answer(question: str) -> str:
     """Echo retrieved context so the Critic verifies the draft as grounded."""
-    chunks = retriever.retrieve(question, top_k=3)
-    return " ".join(c.text for c in chunks) or "No relevant context."
+    result = retriever.retrieve(question, top_k=3)
+    return " ".join(c.chunk.text for c in result.chunks) or "No relevant context."
 
 
 def test_query_reports_upstream_model_not_config_echo(seeded_client, monkeypatch):

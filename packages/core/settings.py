@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = Field(default_factory=lambda: os.environ.get("NEO4J_PASSWORD", ""))
+    # Graph retrieval is optional; the core pipeline works without Neo4j.
+    graph_enabled: bool = False
 
     # Langfuse Observability
     langfuse_host: str = "http://localhost:3000"

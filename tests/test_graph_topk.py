@@ -7,9 +7,10 @@ for more or less context without recompiling the graph.
 
 import pytest
 
-from packages.core.models import SearchResult
+from packages.core.models import Chunk
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.rag_engine.agent.graph import build_rag_agent_graph
+from services.rag_engine.retrieval.hybrid import RankedChunk, RetrievalResult
 
 CORPUS_SIZE = 8
 DEFAULT_TOP_K = 3
@@ -26,20 +27,23 @@ class _RecordingRetriever:
 
     def __init__(self, corpus_size: int = CORPUS_SIZE):
         self.calls: list[int] = []
-        self.results = [
-            SearchResult(
-                chunk_id=f"c{i}",
+        self.corpus = [
+            Chunk(
+                id=f"c{i}",
                 document_id="d1",
                 text=f"Meridian platform chunk {i} describing gateway routing.",
-                score=0.9,
-                retrieval_method="test",
+                section_heading="Gateway",
             )
             for i in range(corpus_size)
         ]
 
-    def retrieve(self, query: str, top_k: int = 5) -> list[SearchResult]:
+    def retrieve(self, query: str, top_k: int = 5, tenant_id: str = "default", debug: bool = False) -> RetrievalResult:
         self.calls.append(top_k)
-        return self.results[:top_k]
+        chunks = [
+            RankedChunk(chunk=chunk, rank=i + 1, scores={"final": 0.9, "rrf": 0.9})
+            for i, chunk in enumerate(self.corpus[:top_k])
+        ]
+        return RetrievalResult(query=query, top_k=top_k, chunks=chunks, timings_ms={})
 
 
 def _base_state() -> dict:

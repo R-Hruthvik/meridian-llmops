@@ -1,15 +1,18 @@
 """Unified Ingestion Pipeline executing parsing, structural chunking, dual-memory indexing, and dedicated storage."""
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("meridian.ingestion.pipeline")
 
 from packages.core.models import Chunk, Document, DocumentFormat
+from packages.core.settings import get_settings
 from services.ingestion.chunker import StructuralChunker
 from services.ingestion.embedder import Embedder
 from services.ingestion.graph_store import KnowledgeGraphStore
+from services.ingestion.manifest import CHUNKER_VERSION, IndexManifest, write_manifest
 from services.ingestion.parsers import parse_document
 from services.ingestion.storage import DocumentStorageManager
 from services.ingestion.vector_store import QdrantChunkStore
@@ -33,11 +36,34 @@ class IngestionPipeline:
         self.storage = storage_manager or DocumentStorageManager(storage_root=storage_root)
         self.chunker = StructuralChunker()
 
-    def _index_chunks(self, chunks: list[Chunk]) -> int:
+    def _index_chunks(self, chunks: list[Chunk], tenant_id: str = 'default') -> int:
         if self.embedder is None:
             raise RuntimeError('Embedder must be initialized at startup or explicitly injected')
+        for chunk in chunks:
+            # Fresh ingest stamps the caller's tenant; hydration must keep the
+            # tenant already recorded on each persisted chunk.
+            chunk.metadata.setdefault('tenant_id', tenant_id)
         vectors = self.embedder.embed_passages([chunk.text for chunk in chunks])
         return self.vector_store.upsert_chunks(chunks, vectors)
+
+    def _publish_manifest(self) -> None:
+        """Record index provenance after every successful mutation of disk chunks.
+
+        The manifest is what startup compares against config: a changed model,
+        dimension, or chunker version makes the next boot refuse queries until
+        scripts/reindex.py rebuilds the index.
+        """
+        settings = get_settings()
+        write_manifest(
+            self.storage.root_dir,
+            IndexManifest(
+                embedding_model=settings.embedding_model,
+                embedding_dim=settings.qdrant_vector_dim,
+                chunker_version=CHUNKER_VERSION,
+                created_at=datetime.now(UTC).isoformat(),
+                chunk_count=len(self.storage.load_all_chunks()),
+            ),
+        )
 
     def load_persisted_knowledge_base(self) -> int:
         """Hydrates vector store and knowledge graph from dedicated disk storage on startup."""
@@ -76,6 +102,7 @@ class IngestionPipeline:
         doc_format: DocumentFormat = DocumentFormat.MARKDOWN,
         source: str = "manual",
         persist: bool = True,
+        tenant_id: str = "default",
     ) -> dict[str, Any]:
         doc = parse_document(
             content=text,
@@ -83,11 +110,11 @@ class IngestionPipeline:
             doc_format=doc_format,
             source=source,
         )
-        return self.ingest_document(doc, persist=persist)
+        return self.ingest_document(doc, persist=persist, tenant_id=tenant_id)
 
-    def ingest_document(self, doc: Document, persist: bool = True) -> dict[str, Any]:
+    def ingest_document(self, doc: Document, persist: bool = True, tenant_id: str = "default") -> dict[str, Any]:
         chunks = self.chunker.chunk(doc)
-        indexed_count = self._index_chunks(chunks)
+        indexed_count = self._index_chunks(chunks, tenant_id=tenant_id)
         entities, relations = self.graph_store.extract_and_store(doc.id, doc.text)
 
         meta_record = {}
@@ -97,7 +124,9 @@ class IngestionPipeline:
                 chunks=chunks,
                 entities=entities,
                 relationships=relations,
+                tenant_id=tenant_id,
             )
+            self._publish_manifest()
 
         return {
             "document_id": doc.id,
@@ -119,9 +148,12 @@ class IngestionPipeline:
 
     def delete_document(self, doc_id: str) -> bool:
         """Permanently removes document, raw files, and chunks from storage, vector and graph memory."""
+        doc = self.storage.get_document(doc_id)
         deleted = self.storage.delete_document(doc_id)
         if deleted:
-            self.vector_store.delete_document(doc_id, tenant_id='default')
+            tenant_id = str((doc or {}).get("tenant_id", "default"))
+            self.vector_store.delete_document(doc_id, tenant_id=tenant_id)
+            self._publish_manifest()
             # Graph cleanup: prefer dedicated method, fallback to manual filter
             if hasattr(self.graph_store, "delete_by_document"):
                 self.graph_store.delete_by_document(doc_id)
@@ -135,7 +167,7 @@ class IngestionPipeline:
         return deleted
 
     def clear_all(self) -> int:
-        """Removes all documents and chunks from storage and active memory."""
+        """Removes all documents, chunks, and metadata files from dedicated storage."""
         count = self.storage.clear_all()
         self.vector_store.clear()
         if hasattr(self.graph_store, "clear_all_graph"):
@@ -143,4 +175,5 @@ class IngestionPipeline:
         else:
             self.graph_store.entities.clear()
             self.graph_store.relationships.clear()
+        self._publish_manifest()
         return count

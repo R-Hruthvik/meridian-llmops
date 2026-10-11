@@ -1,0 +1,221 @@
+{
+  "description": "Retrieval smoke set authored from sample_docs/. Each expected_phrases entry must occur verbatim (case-insensitive, whitespace-normalized) in the expected document; scripts/validate_golden.py enforces this.",
+  "cases": [
+    {
+      "id": "q-001",
+      "category": "factual",
+      "question": "What command starts the FastAPI development server?",
+      "answerable": true,
+      "expected_doc": "01_fastapi_guide.md",
+      "expected_phrases": ["fastapi dev"],
+      "notes": "CLI invocation for local development"
+    },
+    {
+      "id": "q-002",
+      "category": "identifier",
+      "question": "What URL serves the interactive API docs?",
+      "answerable": true,
+      "expected_doc": "01_fastapi_guide.md",
+      "expected_phrases": ["/docs"],
+      "notes": "Swagger UI path"
+    },
+    {
+      "id": "q-003",
+      "category": "identifier",
+      "question": "Where can the OpenAPI schema JSON be downloaded from?",
+      "answerable": true,
+      "expected_doc": "01_fastapi_guide.md",
+      "expected_phrases": ["/openapi.json"],
+      "notes": "OpenAPI schema endpoint"
+    },
+    {
+      "id": "q-004",
+      "category": "paraphrase",
+      "question": "How do you create the application instance in FastAPI?",
+      "answerable": true,
+      "expected_doc": "01_fastapi_guide.md",
+      "expected_phrases": ["FastAPI()"],
+      "notes": "Step 2 of the guide"
+    },
+    {
+      "id": "q-005",
+      "category": "factual",
+      "question": "Which decorator registers a path operation for GET requests?",
+      "answerable": true,
+      "expected_doc": "01_fastapi_guide.md",
+      "expected_phrases": ["@app.get"],
+      "notes": "Path operation decorator"
+    },
+    {
+      "id": "q-006",
+      "category": "numeric",
+      "question": "Which port serves the Qdrant web dashboard?",
+      "answerable": true,
+      "expected_doc": "02_qdrant_vector_db.md",
+      "expected_phrases": ["6333"],
+      "notes": "Docker port mapping"
+    },
+    {
+      "id": "q-007",
+      "category": "factual",
+      "question": "What distance metric does the quickstart collection use to compare vectors?",
+      "answerable": true,
+      "expected_doc": "02_qdrant_vector_db.md",
+      "expected_phrases": ["dot product distance metric"],
+      "notes": "Collection creation section"
+    },
+    {
+      "id": "q-008",
+      "category": "numeric",
+      "question": "What vector size does the quickstart collection configure?",
+      "answerable": true,
+      "expected_doc": "02_qdrant_vector_db.md",
+      "expected_phrases": ["size=4"],
+      "notes": "VectorParams size"
+    },
+    {
+      "id": "q-009",
+      "category": "identifier",
+      "question": "What is the name of the collection created in the Qdrant quickstart?",
+      "answerable": true,
+      "expected_doc": "02_qdrant_vector_db.md",
+      "expected_phrases": ["test_collection"],
+      "notes": "Collection identifier"
+    },
+    {
+      "id": "q-010",
+      "category": "factual",
+      "question": "How do you initialize a Qdrant client pointing at the local server?",
+      "answerable": true,
+      "expected_doc": "02_qdrant_vector_db.md",
+      "expected_phrases": ["QdrantClient(url=\"http://localhost:6333\")"],
+      "notes": "Client initialization"
+    },
+    {
+      "id": "q-011",
+      "category": "near_duplicate",
+      "question": "Which distance constant is used when adding vectors with the gRPC client?",
+      "answerable": true,
+      "expected_doc": "02_qdrant_vector_db.md",
+      "expected_phrases": ["Distance_Cosine"],
+      "notes": "The doc shows both Dot and Cosine; the gRPC add-vectors snippet uses Cosine"
+    },
+    {
+      "id": "q-012",
+      "category": "numeric",
+      "question": "Which port does the LiteLLM gateway listen on?",
+      "answerable": true,
+      "expected_doc": "03_litellm_proxy_quickstart.md",
+      "expected_phrases": ["4000"],
+      "notes": "Gateway port"
+    },
+    {
+      "id": "q-013",
+      "category": "factual",
+      "question": "What is the username for the LiteLLM admin UI?",
+      "answerable": true,
+      "expected_doc": "03_litellm_proxy_quickstart.md",
+      "expected_phrases": ["admin"],
+      "notes": "Admin UI login"
+    },
+    {
+      "id": "q-014",
+      "category": "factual",
+      "question": "What should you give to applications instead of raw provider keys?",
+      "answerable": true,
+      "expected_doc": "03_litellm_proxy_quickstart.md",
+      "expected_phrases": ["Virtual keys"],
+      "notes": "Virtual key step"
+    },
+    {
+      "id": "q-015",
+      "category": "identifier",
+      "question": "What base URL makes the gateway OpenAI-compatible for SDK clients?",
+      "answerable": true,
+      "expected_doc": "03_litellm_proxy_quickstart.md",
+      "expected_phrases": ["http://localhost:4000"],
+      "notes": "SDK base_url"
+    },
+    {
+      "id": "q-016",
+      "category": "factual",
+      "question": "Which endpoint do you post to for chat completions through the gateway?",
+      "answerable": true,
+      "expected_doc": "03_litellm_proxy_quickstart.md",
+      "expected_phrases": ["/v1/chat/completions"],
+      "notes": "Chat completions path"
+    },
+    {
+      "id": "q-017",
+      "category": "identifier",
+      "question": "Which environment variable sets the OpenAI API key for LiteLLM?",
+      "answerable": true,
+      "expected_doc": "04_litellm_provider_keys.md",
+      "expected_phrases": ["OPENAI_API_KEY"],
+      "notes": "Environment variable name"
+    },
+    {
+      "id": "q-018",
+      "category": "identifier",
+      "question": "Which environment variable sets the Anthropic API key?",
+      "answerable": true,
+      "expected_doc": "04_litellm_provider_keys.md",
+      "expected_phrases": ["ANTHROPIC_API_KEY"],
+      "notes": "Environment variable name"
+    },
+    {
+      "id": "q-019",
+      "category": "identifier",
+      "question": "Which environment variable overrides the Azure API base URL?",
+      "answerable": true,
+      "expected_doc": "04_litellm_provider_keys.md",
+      "expected_phrases": ["AZURE_API_BASE"],
+      "notes": "Azure base URL variable"
+    },
+    {
+      "id": "q-020",
+      "category": "factual",
+      "question": "Which helper function checks whether an API key is valid?",
+      "answerable": true,
+      "expected_doc": "04_litellm_provider_keys.md",
+      "expected_phrases": ["check_valid_key()"],
+      "notes": "Helper functions list"
+    },
+    {
+      "id": "q-021",
+      "category": "identifier",
+      "question": "Which helper function lists the models available for a provider?",
+      "answerable": true,
+      "expected_doc": "04_litellm_provider_keys.md",
+      "expected_phrases": ["get_valid_models()"],
+      "notes": "Helper functions list"
+    },
+    {
+      "id": "q-022",
+      "category": "multi_chunk",
+      "question": "How do you connect a local Qdrant server and create a collection with vectors configured?",
+      "answerable": true,
+      "expected_doc": "02_qdrant_vector_db.md",
+      "expected_phrases": ["create_collection"],
+      "notes": "Answer spans the client and collection sections"
+    },
+    {
+      "id": "q-023",
+      "category": "unanswerable",
+      "question": "What is the recommended daily dose of ibuprofen for adults?",
+      "answerable": false,
+      "expected_doc": null,
+      "expected_phrases": [],
+      "notes": "Medical advice is not in the corpus"
+    },
+    {
+      "id": "q-024",
+      "category": "unanswerable",
+      "question": "Who won the 2026 FIFA World Cup final?",
+      "answerable": false,
+      "expected_doc": null,
+      "expected_phrases": [],
+      "notes": "Sports event not covered by the docs"
+    }
+  ]
+}
