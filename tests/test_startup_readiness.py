@@ -117,3 +117,5 @@ def test_manifest_mismatch_blocks_queries(seeded):
             manifest_path.unlink(missing_ok=True)
         else:
             manifest_path.write_bytes(original_bytes)
+        # Do not leak this test's inconsistent verdict into later tests.
+        app_module._index_consistency = None

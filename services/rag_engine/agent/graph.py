@@ -41,7 +41,7 @@ def _retrieval_state_dict(ranked: RankedChunk) -> dict[str, Any]:
         "document_id": chunk.document_id,
         "text": chunk.text,
         "chunk_index": chunk.chunk_index,
-        "section_heading": chunk.section_heading,
+        "section_heading": chunk.section_heading or "",
         "heading_path": chunk.section_heading or "",
         "filename": ranked.filename,
         "page_start": ranked.page_start,

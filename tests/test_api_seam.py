@@ -93,7 +93,7 @@ def test_api_document_ingestion_and_subsequent_query(client):
         },
     )
     assert ingest_resp.status_code == 200
-    assert ingest_resp.json()["chunks_indexed"] >= 1
+    assert ingest_resp.json()["chunks"] >= 1
 
     # Query newly ingested document
     query_resp = client.post(

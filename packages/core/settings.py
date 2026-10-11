@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     api_key_secret: str = Field(default_factory=lambda: os.environ.get("API_KEY_SECRET", ""))
     rate_limit_per_minute: int = 60
+    max_upload_mb: int = Field(default=25, gt=0)
 
     # LiteLLM AI Gateway
     litellm_base_url: str = "http://localhost:4000"

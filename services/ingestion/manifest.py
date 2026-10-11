@@ -5,9 +5,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from packages.core.settings import Settings
+from services.ingestion.chunker import CHUNKER_VERSION
 from services.ingestion.storage import DocumentStorageManager, get_default_storage_root
-
-CHUNKER_VERSION = 'structural-v1'
 
 
 @dataclass(frozen=True)

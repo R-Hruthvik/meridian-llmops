@@ -7,17 +7,17 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
 
 from packages.core.db import AsyncSessionLocal, init_db
-from packages.core.errors import IndexReadError, IndexWriteError
+from packages.core.errors import IndexReadError, IndexWriteError, IngestionError
 from packages.core.models import (
     DocumentFormat,
     GuardrailResult,
@@ -109,7 +109,11 @@ _qdrant_client = ((QdrantClient(':memory:') if _settings.qdrant_local_path == ':
                   else QdrantClient(host=_settings.qdrant_host, port=_settings.qdrant_port, timeout=5))
 vector_store = QdrantChunkStore(_qdrant_client, _settings.qdrant_collection, _settings.qdrant_vector_dim)
 graph_store = KnowledgeGraphStore(in_memory=_is_testing)
-ingestion_pipeline = IngestionPipeline(vector_store=vector_store, graph_store=graph_store)
+ingestion_pipeline = IngestionPipeline(
+    vector_store=vector_store,
+    graph_store=graph_store,
+    max_upload_bytes=_settings.max_upload_mb * 1024 * 1024,
+)
 retriever = HybridRetriever(embedder=None, vector_store=vector_store)
 input_guardrails = InputGuardrails()
 output_guardrails = OutputGuardrails()
@@ -487,6 +491,46 @@ async def health_ready():
     return {"ready": ready, "checks": checks}
 
 
+@app.post("/v1/documents")
+async def upload_documents_endpoint(
+    files: Annotated[list[UploadFile], File()],
+    tenant_id: str = Depends(verify_api_key),
+):
+    """Multipart upload (field ``files``, repeatable); one result row per file.
+
+    Rejected files (bad type, oversized, unparseable) do not fail the whole
+    request: their row carries ``status: rejected`` with the reason.
+    """
+    results: list[dict[str, Any]] = []
+    for upload in files:
+        filename = upload.filename or "upload"
+        try:
+            data = bytearray()
+            limit = ingestion_pipeline.max_upload_bytes
+            while block := await upload.read(min(64 * 1024, limit + 1 - len(data))):
+                data.extend(block)
+                if len(data) > limit:
+                    raise IngestionError(f"{filename} exceeds the {limit / (1024 * 1024):g} MB upload limit")
+            result = ingestion_pipeline.ingest_file(filename, bytes(data), tenant_id=tenant_id)
+            results.append(result.to_dict())
+        except IngestionError as error:
+            results.append(
+                {
+                    "filename": filename,
+                    "status": "rejected",
+                    "document_id": None,
+                    "format": None,
+                    "pages": 0,
+                    "chunks": 0,
+                    "warnings": [],
+                    "duplicate_of": None,
+                    "error": str(error),
+                }
+            )
+    retriever.update_chunks(vector_store.get_all_chunks(None))
+    return {"results": results}
+
+
 @app.get("/health")
 async def health_check():
     return {
@@ -504,16 +548,27 @@ async def ingest_document_endpoint(
     payload: IngestDocumentRequest,
     tenant_id: str = Depends(verify_api_key),
 ):
-    """Ingests text or documents into dedicated disk storage, Qdrant vector store, and Neo4j knowledge graph."""
-    text = payload.text
-    title = payload.title or "Uploaded Document"
-    source = payload.source or "manual"
-
-    result = ingestion_pipeline.ingest_text(
-        text=text, title=title, source=source, tenant_id=tenant_id
-    )
+    """Ingests text into dedicated disk storage, the Qdrant vector store, and the graph."""
+    try:
+        result = ingestion_pipeline.ingest_text(
+            text=payload.text,
+            title=payload.title or "Uploaded Document",
+            source=payload.source or "manual",
+            doc_format=DocumentFormat(payload.format) if payload.format else DocumentFormat.MARKDOWN,
+            tenant_id=tenant_id,
+        )
+    except IngestionError as error:
+        cause = error.__cause__
+        if isinstance(cause, (IndexWriteError, IndexReadError)):
+            # A typed index failure must reach the caller with its own code.
+            raise cause from None
+        raise HTTPException(status_code=400, detail=str(error)) from error
     retriever.update_chunks(vector_store.get_all_chunks(None))
-    return result
+    return {
+        **result.to_dict(),
+        "title": payload.title or "Uploaded Document",
+        "chunks_indexed": result.chunks,
+    }
 
 
 @app.post("/v1/query", response_model=QueryResponse)
@@ -834,6 +889,27 @@ async def update_llm_settings(
     return masked_llm_view(_runtime_llm_settings)
 
 
+@app.post("/v1/reindex")
+async def reindex_endpoint(tenant_id: str = Depends(verify_api_key)):
+    """Rebuilds the vector index from disk chunk records (stop ingestion first)."""
+    try:
+        manifest = await asyncio.to_thread(ingestion_pipeline.reindex_all)
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Reindex failed: {error}") from error
+    global _index_consistency
+    disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
+    _index_consistency = await asyncio.to_thread(
+        check_consistency, _core_get_settings(), await asyncio.to_thread(vector_store.count), disk_chunks
+    )
+    retriever.update_chunks(vector_store.get_all_chunks(None))
+    return {
+        "status": "reindexed",
+        "chunk_count": manifest.chunk_count,
+        "embedding_model": manifest.embedding_model,
+        "consistent": _index_consistency.ok,
+    }
+
+
 @app.delete("/v1/documents")
 async def clear_all_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
     """Clears all documents and chunks from dedicated storage and active memory."""
@@ -895,8 +971,13 @@ async def catalog_alias_endpoint(tenant_id: str = Depends(verify_api_key)):
 
 
 @app.get("/v1/documents/{doc_id}/chunks")
-async def get_document_chunks_endpoint(doc_id: str, tenant_id: str = Depends(verify_api_key)):
-    """Returns all structural chunks for a document with section headings."""
+async def get_document_chunks_endpoint(
+    doc_id: str,
+    limit: int = 100,
+    offset: int = 0,
+    tenant_id: str = Depends(verify_api_key),
+):
+    """Returns a page of structural chunks for a document with headings and pages."""
     doc = ingestion_pipeline.get_document(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
@@ -905,7 +986,9 @@ async def get_document_chunks_endpoint(doc_id: str, tenant_id: str = Depends(ver
         "document_id": doc_id,
         "title": doc.get("title", ""),
         "total_chunks": len(chunks),
-        "chunks": chunks,
+        "limit": limit,
+        "offset": offset,
+        "chunks": chunks[offset : offset + limit],
     }
 
 

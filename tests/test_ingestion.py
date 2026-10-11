@@ -1,23 +1,28 @@
-"""TDD Tests for Structural Ingestion and Dual-Memory Storage (Qdrant + Neo4j)."""
+"""TDD Tests for parsing, token-aware chunking, and transactional ingestion."""
 
 from packages.core.models import Document, DocumentFormat
-from services.ingestion.chunker import StructuralChunker
+from services.ingestion.chunker import TokenAwareChunker
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.parsers import parse_document
 from services.ingestion.pipeline import IngestionPipeline
 from tests.fakes import FakeEmbedder, make_vector_store
 
 
-def test_markdown_parser_and_structural_chunking():
+def test_markdown_parser_and_token_chunking():
     md_content = """# System Overview
-This is the main introduction to the Meridian architecture.
+This is the main introduction to the Meridian architecture. """ + (
+        "It describes every component and how they cooperate. " * 12
+    ) + """
 
 ## AI Gateway
-The AI Gateway intercepts requests, enforces token rate limits, and blocks prompt injections.
+The AI Gateway intercepts requests, enforces token rate limits, and blocks prompt injections. """ + (
+        "It routes traffic to the configured upstream providers. " * 12
+    ) + """
 
 ## Knowledge Graph
-Neo4j stores entity relationships and dependencies between components.
-"""
+Neo4j stores entity relationships and dependencies between components. """ + (
+        "Edges carry provenance back to the source chunks. " * 12
+    )
     doc = parse_document(
         content=md_content,
         title="Architecture",
@@ -27,14 +32,15 @@ Neo4j stores entity relationships and dependencies between components.
     assert doc.title == "Architecture"
     assert doc.format == DocumentFormat.MARKDOWN
 
-    chunker = StructuralChunker(max_chunk_size=300)
+    chunker = TokenAwareChunker(target_tokens=100, max_tokens=150)
     chunks = chunker.chunk(doc)
 
     assert len(chunks) >= 3
     headings = [c.section_heading for c in chunks]
     assert "System Overview" in headings
-    assert "AI Gateway" in headings
-    assert "Knowledge Graph" in headings
+    # Heading paths keep the full chain, per the chunk record contract.
+    assert "System Overview > AI Gateway" in headings
+    assert "System Overview > Knowledge Graph" in headings
 
 
 def test_html_parser():
@@ -65,7 +71,7 @@ def test_vector_store_in_memory_or_qdrant():
         text="Dense vectors enable semantic retrieval.",
         source="guide.txt",
     )
-    chunker = StructuralChunker()
+    chunker = TokenAwareChunker()
     chunks = chunker.chunk(doc)
     vstore.upsert_chunks(chunks, embedder.embed_passages([c.text for c in chunks]))
 
@@ -98,6 +104,6 @@ The Critic Agent checks whether answers are grounded in Qdrant and Neo4j.
         doc_format=DocumentFormat.MARKDOWN,
         source="spec.md",
     )
-    assert result["document_id"] is not None
-    assert result["chunks_indexed"] >= 1
-    assert result["entities_extracted"] >= 1
+    assert result.document_id is not None
+    assert result.chunks >= 1
+    assert result.entities_extracted >= 1

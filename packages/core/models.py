@@ -89,6 +89,8 @@ class IngestDocumentRequest(BaseModel):
     metadata: dict[str, str] | None = Field(None, description="Optional key-value metadata")
     chunk_size: int | None = Field(None, ge=100, le=10000, description="Override default chunk size")
     chunk_overlap: int | None = Field(None, ge=0, le=1000, description="Override default chunk overlap")
+    format: str | None = Field(None, pattern=r"^(md|txt|html)$", description="Text format hint")
+    filename: str | None = Field(None, max_length=200, description="Optional filename for citations")
 
 
 class UpdateLLMSettingsRequest(BaseModel):

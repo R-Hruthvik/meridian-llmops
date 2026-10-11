@@ -11,3 +11,11 @@ class IndexWriteError(RuntimeError):
 
 class IndexReadError(RuntimeError):
     """Qdrant could not return a reliable query or count result."""
+
+
+class ParseError(ValueError):
+    """A file could not be parsed; the message is safe to show to the caller."""
+
+
+class IngestionError(RuntimeError):
+    """Ingestion failed and was rolled back; nothing was partially indexed."""

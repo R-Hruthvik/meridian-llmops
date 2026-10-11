@@ -25,6 +25,7 @@ from services.rag_engine.retrieval.bm25 import BM25Index
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 
 DEFAULT_TENANT = 'eval'
+SUPPORTED_SUFFIXES = {'.md', '.markdown', '.txt', '.pdf', '.docx', '.html', '.htm'}
 
 
 def _normalize(text: str) -> str:
@@ -55,22 +56,22 @@ def reciprocal_rank(chunks: list, expected_doc: str, expected_phrases: list[str]
     return 0.0
 
 
-def build_engine(docs_dir: Path, storage_dir: Path, settings_model: str, cache_path: str):
+def build_engine(
+    docs_dir: Path,
+    storage_dir: Path,
+    settings_model: str,
+    cache_path: str,
+    tenant_id: str = DEFAULT_TENANT,
+):
     embedder = FastEmbedEmbedder(settings_model, cache_path=cache_path)
     store = QdrantChunkStore(QdrantClient(':memory:'), 'retrieval_check', embedder.dim)
     store.ensure_collection()
     pipeline = IngestionPipeline(vector_store=store, embedder=embedder, storage_root=storage_dir)
     for path in sorted(docs_dir.glob('*')):
-        if path.suffix.lower() not in {'.md', '.txt', '.html'}:
-            continue
-        pipeline.ingest_text(
-            text=path.read_text(encoding='utf-8', errors='ignore'),
-            title=path.stem.replace('_', ' ').title(),
-            source=path.name,
-            tenant_id=DEFAULT_TENANT,
-        )
+        if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES:
+            pipeline.ingest_file(path.name, path.read_bytes(), tenant_id=tenant_id)
     retriever = HybridRetriever(
-        embedder=embedder, vector_store=store, bm25_index=BM25Index(store.get_all_chunks(DEFAULT_TENANT))
+        embedder=embedder, vector_store=store, bm25_index=BM25Index(store.get_all_chunks(tenant_id))
     )
     return retriever, store
 
@@ -87,7 +88,9 @@ def main() -> int:
 
     settings = get_settings()
     with tempfile.TemporaryDirectory(prefix='retrieval_check_') as tmp:
-        retriever, store = build_engine(Path(args.docs), Path(tmp), settings.embedding_model, settings.fastembed_cache_path)
+        retriever, store = build_engine(
+            Path(args.docs), Path(tmp), settings.embedding_model, settings.fastembed_cache_path, args.tenant
+        )
         cases = json.loads(Path(args.questions).read_text(encoding='utf-8'))['cases']
 
         hits = 0

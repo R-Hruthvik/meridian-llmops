@@ -21,6 +21,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams
 
 from packages.core.settings import Settings, get_settings
+from services.ingestion.chunker import embedded_text
 from services.ingestion.embedder import Embedder, FastEmbedEmbedder
 from services.ingestion.manifest import CHUNKER_VERSION, IndexManifest, write_manifest
 from services.ingestion.storage import DocumentStorageManager, get_default_storage_root
@@ -90,7 +91,7 @@ def reindex(
     counts = Counter((str(c.metadata.get('tenant_id', 'default')), c.document_id) for c in chunks[:offset])
     for start in range(offset, len(chunks), 64):
         batch = chunks[start:start + 64]
-        vectors = embedder.embed_passages([chunk.text for chunk in batch])
+        vectors = embedder.embed_passages([embedded_text(chunk) for chunk in batch])
         counts.update((str(c.metadata.get('tenant_id', 'default')), c.document_id) for c in batch)
         store.upsert_chunks(batch, vectors, document_counts=counts)
         save_checkpoint(start + len(batch))

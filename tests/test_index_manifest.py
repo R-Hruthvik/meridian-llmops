@@ -10,6 +10,7 @@ from qdrant_client import QdrantClient
 from packages.core.models import Chunk, Document
 from packages.core.settings import Settings
 from scripts.reindex import reindex
+from services.ingestion.chunker import CHUNKER_VERSION as ACTIVE_CHUNKER_VERSION
 from services.ingestion.manifest import (
     CHUNKER_VERSION,
     IndexManifest,
@@ -33,6 +34,22 @@ def test_manifest_roundtrip(tmp_path):
     seed(DocumentStorageManager(tmp_path))
     write_manifest(tmp_path, manifest())
     assert read_manifest(tmp_path) == manifest()
+    assert check_consistency(settings(), 1, 1, storage_root=tmp_path).ok
+
+
+def test_current_chunker_manifest_passes_default_consistency_check(tmp_path):
+    seed(DocumentStorageManager(tmp_path))
+    write_manifest(
+        tmp_path,
+        IndexManifest(
+            FakeEmbedder.model_name,
+            8,
+            ACTIVE_CHUNKER_VERSION,
+            '2026-10-10T00:00:00+00:00',
+            1,
+        ),
+    )
+
     assert check_consistency(settings(), 1, 1, storage_root=tmp_path).ok
 
 
