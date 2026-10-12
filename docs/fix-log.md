@@ -257,3 +257,15 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Query generation now uses the exact requested bounded top-k, calibrated sufficiency on the prompt-selected sources, typed provider errors, total-attempt cycle limits, actual usage, source metadata including chunk index, per-request serving provenance, and opt-in sanitized prompt/raw-response logging. Graph memory and expansion follow `GRAPH_ENABLED`.
 - Independent review identified three regressions: qualifying evidence dropped by the prompt budget, empty/runtime generation failures becoming refusals, and missing source chunk index. Regression tests failed first, then fixes passed; scoped re-review closed all three findings.
 - Final parent verification: `.venv/bin/pytest tests -q` -> **333 passed, 4 xfailed**; `.venv/bin/ruff check .` -> clean; `.venv/bin/mypy packages services evals scripts --ignore-missing-imports --explicit-package-bases --python-version 3.11` -> **69 files clean**. Four expected failures remain in later planned phases.
+
+### Phase 3 final review and decisions
+
+- Independent final Luna review found no actionable correctness findings. Phase 3 is complete; the branch remains `fix/rag-core` with unrelated user edits preserved. Phase 4 remains next.
+
+- Continue in the existing fix/rag-core workspace — this is a requested continuation with unfinished user edits; moving the work would lose that context. Cost if wrong: less branch isolation, mitigated by selective commits.
+- Build isolated prompt/provider modules independently, then integrate graph/API after their reviews — no shared mutations and no phase boundary crossed. Cost if wrong: interface reconciliation before integration.
+- Treat absent PROVIDER with explicit generic.env variables as custom/OpenAI-compatible, and prefer these explicit environment values over stale saved UI settings — user specifically requests the new.env config. Cost if wrong: UI changes appear overridden until env is changed.
+- Escape source markup in the prompt while preserving original API source text — the data-wrapper requirement takes precedence over literal inclusion of raw closing tags. Cost if wrong: code snippets appear as entities in the model input.
+- Set MIN_DENSE_SCORE default0.70 (rounded below the measured positive minimum0.7084295241) — preserves a small margin while negatives top out0.5121848747. Cost if wrong: corpus/model-specific false positives; onlytwo negatives measured.
+- A BM25 hit for sufficiency must be positive and cover at least half of substantive query terms, or match a structured identifier — raw positivity incorrectly admits both realnegativequeries through incidental words. Dense evidence remains an alternative. Cost if wrong: false refusals for sparse lexical-only matches; covered by identifier and paraphrase regressions, revisit with Phase7golden set.
+- Retain current single-key authentication on the new settings generation test until Phase5 adds user/admin roles — existing authentication cannot express an admin distinction without expanding that phase here. Cost if wrong: a current valid shared key can call generation tests; no public endpoint introduced.
