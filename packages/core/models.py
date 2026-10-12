@@ -61,8 +61,15 @@ class SearchResult(BaseModel):
     document_id: str
     text: str
     score: float
-    retrieval_method: str = Field("dense", description="dense, sparse_bm25, hybrid_rrf, or graph")
+    retrieval_method: str = Field("dense", description="dense, sparse_bm25, hybrid, or graph")
     metadata: dict[str, Any] = Field(default_factory=dict)
+    rank: int | None = None
+    filename: str = ""
+    title: str = ""
+    page_start: int | None = None
+    heading_path: str = ""
+    scores: dict[str, Any] = Field(default_factory=dict)
+    chunk_index: int | None = None
 
 
 class CriticVerdict(BaseModel):
@@ -133,12 +140,24 @@ class UpdateLLMSettingsRequest(BaseModel):
         return v
 
 
+def _default_retrieval_top_k() -> int:
+    from packages.core.settings import get_settings
+
+    return get_settings().retrieval_default_top_k
+
+
+def _default_max_cycles() -> int:
+    from packages.core.settings import get_settings
+
+    return get_settings().max_cycles
+
+
 class QueryRequest(BaseModel):
     """User query payload."""
     query: str = Field(..., min_length=1, description="User search or prompt query")
     tenant_id: str = Field("default", description="Tenant or client identifier")
-    top_k: int = Field(5, ge=1, le=50, description="Number of candidate chunks to retrieve")
-    max_cycles: int = Field(3, ge=1, le=5, description="Maximum self-healing retry cycles")
+    top_k: int = Field(default_factory=_default_retrieval_top_k, ge=1, le=20, description="Number of chunks to retrieve")
+    max_cycles: int = Field(default_factory=_default_max_cycles, ge=1, le=4, description="Maximum total retrieval and generation attempts")
     enforce_guardrails: bool = Field(True, description="Whether to enforce input/output rails")
 
 
@@ -164,6 +183,13 @@ class QueryResponse(BaseModel):
     serving_provider: str | None = Field("openai", description="Upstream LLM provider that generated the response; null when no LLM served it")
     serving_model: str | None = Field("gpt-4o-mini", description="Model that generated the response as reported upstream; null when no LLM served it")
     serving: ServingProvenance = Field(default_factory=ServingProvenance, description="Explicit serving provenance; the authoritative signal for issue #35")
+    answer_status: str = Field("answered", description="answered or insufficient_context")
+    sources: list[SearchResult] = Field(default_factory=list)
+    request_id: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    timings_ms: dict[str, float] = Field(default_factory=dict)
+    usage: dict[str, Any] | None = None
 
 
 class BackendHealth(BaseModel):

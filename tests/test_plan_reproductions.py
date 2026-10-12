@@ -37,38 +37,37 @@ def test_f08_multipart_file_upload_is_accepted():
     assert response.status_code == 200
 
 
-@pytest.mark.xfail(strict=True, reason="Provider failure still routes through refusal instead of a provider-error response.")
 @pytest.mark.asyncio
 async def test_f11_provider_failure_is_not_returned_as_refusal(monkeypatch):
     monkeypatch.delenv("APP_ENV", raising=False)
+    from packages.core.errors import ProviderError
     from packages.core.models import Chunk
     from services.ingestion.graph_store import KnowledgeGraphStore
     from services.rag_engine.agent.graph import build_rag_agent_graph
-    from services.rag_engine.retrieval.hybrid import HybridRetriever
-    from tests.fakes import FakeEmbedder, make_vector_store
+    from services.rag_engine.retrieval.hybrid import RankedChunk, RetrievalResult
 
-    chunks = [Chunk(id="repro", document_id="repro", text="Meridian uses LiteLLM for gateway routing.")]
-    embedder = FakeEmbedder()
-    vector_store = make_vector_store(embedder)
-    vector_store.upsert_chunks(chunks, embedder.embed_passages([c.text for c in chunks]))
-    from services.rag_engine.retrieval.bm25 import BM25Index
+    chunk = Chunk(id="repro", document_id="repro", text="Meridian uses LiteLLM for gateway routing.")
 
-    retriever = HybridRetriever(embedder=embedder, vector_store=vector_store, bm25_index=BM25Index(chunks))
+    class Retriever:
+        def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
+            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+
     graph_store = KnowledgeGraphStore(in_memory=True)
 
     class FailingClient:
         async def chat_completion(self, **kwargs):
-            raise RuntimeError("repro provider failure")
+            raise ProviderError("custom", 502, "Provider custom returned HTTP 401", "invalid credentials")
 
-    graph = build_rag_agent_graph(retriever, graph_store, llm_client=FailingClient())
-    state = await graph.ainvoke({
+    graph = build_rag_agent_graph(Retriever(), graph_store, llm_client=FailingClient())
+    with pytest.raises(ProviderError, match="HTTP 401") as error:
+        await graph.ainvoke({
         "query": "What does Meridian use for gateway routing?",
         "current_search_query": "What does Meridian use for gateway routing?",
         "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
         "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
         "tenant_id": "repro",
-    })
-    assert state["is_refusal"] is False
+        })
+    assert error.value.provider_message == "invalid credentials"
 
 
 @pytest.mark.xfail(strict=True, reason="Lexical overlap currently accepts the contradictory statement.")

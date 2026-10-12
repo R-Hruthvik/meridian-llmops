@@ -1,10 +1,9 @@
+import json
 import logging
-import os
 import re
-import uuid
+import time
 from typing import Any
 
-import httpx
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 
@@ -13,12 +12,11 @@ logger = logging.getLogger("meridian.rag_engine.agent")
 # Per-request retrieval breadth. Travels in RunnableConfig["configurable"] rather
 # than RagAgentState: a control knob must not bloat every checkpoint, and adding
 # one later needs no state-schema change and no graph recompile.
-DEFAULT_TOP_K = 3
+DEFAULT_TOP_K = 5
 MIN_TOP_K = 1
-MAX_TOP_K = 50
-RECALL_K_MULTIPLIER = 10
-MAX_RECALL_K = 500
+MAX_TOP_K = 20
 
+from packages.core.errors import ProviderError
 from packages.verification.tiered_verifier import TieredCitationVerifier
 from services.gateway.client import LiteLLMClient
 from services.ingestion.graph_store import KnowledgeGraphStore
@@ -26,7 +24,9 @@ from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.agent.reformulator import QueryReformulator
 from services.rag_engine.agent.refusal import SafeRefusalGenerator
 from services.rag_engine.agent.state import RagAgentState
-from services.rag_engine.retrieval.hybrid import HybridRetriever, RankedChunk
+from services.rag_engine.generation.prompt import build_prompt
+from services.rag_engine.generation.sufficiency import has_sufficient_context
+from services.rag_engine.retrieval.hybrid import RankedChunk
 
 
 def _retrieval_state_dict(ranked: RankedChunk) -> dict[str, Any]:
@@ -40,12 +40,15 @@ def _retrieval_state_dict(ranked: RankedChunk) -> dict[str, Any]:
         "chunk_id": chunk.id,
         "document_id": chunk.document_id,
         "text": chunk.text,
+        "rank": ranked.rank,
         "chunk_index": chunk.chunk_index,
         "section_heading": chunk.section_heading or "",
-        "heading_path": chunk.section_heading or "",
+        "heading_path": chunk.metadata.get("heading_path") or chunk.section_heading or "",
         "filename": ranked.filename,
         "page_start": ranked.page_start,
+        "title": chunk.metadata.get("title", ""),
         "score": ranked.score,
+        "scores": dict(ranked.scores),
         "metadata": chunk.metadata,
     }
 
@@ -58,34 +61,23 @@ def _positive_int(value: Any) -> int | None:
 
 
 def resolve_retrieval_breadth(config: RunnableConfig | None) -> tuple[int, int]:
-    """Resolve (top_k, recall_k) from a request's `configurable` block.
-
-    `top_k` is the final cut handed to the caller; `recall_k` is the fan-out
-    breadth sent to the retriever, so a future rerank stage can recall wide and
-    cut narrow. Invalid or missing values fall back to defaults instead of
-    raising — a malformed request still deserves an answer.
-    """
+    """Resolve a bounded request cut, retaining the legacy tuple return shape."""
     configurable = (config or {}).get("configurable") or {}
 
     requested_top_k = _positive_int(configurable.get("top_k"))
     top_k = min(max(requested_top_k or DEFAULT_TOP_K, MIN_TOP_K), MAX_TOP_K)
 
-    requested_recall_k = _positive_int(configurable.get("recall_k"))
-    if requested_recall_k is None:
-        recall_k = top_k * RECALL_K_MULTIPLIER
-    else:
-        # Never let the fan-out fall below the final cut; that would return
-        # fewer results than the caller asked for.
-        recall_k = min(max(requested_recall_k, top_k), MAX_RECALL_K)
-
-    return top_k, recall_k
+    return top_k, top_k
 
 
 def build_rag_agent_graph(
-    retriever: HybridRetriever,
+    retriever: Any,
     graph_store: KnowledgeGraphStore,
     llm_client: LiteLLMClient | None = None,
     llm_config_getter: Any | None = None,
+    min_dense_score: float = 0.70,
+    graph_enabled: bool = False,
+    debug_log_prompts: bool = False,
 ):
     """Assembles and compiles the cyclic LangGraph RAG workflow."""
     critic = CriticAgent()
@@ -94,92 +86,61 @@ def build_rag_agent_graph(
 
     refusal_gen = SafeRefusalGenerator()
     client = llm_client or LiteLLMClient()
+    insufficient_answer = "I don't have enough information in the provided documents to answer that."
 
     # --- Node Definitions ---
 
     def retrieve_node(state: RagAgentState, config: RunnableConfig) -> dict[str, Any]:
         query = state.get("current_search_query") or state["query"]
         cycle = state.get("cycle_count", 0) + 1
-
-        top_k, recall_k = resolve_retrieval_breadth(config)
-
-        result = retriever.retrieve(
-            query, top_k=recall_k, tenant_id=state.get("tenant_id", "default")
-        )
+        top_k, _recall_k = resolve_retrieval_breadth(config)
+        started = time.perf_counter()
+        result = retriever.retrieve(query, top_k=top_k, tenant_id=state.get("tenant_id", "default"))
         chunk_dicts = [_retrieval_state_dict(ranked) for ranked in result.chunks[:top_k]]
 
-        # Extract graph neighborhood if entities match
         extracted_entities: list[dict[str, Any]] = []
-        matched_names: set[str] = set()
+        if graph_enabled:
+            query_words = [re.sub(r"[^\w-]", "", word).strip() for word in query.split()]
+            stopwords = {"the", "and", "for", "what", "which", "who", "does", "did", "is", "are", "was", "were", "its", "how", "why", "when", "where", "use", "uses", "used", "using", "each", "provide", "because", "between", "from", "with", "that", "this", "into", "about", "can", "will"}
+            exact_hits: list[dict[str, Any]] = []
+            fuzzy_hits: list[dict[str, Any]] = []
+            seen: set[str] = set()
+            for word in query_words:
+                lowered = word.lower()
+                if len(lowered) < 3 or lowered in stopwords:
+                    continue
+                entity = graph_store.get_entity_by_lowercase_name(lowered)
+                if entity and entity.name not in seen:
+                    exact_hits.append({"name": entity.name, "entity_type": entity.entity_type})
+                    seen.add(entity.name)
+                else:
+                    for entity_name, entity in graph_store.entities.items():
+                        if entity_name in seen:
+                            continue
+                        name = entity_name.lower()
+                        if min(len(lowered), len(name)) >= 5 and (lowered in name or name in lowered):
+                            fuzzy_hits.append({"name": entity.name, "entity_type": entity.entity_type})
+                            seen.add(entity_name)
+            extracted_entities.extend(exact_hits[:8])
+            extracted_entities.extend(fuzzy_hits[: max(0, 12 - len(extracted_entities))])
+            matched_names = {entity["name"] for entity in extracted_entities}
+            for entity_info in list(extracted_entities):
+                for relation in graph_store.query_neighborhood(entity_info["name"]):
+                    for target in (relation.source_entity, relation.target_entity):
+                        if target and target not in matched_names:
+                            matched_names.add(target)
+                            graph_entity = graph_store.entities.get(target)
+                            extracted_entities.append({"name": target, "entity_type": graph_entity.entity_type if graph_entity else "Concept"})
+            if not extracted_entities and graph_store.entities:
+                extracted_entities = [{"name": entity.name, "entity_type": entity.entity_type} for entity in list(graph_store.entities.values())[:10]]
 
-        # Clean punctuation from query words
-        query_words = [re.sub(r"[^\w\s-]", "", w).strip() for w in query.split()]
-        query_words = [w for w in query_words if len(w) > 1]
-
-        # 1. Match direct entities from KnowledgeGraphStore.
-        #    Exact word matches rank first; longer substrings catch inflections
-        #    ("storage" ~ "Storage"), but short/stopword-like tokens are skipped so
-        #    noise such as "use" matching "Useful" never reaches the UI panel.
-        exact_hits: list[dict[str, Any]] = []
-        fuzzy_hits: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        # Interrogatives/connectors that would otherwise hit prose-derived Concept
-        # nodes such as "Which" or "Because" in the graph.
-        stopwords = {
-            "the", "and", "for", "what", "which", "who", "does", "did", "is", "are",
-            "was", "were", "its", "how", "why", "when", "where", "use", "uses",
-            "used", "using", "each", "provide", "because", "between", "from", "with",
-            "that", "this", "into", "about", "can", "will",
-        }
-        for w in query_words:
-            wl = w.lower()
-            if len(wl) < 3 or wl in stopwords:
-                continue
-            # O(1) exact match via index
-            ent_obj = graph_store.get_entity_by_lowercase_name(wl)
-            if ent_obj and ent_obj.name not in seen:
-                exact_hits.append({"name": ent_obj.name, "entity_type": ent_obj.entity_type})
-                seen.add(ent_obj.name)
-            else:
-                # Fuzzy matching still requires full scan (only for non-exact words)
-                for ent_name, ent in graph_store.entities.items():
-                    if ent_name in seen:
-                        continue
-                    el = ent_name.lower()
-                    if min(len(wl), len(el)) >= 5 and (wl in el or el in wl):
-                        fuzzy_hits.append({"name": ent.name, "entity_type": ent.entity_type})
-                        seen.add(ent_name)
-
-        extracted_entities.extend(exact_hits[:8])
-        extracted_entities.extend(fuzzy_hits[: max(0, 12 - len(extracted_entities))])
-        matched_names.update(e["name"] for e in extracted_entities)
-
-        # 2. Expand one graph hop around matched entities to surface real relations.
-        #    query_neighborhood requires exact node names, so this only fires for
-        #    confirmed matches rather than raw query words.
-        for e in list(extracted_entities):
-            for r in graph_store.query_neighborhood(e["name"]):
-                for target_name in (r.source_entity, r.target_entity):
-                    if target_name and target_name not in matched_names:
-                        matched_names.add(target_name)
-                        ent_obj = graph_store.entities.get(target_name)
-                        extracted_entities.append({
-                            "name": target_name,
-                            "entity_type": ent_obj.entity_type if ent_obj else "Concept",
-                        })
-
-        # Fallback: if no query words matched specifically, surface active graph entities
-        if not extracted_entities and graph_store.entities:
-            for ent in list(graph_store.entities.values())[:10]:
-                extracted_entities.append({
-                    "name": ent.name,
-                    "entity_type": ent.entity_type,
-                })
-
+        timings = dict(state.get("timings_ms") or {})
+        timings["retrieve"] = timings.get("retrieve", 0.0) + result.timings_ms.get("total", (time.perf_counter() - started) * 1000)
         return {
             "retrieved_chunks": chunk_dicts,
             "entities": extracted_entities,
             "cycle_count": cycle,
+            "timings_ms": timings,
         }
 
     async def generate_node(state: RagAgentState) -> dict[str, Any]:
@@ -198,40 +159,28 @@ def build_rag_agent_graph(
                     "I can answer questions from your knowledge base, check security guardrails, "
                     "or ingest documentation into Qdrant & Neo4j. How can I assist you today?"
                 ),
+                "answer_status": "answered",
             }
 
         chunks = state.get("retrieved_chunks", [])
-        # No lexical-score filter: after RRF fusion the graph hands over exactly
-        # the top_k chunks, and a threshold calibrated for lexical overlap
-        # (0.08) would silently reject RRF-scale scores (~0.03).
-        valid_chunks = list(chunks)
-        if not valid_chunks:
-            # No meaningful context retrieved
+        if not has_sufficient_context(query, chunks, min_dense_score=min_dense_score):
             return {
-                "draft_answer": "",
+                "draft_answer": insufficient_answer,
+                "answer_status": "insufficient_context",
+                "is_grounded": False,
             }
 
-        context_text = "\n\n".join([f"[{i+1}] {c.get('text', '')}" for i, c in enumerate(valid_chunks)])
-        # Issue #34/#35: upstream proxies may serve semantic-cached completions for
-        # repeated prompts. A per-request nonce keeps every signature unique so each
-        # query is guaranteed a fresh LLM generation.
-        request_nonce = uuid.uuid4().hex
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are Meridian AI, an enterprise knowledge assistant. "
-                    "Answer the user's question with high accuracy, focus, and structure using the provided context. "
-                    "Format your answer cleanly using standard Markdown (use bold text for key terms, section headings, bullet points, or tables where appropriate). "
-                    "Be direct, structured, and focused on providing a comprehensive yet easy-to-read answer."
-                    f" [request:{request_nonce}]"
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"Context:\n{context_text}\n\nQuestion: {query}",
-            },
-        ]
+        prompt = build_prompt(query, chunks)
+        selected_chunks = prompt.selected_chunks
+        if not selected_chunks or not has_sufficient_context(
+            query, selected_chunks, min_dense_score=min_dense_score
+        ):
+            return {
+                "draft_answer": insufficient_answer,
+                "answer_status": "insufficient_context",
+                "is_grounded": False,
+            }
+        messages = prompt.messages
 
         cfg = llm_config_getter() if llm_config_getter else {}
         provider = cfg.get("provider", "openai")
@@ -239,7 +188,10 @@ def build_rag_agent_graph(
         base_url = cfg.get("base_url")
         model = cfg.get("model", "gpt-4o-mini")
 
+        started = time.perf_counter()
         try:
+            if debug_log_prompts:
+                _log_debug_payload("prompt", state.get("request_id", ""), messages, api_key)
             resp = await client.chat_completion(
                 messages=messages,
                 model=model,
@@ -250,30 +202,49 @@ def build_rag_agent_graph(
                 max_tokens=600,
             )
             draft = resp.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if debug_log_prompts:
+                _log_debug_payload("response", state.get("request_id", ""), resp.get("raw_response", resp), api_key)
             if not draft.strip():
-                logger.warning("LLM returned empty response for query '%s' via %s (%s)", query, provider, model)
-                # Per spec Story 13: empty draft must trigger Critic → reformulate → safe refusal, not masked.
-                # In testing, synthesize grounded draft from context so seam tests can verify retrieval without live LLM.
-                if os.environ.get("APP_ENV") == "testing" and valid_chunks:
-                    draft = "\n".join(c.get("text", "") for c in valid_chunks)
-                else:
-                    return {
-                        "draft_answer": "",
-                        "generation_error": f"LLM returned an empty completion via {provider} ({model})",
-                    }
-        except (httpx.HTTPError, httpx.RequestError, OSError, ValueError, KeyError, RuntimeError) as e:
-            logger.error("LLM Generation Failed via %s (%s @ %s): %s", provider, model, base_url, e)
-            if os.environ.get("APP_ENV") == "testing" and valid_chunks:
-                draft = "\n".join(c.get("text", "") for c in valid_chunks)
-            else:
-                return {
-                    "draft_answer": "",
-                    "generation_error": f"LLM generation failed via {provider} ({model} @ {base_url}): {e}",
-                }
+                raise ProviderError(
+                    provider,
+                    502,
+                    f"Provider {provider} returned an empty completion",
+                )
+        except ProviderError:
+            raise
+        except Exception as e:
+            provider_message = str(e)
+            if api_key:
+                provider_message = provider_message.replace(api_key, "[REDACTED]")
+            logger.error("LLM generation failed via %s (%s): %s", provider, model, provider_message)
+            raise ProviderError(
+                provider,
+                502,
+                f"Provider {provider} request failed",
+                provider_message,
+            ) from e
 
-        return {"draft_answer": draft, "generation_error": None}
+        timings = dict(state.get("timings_ms") or {})
+        timings["generate"] = timings.get("generate", 0.0) + (time.perf_counter() - started) * 1000
+        return {
+            "draft_answer": draft,
+            "generation_error": None,
+            "retrieved_chunks": selected_chunks,
+            "answer_status": "answered",
+            "serving_provider": resp.get("provider", provider),
+            "serving_model": resp.get("model", model),
+            "usage": resp.get("usage"),
+            "timings_ms": timings,
+        }
+
+    def _log_debug_payload(kind: str, request_id: str, payload: Any, api_key: str | None) -> None:
+        serialized = json.dumps(payload, ensure_ascii=False, default=str)
+        if api_key:
+            serialized = serialized.replace(api_key, "[REDACTED]")
+        logger.debug("request_id=%s %s=%s", request_id, kind, serialized)
 
     def critic_node(state: RagAgentState) -> dict[str, Any]:
+        started = time.perf_counter()
         query = state["query"]
         draft = state.get("draft_answer", "")
         context = "\n".join([c.get("text", "") for c in state.get("retrieved_chunks", [])])
@@ -284,11 +255,14 @@ def build_rag_agent_graph(
         sentences = [s.strip() for s in draft.split(".") if s.strip()]
         verification_res = tiered_verifier.verify_claims(sentences, state.get("retrieved_chunks", []))
 
+        timings = dict(state.get("timings_ms") or {})
+        timings["verify"] = timings.get("verify", 0.0) + (time.perf_counter() - started) * 1000
         return {
             "critic_verdict": verdict.model_dump(),
             "is_grounded": verdict.is_grounded,
             "claims": [c.model_dump() for c in verification_res.claims],
             "verification_result": verification_res.model_dump(),
+            "timings_ms": timings,
         }
 
 
@@ -308,11 +282,13 @@ def build_rag_agent_graph(
     # --- Routing Condition ---
 
     def route_after_critique(state: RagAgentState) -> str:
+        if state.get("answer_status") == "insufficient_context":
+            return "end"
         if state.get("is_grounded", False):
             return "end"
 
         # If not grounded, check cycle limit
-        if state.get("cycle_count", 0) >= state.get("max_cycles", 3):
+        if state.get("cycle_count", 0) >= state.get("max_cycles", 2):
             return "refuse"
 
         return "reformulate"

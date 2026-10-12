@@ -21,7 +21,7 @@ import sys
 
 import pytest
 
-from tests.fakes import FakeEmbedder
+from tests.fakes import FakeEmbedder, FakeLLM
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +30,18 @@ def app_test_embedder(monkeypatch):
     app_module = sys.modules.get('services.rag_engine.app')
     if app_module is not None:
         embedder = FakeEmbedder(app_module.vector_store.dim)
+        llm = FakeLLM()
+        monkeypatch.setattr(app_module, 'llm_client', llm)
+        settings = app_module._core_get_settings()
+        monkeypatch.setattr(app_module, 'agent_graph', app_module.build_rag_agent_graph(
+            retriever=app_module.retriever,
+            graph_store=app_module.graph_store,
+            llm_client=llm,
+            llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
+            min_dense_score=settings.min_dense_score,
+            graph_enabled=settings.graph_enabled,
+            debug_log_prompts=settings.debug_log_prompts,
+        ))
         monkeypatch.setattr(app_module.ingestion_pipeline, 'embedder', embedder)
         monkeypatch.setattr(app_module.retriever, 'embedder', embedder)
         app_module.vector_store.ensure_collection()

@@ -19,4 +19,10 @@ class RagAgentState(TypedDict):
     claims: list[dict[str, Any]]
     verification_result: dict[str, Any] | None
     generation_error: str | None
+    answer_status: str
+    timings_ms: dict[str, float]
+    request_id: str
+    serving_provider: str | None
+    serving_model: str | None
+    usage: dict[str, Any] | None
 

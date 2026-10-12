@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
@@ -100,15 +101,26 @@ async def handle_index_error(request: Request, error: IndexWriteError | IndexRea
     return JSONResponse(status_code=503, content={'error': {'code': code, 'message': str(error)}})
 
 
+@app.exception_handler(ProviderError)
+async def handle_provider_error(request: Request, error: ProviderError) -> JSONResponse:
+    return JSONResponse(
+        status_code=error.status,
+        content={"error": {
+            "code": "provider_error",
+            "message": error.message,
+            "provider_message": error.provider_message,
+        }},
+    )
+
+
 # Qdrant uses an explicit backend; service failures never switch backends.
-_is_testing = os.environ.get("APP_ENV") == "testing"
 _settings = _core_get_settings()
 _qdrant_client = ((QdrantClient(':memory:') if _settings.qdrant_local_path == ':memory:'
                    else QdrantClient(path=_settings.qdrant_local_path))
                   if _settings.vector_backend == 'qdrant_local'
                   else QdrantClient(host=_settings.qdrant_host, port=_settings.qdrant_port, timeout=5))
 vector_store = QdrantChunkStore(_qdrant_client, _settings.qdrant_collection, _settings.qdrant_vector_dim)
-graph_store = KnowledgeGraphStore(in_memory=_is_testing)
+graph_store = KnowledgeGraphStore(in_memory=not _settings.graph_enabled)
 ingestion_pipeline = IngestionPipeline(
     vector_store=vector_store,
     graph_store=graph_store,
@@ -366,6 +378,9 @@ agent_graph = build_rag_agent_graph(
     graph_store=graph_store,
     llm_client=llm_client,
     llm_config_getter=_resolve_active_llm_config_with_secrets,
+    min_dense_score=_settings.min_dense_score,
+    graph_enabled=_settings.graph_enabled,
+    debug_log_prompts=_settings.debug_log_prompts,
 )
 
 
@@ -564,10 +579,9 @@ async def query_endpoint(
     blocked = _index_gate()
     if blocked is not None:
         return blocked
-    start_time = time.time()
+    start_time = time.perf_counter()
+    request_id = str(uuid.uuid4())
     trace_ctx = tracer.trace(name="rag-query-pipeline", tenant_id=tenant_id)
-    # Issue #35: provenance must come from the upstream response, not from config.
-    served_seq_before = llm_client.served_snapshot()[0]
 
     with trace_ctx as trace:
         # 1. Input Guardrails
@@ -598,8 +612,13 @@ async def query_endpoint(
                 "is_grounded": False,
                 "is_refusal": False,
                 "tenant_id": tenant_id,
+                "answer_status": "answered",
+                "timings_ms": {},
+                "request_id": request_id,
+                "serving_provider": None,
+                "serving_model": None,
+                "usage": None,
             }
-            # The graph derives its own recall breadth from top_k (see resolve_retrieval_breadth).
             final_state = await agent_graph.ainvoke(
                 initial_state,
                 config={"configurable": {"top_k": req.top_k}},
@@ -617,59 +636,44 @@ async def query_endpoint(
         else:
             final_answer = raw_answer
 
-        # 4. Record LLM generation span
-        with trace.generation(name="critic-agent-llm") as gen:
-            gen.set_tokens(
-                prompt_tokens=len(req.query.split()) + 50,
-                completion_tokens=len(final_answer.split()),
-            )
+        # 4. Record usage only when this request received a provider response.
+        if final_state.get("serving_provider"):
+            with trace.generation(name="rag-generation") as gen:
+                usage = final_state.get("usage") or {}
+                prompt_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
+                completion_tokens = usage.get("completion_tokens", usage.get("output_tokens"))
+                if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
+                    gen.set_tokens(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
 
-    elapsed_ms = (time.time() - start_time) * 1000
-
-    # Issue #35: report who actually served this. The upstream may have substituted a
-    # different model than we asked for, and on bypass/refusal/degraded paths no LLM
-    # served the answer at all — in both cases a config echo would be a lie.
-    seq_after, served_provider, served_model, requested_model, had_content = llm_client.served_snapshot()
-    llm_served = seq_after > served_seq_before and had_content and not final_state.get("is_refusal", False)
-    if llm_served:
-        provider_value, model_value = served_provider, served_model
-        if served_model != requested_model:
-            logger.warning(
-                "LLM model substitution (issue #35): requested '%s', upstream served '%s' via %s",
-                requested_model,
-                served_model,
-                served_provider,
-            )
-    else:
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+    timings_ms = dict(final_state.get("timings_ms") or {})
+    timings_ms["total"] = elapsed_ms
+    provider_value = final_state.get("serving_provider")
+    model_value = final_state.get("serving_model")
+    if final_state.get("is_refusal", False):
         provider_value, model_value = None, None
+    llm_served = bool(provider_value and model_value)
 
     chunks_data = [
         SearchResult(
             chunk_id=c.get("chunk_id", "c"),
             document_id=c.get("document_id", "d"),
             text=c.get("text", ""),
-            score=c.get("score", 1.0),
-            retrieval_method="hybrid_rrf",
+            score=c.get("score", 0.0),
+            retrieval_method="hybrid",
+            metadata=c.get("metadata", {}),
+            rank=c.get("rank"),
+            filename=c.get("filename", ""),
+            title=c.get("title", ""),
+            page_start=c.get("page_start"),
+            heading_path=c.get("heading_path", ""),
+            scores=c.get("scores", {}),
+            chunk_index=c.get("chunk_index"),
         )
         for c in final_state.get("retrieved_chunks", [])
     ]
 
     degraded_reason: str | None = final_state.get("generation_error")
-    # Latency tripwire (issue #34): a "verified" non-refusal answer produced implausibly
-    # fast means it did not come from a real generation — flag it instead of trusting it.
-    if (
-        degraded_reason is None
-        and os.environ.get("APP_ENV") != "testing"
-        and not final_state.get("is_refusal", False)
-        and final_state.get("draft_answer")
-        and elapsed_ms < 500
-    ):
-        degraded_reason = (
-            f"Answer arrived in {elapsed_ms:.0f} ms, below plausible generation latency; "
-            "response may be cached or stale and is not attributable to a fresh LLM call"
-        )
-        logger.warning("Latency tripwire tripped (%.0f ms): %s", elapsed_ms, degraded_reason)
-
     return QueryResponse(
         query=req.query,
         answer=final_answer,
@@ -684,9 +688,16 @@ async def query_endpoint(
         serving=ServingProvenance(
             provider=provider_value,
             model=model_value,
-            fresh=bool(llm_served),
+            fresh=llm_served,
         ),
         degraded_reason=degraded_reason,
+        answer_status=final_state.get("answer_status", "answered"),
+        sources=chunks_data,
+        request_id=request_id,
+        provider=provider_value,
+        model=model_value,
+        timings_ms=timings_ms,
+        usage=final_state.get("usage"),
     )
 
 
@@ -891,6 +902,9 @@ async def update_llm_settings(
             graph_store=graph_store,
             llm_client=llm_client,
             llm_config_getter=_resolve_active_llm_config_with_secrets,
+            min_dense_score=_core_get_settings().min_dense_score,
+            graph_enabled=_core_get_settings().graph_enabled,
+            debug_log_prompts=_core_get_settings().debug_log_prompts,
         )
 
     return masked_llm_view(_runtime_llm_settings)

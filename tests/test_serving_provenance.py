@@ -151,11 +151,16 @@ def seeded_client(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module, "ingestion_pipeline", pipeline)
     monkeypatch.setattr(app_module, "retriever", isolated_retriever)
     monkeypatch.setitem(globals(), "retriever", isolated_retriever)
+    query_client = LiteLLMClient()
+    monkeypatch.setattr(app_module, "llm_client", query_client)
     monkeypatch.setattr(app_module, "agent_graph", build_rag_agent_graph(
         retriever=isolated_retriever,
         graph_store=graph_store,
-        llm_client=app_module.llm_client,
+        llm_client=query_client,
         llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
+        min_dense_score=0.0,
+        graph_enabled=app_module._core_get_settings().graph_enabled,
+        debug_log_prompts=app_module._core_get_settings().debug_log_prompts,
     ))
     return TestClient(app)
 
@@ -169,7 +174,7 @@ def _stub_upstream(monkeypatch, answer_builder, model=UPSTREAM_MODEL):
             question = ""
             for m in (json or {}).get("messages", []):
                 if m.get("role") == "user":
-                    question = m["content"].split("Question:")[-1].strip()
+                    question = m["content"].split("Question:")[-1].split("\n\nSources:")[0].strip()
             return _FakeResponse(
                 _json.dumps(
                     {
@@ -215,7 +220,7 @@ def test_query_reports_upstream_model_not_config_echo(seeded_client, monkeypatch
     assert data["serving_model"] != app_module.get_active_llm_config()["model"]
 
 
-def test_substitution_is_logged_without_secrets(seeded_client, monkeypatch, caplog):
+def test_query_provenance_comes_from_this_provider_response(seeded_client, monkeypatch, caplog):
     _stub_upstream(monkeypatch, _grounded_answer)
 
     with caplog.at_level(logging.WARNING, logger="meridian.rag_engine"):
@@ -224,14 +229,31 @@ def test_substitution_is_logged_without_secrets(seeded_client, monkeypatch, capl
             headers={"X-API-Key": API_KEY},
             json={"query": "What storage does Meridian use for dense vector similarity?"},
         )
-    substitution_logs = [r for r in caplog.records if "substitut" in r.getMessage().lower()]
-    assert len(substitution_logs) == 1
-    assert UPSTREAM_MODEL in substitution_logs[0].getMessage()
+    response = seeded_client.post(
+        "/v1/query",
+        headers={"X-API-Key": API_KEY},
+        json={"query": "What storage does Meridian use for dense vector similarity?"},
+    )
+    data = response.json()
+    assert data["serving_model"] == UPSTREAM_MODEL
+    assert data["model"] == UPSTREAM_MODEL
+    assert data["serving"]["fresh"] is True
     assert "sk-secret-value-not-for-logs" not in caplog.text
 
 
-def test_refusal_does_not_claim_a_model_served_it(seeded_client, monkeypatch):
-    """The refusal text is generated locally, so no model served the answer."""
+def test_insufficient_context_does_not_claim_a_model_served_it(seeded_client, monkeypatch):
+    from services.rag_engine import app as app_module
+    from services.rag_engine.agent.graph import build_rag_agent_graph
+
+    settings = app_module._core_get_settings()
+    monkeypatch.setattr(app_module, "agent_graph", build_rag_agent_graph(
+        retriever=app_module.retriever,
+        graph_store=app_module.graph_store,
+        llm_client=app_module.llm_client,
+        llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
+        min_dense_score=settings.min_dense_score,
+        graph_enabled=settings.graph_enabled,
+    ))
     _stub_upstream(monkeypatch, lambda _q: "Bananas are a fruit grown in tropical climates.")
 
     response = seeded_client.post(
@@ -241,7 +263,8 @@ def test_refusal_does_not_claim_a_model_served_it(seeded_client, monkeypatch):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["refusal"] is True
+    assert data["answer_status"] == "insufficient_context"
+    assert data["refusal"] is False
     assert data["serving_model"] is None
     assert data["serving_provider"] is None
     assert data["serving"] == {"provider": None, "model": None, "fresh": False}
@@ -260,8 +283,7 @@ def test_greeting_bypass_does_not_claim_a_model_served_it(seeded_client):
     assert data["serving"] == {"provider": None, "model": None, "fresh": False}
 
 
-def test_empty_upstream_completion_does_not_claim_a_model_served_it(seeded_client, monkeypatch):
-    """Testing mode synthesises the draft from context, so upstream served nothing."""
+def test_empty_upstream_completion_is_a_typed_provider_error(seeded_client, monkeypatch):
     _stub_upstream(monkeypatch, lambda _q: "   ")
 
     response = seeded_client.post(
@@ -269,14 +291,11 @@ def test_empty_upstream_completion_does_not_claim_a_model_served_it(seeded_clien
         headers={"X-API-Key": API_KEY},
         json={"query": "What storage does Meridian use for dense vector similarity?"},
     )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["serving_model"] is None
-    assert data["serving"] == {"provider": None, "model": None, "fresh": False}
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "provider_error"
 
 
-def test_generation_failure_is_degraded_and_claims_no_serving(seeded_client, monkeypatch):
-    """Outside testing mode an empty draft is a real generation failure."""
+def test_provider_failure_returns_provider_message_and_no_empty_answer(seeded_client, monkeypatch):
     monkeypatch.setenv("APP_ENV", "prod")
     _stub_upstream(monkeypatch, lambda _q: "   ")
 
@@ -285,9 +304,41 @@ def test_generation_failure_is_degraded_and_claims_no_serving(seeded_client, mon
         headers={"X-API-Key": API_KEY},
         json={"query": "What storage does Meridian use for dense vector similarity?", "max_cycles": 1},
     )
-    assert response.status_code == 200
+    assert response.status_code == 502
     data = response.json()
-    assert data["degraded_reason"]
-    assert "empty completion" in data["degraded_reason"]
-    assert data["serving_model"] is None
-    assert data["serving"] == {"provider": None, "model": None, "fresh": False}
+    assert data["error"]["code"] == "provider_error"
+    assert "empty completion" in data["error"]["message"]
+
+
+def test_typed_provider_error_is_returned_as_http_json(seeded_client, monkeypatch):
+    from packages.core.errors import ProviderError
+    from services.rag_engine import app as app_module
+    from services.rag_engine.agent.graph import build_rag_agent_graph
+
+    class FailingClient:
+        async def chat_completion(self, **kwargs):
+            raise ProviderError("custom", 502, "Provider custom returned HTTP 401", "invalid credentials")
+
+    settings = app_module._core_get_settings()
+    monkeypatch.setattr(app_module, "agent_graph", build_rag_agent_graph(
+        retriever=app_module.retriever,
+        graph_store=app_module.graph_store,
+        llm_client=FailingClient(),
+        llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
+        min_dense_score=0.0,
+        graph_enabled=settings.graph_enabled,
+    ))
+    response = seeded_client.post(
+        "/v1/query",
+        headers={"X-API-Key": API_KEY},
+        json={"query": "What storage does Meridian use for dense vector similarity?"},
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "error": {
+            "code": "provider_error",
+            "message": "Provider custom returned HTTP 401",
+            "provider_message": "invalid credentials",
+        }
+    }

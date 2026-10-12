@@ -99,10 +99,12 @@ class _RecordingRetriever:
                     id=f"c{i}",
                     document_id="d1",
                     text=f"Meridian platform chunk {i} about gateway routing and guardrails.",
+                    chunk_index=i,
                     section_heading="Gateway",
+                    metadata={"filename": f"doc-{i}.md", "page_start": i + 1, "title": f"Doc {i}", "tenant_id": "tenant-enterprise-1"},
                 ),
                 rank=i + 1,
-                scores={"final": 0.9, "rrf": 0.9},
+                scores={"dense": 0.95, "bm25": 0.0, "final": 0.9, "rrf": 0.9},
             )
             for i in range(corpus_size)
         ]
@@ -112,7 +114,8 @@ class _RecordingRetriever:
         return RetrievalResult(query=query, top_k=top_k, chunks=self.results[:top_k], timings_ms={})
 
 
-def test_query_top_k_reaches_the_retriever(client, monkeypatch):
+@pytest.mark.parametrize("top_k", [1, 3, 8])
+def test_query_top_k_reaches_the_retriever_with_source_metadata(client, monkeypatch, top_k):
     from services.rag_engine import app as app_module
 
     recorder = _RecordingRetriever()
@@ -129,11 +132,19 @@ def test_query_top_k_reaches_the_retriever(client, monkeypatch):
 
     resp = client.post(
         "/v1/query",
-        json={"query": "What does Meridian use for gateway routing?", "top_k": 7, "max_cycles": 1},
+        json={"query": "What does Meridian use for gateway routing?", "top_k": top_k, "max_cycles": 1},
         headers=HEADERS,
     )
 
     assert resp.status_code == 200
-    # Recall breadth is derived as top_k * RECALL_K_MULTIPLIER inside the graph.
-    assert recorder.calls == [70]
-    assert len(resp.json()["source_chunks"]) == 7
+    assert recorder.calls == [top_k]
+    data = resp.json()
+    assert len(data["source_chunks"]) == top_k
+    assert len(data["sources"]) == top_k
+    assert data["sources"][0]["filename"] == "doc-0.md"
+    assert data["sources"][0]["page_start"] == 1
+    assert data["sources"][0]["heading_path"] == "Gateway"
+    assert data["sources"][0]["chunk_index"] == 0
+    assert data["sources"][0]["scores"]["dense"] == 0.95
+    assert data["sources"][0]["metadata"]["title"] == "Doc 0"
+    assert data["usage"]["total_tokens"] == 12

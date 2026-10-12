@@ -49,7 +49,7 @@ def test_api_successful_query_flow(client):
     assert data["execution_time_ms"] > 0
 
 
-def test_api_unanswerable_query_safe_refusal(client):
+def test_api_unanswerable_query_returns_insufficient_context(client):
     headers = {"X-API-Key": "meridian-test-secret-key-2026"}
     response = client.post(
         "/v1/query",
@@ -63,8 +63,9 @@ def test_api_unanswerable_query_safe_refusal(client):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["refusal"] is True
-    assert "unable to verify" in data["answer"].lower() or "not found" in data["answer"].lower()
+    assert data["answer_status"] == "insufficient_context"
+    assert data["answer"] == "I don't have enough information in the provided documents to answer that."
+    assert data["usage"] is None
 
 
 def test_api_prompt_injection_blocked(client):

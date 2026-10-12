@@ -2,12 +2,13 @@
 
 import pytest
 
+from packages.core.errors import ProviderError
 from packages.core.models import Chunk
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.agent.graph import build_rag_agent_graph
-from services.rag_engine.retrieval.hybrid import HybridRetriever
-from tests.fakes import FakeEmbedder, make_vector_store
+from services.rag_engine.retrieval.hybrid import HybridRetriever, RankedChunk, RetrievalResult
+from tests.fakes import FakeEmbedder, FakeLLM, make_vector_store
 
 
 @pytest.fixture
@@ -58,9 +59,254 @@ def test_critic_agent_evaluates_grounding():
 
 
 @pytest.mark.asyncio
+async def test_unsupported_chunks_skip_generation_even_with_a_raw_bm25_hit():
+    chunk = Chunk(
+        id="c-noise",
+        document_id="d-noise",
+        text="This page describes an unrelated internal process.",
+        section_heading="Operations",
+        metadata={"filename": "ops.md", "page": 4},
+    )
+
+    class Retriever:
+        def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
+            return RetrievalResult(
+                query=query,
+                top_k=top_k,
+                chunks=[RankedChunk(chunk, 1, {"dense": 0.2, "bm25": 2.0, "final": 0.01})],
+                timings_ms={"total": 1.0},
+            )
+
+    class CountingLLM:
+        calls = 0
+
+        async def chat_completion(self, **kwargs):
+            self.calls += 1
+            return {"choices": [{"message": {"content": "unsupported"}}]}
+
+    client = CountingLLM()
+    graph = build_rag_agent_graph(
+        retriever=Retriever(),
+        graph_store=KnowledgeGraphStore(in_memory=True),
+        llm_client=client,
+    )
+    state = {
+        "query": "What was the stock price of Apple in 1994?",
+        "current_search_query": "What was the stock price of Apple in 1994?",
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "critic_verdict": None,
+        "cycle_count": 0,
+        "max_cycles": 2,
+        "is_grounded": False,
+        "is_refusal": False,
+        "tenant_id": "test-tenant",
+    }
+
+    result = await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
+
+    assert result["answer_status"] == "insufficient_context"
+    assert result["draft_answer"] == "I don't have enough information in the provided documents to answer that."
+    assert client.calls == 0
+    assert result["retrieved_chunks"][0]["filename"] == "ops.md"
+
+
+@pytest.mark.asyncio
+async def test_prompt_budget_dropping_all_sources_skips_generation():
+    chunk = Chunk(id="c-large", document_id="d-large", text="Qdrant " * 30000)
+
+    class Retriever:
+        def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
+            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+
+    client = FakeLLM()
+    graph = build_rag_agent_graph(Retriever(), KnowledgeGraphStore(in_memory=True), llm_client=client)
+    state = {
+        "query": "What is Qdrant?", "current_search_query": "What is Qdrant?",
+        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
+        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "tenant_id": "test",
+    }
+
+    result = await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
+
+    assert result["answer_status"] == "insufficient_context"
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_prompt_sufficiency_is_rechecked_after_budget_selection():
+    noise = Chunk(id="c-noise", document_id="d", text="An unrelated operations note.")
+    useful_but_dropped = Chunk(id="c-useful", document_id="d", text="Qdrant stores vectors. " * 30000)
+
+    class Retriever:
+        def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
+            return RetrievalResult(query, top_k, [
+                RankedChunk(noise, 1, {"dense": 0.2, "bm25": 2.0, "final": 0.02}),
+                RankedChunk(useful_but_dropped, 2, {"dense": 0.9, "bm25": 0.0, "final": 0.01}),
+            ])
+
+    client = FakeLLM()
+    graph = build_rag_agent_graph(Retriever(), KnowledgeGraphStore(in_memory=True), llm_client=client)
+    state = {
+        "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
+        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
+        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "tenant_id": "test",
+    }
+
+    result = await graph.ainvoke(state, config={"configurable": {"top_k": 2}})
+
+    assert result["answer_status"] == "insufficient_context"
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["empty", "runtime"])
+async def test_generation_failures_are_typed_provider_errors(failure):
+    chunk = Chunk(id="c-source", document_id="d", text="Qdrant stores vectors.")
+
+    class Retriever:
+        def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
+            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+
+    class FailingClient:
+        async def chat_completion(self, **kwargs):
+            if failure == "runtime":
+                raise RuntimeError("connection refused")
+            return {"choices": [{"message": {"content": "  "}}]}
+
+    graph = build_rag_agent_graph(
+        Retriever(),
+        KnowledgeGraphStore(in_memory=True),
+        llm_client=FailingClient(),
+        llm_config_getter=lambda: {"provider": "custom", "model": "test"},
+    )
+    state = {
+        "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
+        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
+        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "tenant_id": "test",
+    }
+
+    with pytest.raises(ProviderError) as error:
+        await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
+
+    assert error.value.status == 502
+    if failure == "empty":
+        assert "empty completion" in error.value.message
+    else:
+        assert error.value.provider_message == "connection refused"
+
+
+@pytest.mark.asyncio
+async def test_debug_prompt_logging_is_correlated_and_redacts_key_in_json_property(caplog):
+    chunk = Chunk(id="c-safe", document_id="d-safe", text="Qdrant is a vector database.")
+
+    class Retriever:
+        def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
+            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+
+    class Client:
+        async def chat_completion(self, **kwargs):
+            return {
+                "choices": [{"message": {"content": "Qdrant is a vector database."}}],
+                "raw_response": {"credential-secret": "credential-secret", "text": "ok"},
+                "usage": None,
+            }
+
+    graph = build_rag_agent_graph(
+        Retriever(),
+        KnowledgeGraphStore(in_memory=True),
+        llm_client=Client(),
+        llm_config_getter=lambda: {"provider": "custom", "model": "test", "api_key": "credential-secret"},
+        debug_log_prompts=True,
+    )
+    state = {
+        "query": "What is Qdrant?", "current_search_query": "What is Qdrant?",
+        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
+        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "tenant_id": "test", "request_id": "request-123",
+    }
+
+    with caplog.at_level("DEBUG", logger="meridian.rag_engine.agent"):
+        await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
+
+    logs = "\n".join(record.getMessage() for record in caplog.records)
+    assert "request_id=request-123 prompt=" in logs
+    assert "<source_text>" in logs
+    assert "request_id=request-123 response=" in logs
+    assert "credential-secret" not in logs
+    assert "[REDACTED]" in logs
+
+
+@pytest.mark.asyncio
+async def test_debug_prompt_logging_is_off_by_default(caplog):
+    chunk = Chunk(id="c-safe", document_id="d-safe", text="Qdrant is a vector database.")
+
+    class Retriever:
+        def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
+            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+
+    graph = build_rag_agent_graph(
+        Retriever(),
+        KnowledgeGraphStore(in_memory=True),
+        llm_client=FakeLLM(),
+        llm_config_getter=lambda: {"provider": "custom", "model": "test", "api_key": "test-key"},
+    )
+    state = {
+        "query": "What is Qdrant?", "current_search_query": "What is Qdrant?",
+        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
+        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "tenant_id": "test", "request_id": "request-disabled",
+    }
+
+    with caplog.at_level("DEBUG", logger="meridian.rag_engine.agent"):
+        await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
+
+    assert "request-disabled prompt=" not in caplog.text
+    assert "request-disabled response=" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_max_cycles_limits_total_retrieval_attempts():
+    chunk = Chunk(id="c-cycle", document_id="d-cycle", text="Qdrant stores vector embeddings.")
+
+    class Retriever:
+        calls = 0
+
+        def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
+            self.calls += 1
+            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+
+    class UngroundedLLM:
+        calls = 0
+
+        async def chat_completion(self, **kwargs):
+            self.calls += 1
+            return {"choices": [{"message": {"content": "Paris is the capital of France."}}]}
+
+    retriever = Retriever()
+    client = UngroundedLLM()
+    graph = build_rag_agent_graph(retriever, KnowledgeGraphStore(in_memory=True), llm_client=client)
+    state = {
+        "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
+        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
+        "cycle_count": 0, "max_cycles": 2, "is_grounded": False, "is_refusal": False,
+        "tenant_id": "test",
+    }
+
+    result = await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
+
+    assert retriever.calls == client.calls == result["cycle_count"] == 2
+    assert result["is_refusal"] is True
+
+
+@pytest.mark.asyncio
 async def test_agent_graph_successful_flow(populated_retriever_and_graph):
     retriever, gstore = populated_retriever_and_graph
-    graph = build_rag_agent_graph(retriever=retriever, graph_store=gstore)
+    graph = build_rag_agent_graph(retriever=retriever, graph_store=gstore, llm_client=FakeLLM(), min_dense_score=0.2)
 
     initial_state = {
         "query": "What does Meridian platform use for gateway routing?",
@@ -85,45 +331,11 @@ async def test_agent_graph_successful_flow(populated_retriever_and_graph):
 
 
 @pytest.mark.asyncio
-async def test_agent_graph_records_generation_error_on_llm_failure(monkeypatch, populated_retriever_and_graph):
-    """Issue #34 regression: LLM failure must surface as generation_error, not silently degrade."""
-    # Simulate production: APP_ENV unset disables the extractive testing fallback.
-    monkeypatch.delenv("APP_ENV", raising=False)
-    retriever, gstore = populated_retriever_and_graph
-
-    class FailingClient:
-        async def chat_completion(self, **kwargs):
-            raise RuntimeError("connection refused")
-
-    graph = build_rag_agent_graph(retriever=retriever, graph_store=gstore, llm_client=FailingClient())
-
-    initial_state = {
-        "query": "What does Meridian platform use for gateway routing?",
-        "current_search_query": "What does Meridian platform use for gateway routing?",
-        "retrieved_chunks": [],
-        "entities": [],
-        "draft_answer": "",
-        "critic_verdict": None,
-        "cycle_count": 0,
-        "max_cycles": 3,
-        "is_grounded": False,
-        "is_refusal": False,
-        "tenant_id": "test-tenant",
-    }
-
-    final_state = await graph.ainvoke(initial_state)
-
-    # Pipeline must end in a safe refusal AND carry the generation failure reason
-    assert final_state["is_refusal"] is True
-    assert final_state["generation_error"] is not None
-    assert "LLM generation failed" in final_state["generation_error"]
-    assert "connection refused" in final_state["generation_error"]
-
-
 @pytest.mark.asyncio
 async def test_agent_graph_self_healing_safe_refusal_when_unanswerable(populated_retriever_and_graph):
     retriever, gstore = populated_retriever_and_graph
-    graph = build_rag_agent_graph(retriever=retriever, graph_store=gstore)
+    client = FakeLLM()
+    graph = build_rag_agent_graph(retriever=retriever, graph_store=gstore, llm_client=client)
 
     # Query asking for something completely absent from knowledge base
     initial_state = {
@@ -142,7 +354,7 @@ async def test_agent_graph_self_healing_safe_refusal_when_unanswerable(populated
 
     final_state = await graph.ainvoke(initial_state)
 
-    # After max 3 cycles of reformulation, should gracefully refuse without hallucinating
-    assert final_state["is_refusal"] is True
-    assert final_state["cycle_count"] >= 1
-    assert "not found" in final_state["draft_answer"].lower() or "unable" in final_state["draft_answer"].lower()
+    assert final_state["answer_status"] == "insufficient_context"
+    assert final_state["draft_answer"] == "I don't have enough information in the provided documents to answer that."
+    assert final_state["cycle_count"] == 1
+    assert client.calls == []

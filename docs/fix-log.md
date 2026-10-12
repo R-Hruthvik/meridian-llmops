@@ -145,3 +145,115 @@
 ### Task 3.2 typing follow-up
 
 - Repository mypy identified two optional-provider-spec index errors. A separate validated direct-provider lookup removes the ambiguity while preserving proxy behavior; scoped review confirmed unchanged URL/key/body handling. Provider-client tests: 29 passed; Ruff and `mypy services/gateway/client.py` passed.
+
+## Gate 3 — Real-provider validation (2026-10-12)
+
+- Configuration: new ignored `.env` parsed without duplicate keys or malformed entries. Explicit `API_KEY`, `BASE_URL=http://localhost:3010/v1`, and `MODEL=kilo-auto/free` override saved UI settings; `.env.example` now documents generic placeholders and optional `PROVIDER`. No key was printed or committed.
+- Validation used real FastEmbed and an isolated temporary corpus/index containing the four sample Markdown documents; normal API authentication and actual provider calls were used. Existing user storage and `.env` were unchanged.
+- Ten of ten requests returned HTTP 200 with `answer_status=answered`, five sources, valid in-range numbered citations, source filenames/headings/scores, and upstream usage. Nine responses reported `nvidia/nemotron-3-ultra-550b-a55b:free`; one reported `dots-studio/dots-3-note-preview:free`. This router selects the serving model dynamically. Answers were inspected against returned source text; this small smoke run does not replace Phase 4 semantic verification.
+
+| Case | Total ms | Retrieval ms | Generation ms | Verify ms | Prompt/completion tokens |
+|---|---:|---:|---:|---:|---:|
+| q-001 | 6728.1 | 15.6 | 6697.7 | 2.7 | 2011/482 |
+| q-002 | 7829.1 | 22.6 | 7793.0 | 5.1 | 2486/352 |
+| q-005 | 3739.5 | 27.4 | 3698.4 | 3.8 | 2233/292 |
+| q-006 | 2637.1 | 21.1 | 2602.3 | 4.3 | 2000/186 |
+| q-007 | 2230.5 | 21.7 | 2199.3 | 1.8 | 2049/119 |
+| q-008 | 6790.4 | 23.9 | 6753.7 | 4.5 | 2019/504 |
+| q-010 | 11435.7 | 27.8 | 11383.0 | 10.1 | 2095/538 |
+| q-012 | 8359.9 | 18.8 | 8327.8 | 1.8 | 1960/143 |
+| q-016 | 6452.9 | 27.1 | 6413.6 | 2.9 | 1953/219 |
+| q-018 | 6047.9 | 28.0 | 6006.1 | 1.9 | 1871/209 |
+
+### Recorded answers and source references
+
+**q-001: What command starts the FastAPI development server?**
+
+The FastAPI development server is started with the command `fastapi dev` (commonly run via `uv run fastapi dev`) [1][2][3][4].
+
+Cited files: [1] 01_fastapi_guide.md, [2] 01_fastapi_guide.md, [3] 01_fastapi_guide.md, [4] 01_fastapi_guide.md.
+
+**q-002: What URL serves the interactive API docs?**
+
+The interactive API documentation (Swagger UI) is served at **http://127.0.0.1:8000/docs** [3][5].
+
+Cited files: [3] 01_fastapi_guide.md, [5] 01_fastapi_guide.md.
+
+**q-005: Which decorator registers a path operation for GET requests?**
+
+The `@app.get()` decorator registers a path operation for GET requests [1][4].
+
+Cited files: [1] 01_fastapi_guide.md, [4] 01_fastapi_guide.md.
+
+**q-006: Which port serves the Qdrant web dashboard?**
+
+The Qdrant web dashboard is served on port **6333** (the same port as the REST API). According to the documentation, the Web UI is accessible at `localhost:6333/dashboard` [1].
+
+Cited files: [1] 02_qdrant_vector_db.md.
+
+**q-007: What distance metric does the quickstart collection use to compare vectors?**
+
+The quickstart collection uses a **dot product distance metric** to compare vectors [1].
+
+Cited files: [1] 02_qdrant_vector_db.md.
+
+**q-008: What vector size does the quickstart collection configure?**
+
+The quickstart collection configures a vector size of **4** [1]. This is shown in the collection creation code across all language examples (Python, TypeScript, Rust, Java, C#, Go) where `size=4` or `Size = 4` is specified in the `VectorParams`. The example vectors in the quickstart also contain 4 elements each [2][3], and the query vector has 4 dimensions [4].
+
+Cited files: [1] 02_qdrant_vector_db.md, [2] 02_qdrant_vector_db.md, [3] 02_qdrant_vector_db.md, [4] 02_qdrant_vector_db.md.
+
+**q-010: How do you initialize a Qdrant client pointing at the local server?**
+
+To initialize a Qdrant client pointing at the local server in Python:
+
+```python
+from qdrant_client import QdrantClient
+
+client = QdrantClient(url="http://localhost:6333")
+```
+
+This uses the REST API on port 6333. Other languages use the gRPC interface on port 6334 (e.g., Rust, Java, C#, Go) [1].
+
+Cited files: [1] 02_qdrant_vector_db.md.
+
+**q-012: Which port does the LiteLLM gateway listen on?**
+
+The LiteLLM gateway listens on port **4000** [1][3].
+
+Cited files: [1] 03_litellm_proxy_quickstart.md, [3] 03_litellm_proxy_quickstart.md.
+
+**q-016: Which endpoint do you post to for chat completions through the gateway?**
+
+You post to `/v1/chat/completions` on the gateway (e.g., `http://localhost:4000/v1/chat/completions`) [1].
+
+Cited files: [1] 03_litellm_proxy_quickstart.md.
+
+**q-018: Which environment variable sets the Anthropic API key?**
+
+The environment variable that sets the Anthropic API key is `ANTHROPIC_API_KEY` [1][2].
+
+Cited files: [1] 04_litellm_provider_keys.md, [2] 04_litellm_provider_keys.md.
+
+### Failure and prompt evidence
+
+- Both unanswerable cases (`q-023`, `q-024`) returned `insufficient_context` with exactly zero provider calls. The actual invalid-key request returned HTTP 502, code `provider_error`, message `Provider custom returned HTTP 401`, and upstream message `Invalid or missing router API key`.
+- `DEBUG_LOG_PROMPTS` was enabled only for the first real question. The captured prompt contained all five numbered source blocks and the exact grounded system message; serialized logging removes the active key. A shortened source excerpt follows (the actual log contains the complete prompt and raw response):
+
+```text
+Question: What command starts the FastAPI development server?
+Sources:
+[1] (file: 01_fastapi_guide.md, page: None, section: First Steps > Check it)
+<source_text>
+fast →uv run fastapi dev   FastAPI   Starting development server 🚀
+...
+</source_text>
+```
+
+- Calibration is consumed by the graph at `MIN_DENSE_SCORE=0.70`; lexical evidence also requires substantive term coverage or a structured identifier. The heuristic may reject sparse lexical-only matches; the expanded golden dataset remains Phase 7. Authentication still uses the existing shared key; administrator roles remain Phase 5.
+
+### Tasks 3.3 / 3.5 final integration verification
+
+- Query generation now uses the exact requested bounded top-k, calibrated sufficiency on the prompt-selected sources, typed provider errors, total-attempt cycle limits, actual usage, source metadata including chunk index, per-request serving provenance, and opt-in sanitized prompt/raw-response logging. Graph memory and expansion follow `GRAPH_ENABLED`.
+- Independent review identified three regressions: qualifying evidence dropped by the prompt budget, empty/runtime generation failures becoming refusals, and missing source chunk index. Regression tests failed first, then fixes passed; scoped re-review closed all three findings.
+- Final parent verification: `.venv/bin/pytest tests -q` -> **333 passed, 4 xfailed**; `.venv/bin/ruff check .` -> clean; `.venv/bin/mypy packages services evals scripts --ignore-missing-imports --explicit-package-bases --python-version 3.11` -> **69 files clean**. Four expected failures remain in later planned phases.

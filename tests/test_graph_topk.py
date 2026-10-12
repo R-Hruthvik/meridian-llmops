@@ -13,8 +13,8 @@ from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.retrieval.hybrid import RankedChunk, RetrievalResult
 
 CORPUS_SIZE = 8
-DEFAULT_TOP_K = 3
-TOP_K_MAX = 50
+DEFAULT_TOP_K = 5
+TOP_K_MAX = 20
 
 
 class _RecordingRetriever:
@@ -76,7 +76,7 @@ async def _run(configurable: dict | None) -> tuple[_RecordingRetriever, dict]:
 async def test_defaults_when_no_configurable_given():
     retriever, final_state = await _run(None)
 
-    assert retriever.calls == [DEFAULT_TOP_K * 10]
+    assert retriever.calls == [DEFAULT_TOP_K]
     assert len(final_state["retrieved_chunks"]) == DEFAULT_TOP_K
 
 
@@ -85,7 +85,7 @@ async def test_defaults_when_no_configurable_given():
 async def test_explicit_top_k_is_honoured(top_k):
     retriever, final_state = await _run({"top_k": top_k})
 
-    assert retriever.calls == [top_k * 10]
+    assert retriever.calls == [top_k]
     assert len(final_state["retrieved_chunks"]) == top_k
 
 
@@ -94,7 +94,7 @@ async def test_explicit_top_k_is_honoured(top_k):
 async def test_invalid_top_k_falls_back_to_default(bad_top_k):
     retriever, final_state = await _run({"top_k": bad_top_k})
 
-    assert retriever.calls == [DEFAULT_TOP_K * 10]
+    assert retriever.calls == [DEFAULT_TOP_K]
     assert len(final_state["retrieved_chunks"]) == DEFAULT_TOP_K
 
 
@@ -102,15 +102,15 @@ async def test_invalid_top_k_falls_back_to_default(bad_top_k):
 async def test_top_k_above_max_is_clamped():
     retriever, final_state = await _run({"top_k": 5000})
 
-    assert retriever.calls == [TOP_K_MAX * 10]
+    assert retriever.calls == [TOP_K_MAX]
     assert len(final_state["retrieved_chunks"]) == CORPUS_SIZE
 
 
 @pytest.mark.asyncio
-async def test_explicit_recall_k_is_respected():
+async def test_explicit_recall_k_cannot_expand_requested_top_k():
     retriever, final_state = await _run({"top_k": 2, "recall_k": 7})
 
-    assert retriever.calls == [7]
+    assert retriever.calls == [2]
     assert len(final_state["retrieved_chunks"]) == 2
 
 
@@ -118,7 +118,7 @@ async def test_explicit_recall_k_is_respected():
 async def test_recall_k_is_derived_from_top_k_when_omitted():
     retriever, final_state = await _run({"top_k": 4})
 
-    assert retriever.calls == [40]
+    assert retriever.calls == [4]
     assert len(final_state["retrieved_chunks"]) == 4
 
 
@@ -127,7 +127,7 @@ async def test_recall_k_is_derived_from_top_k_when_omitted():
 async def test_invalid_recall_k_is_derived_from_top_k(bad_recall_k):
     retriever, final_state = await _run({"top_k": 2, "recall_k": bad_recall_k})
 
-    assert retriever.calls == [20]
+    assert retriever.calls == [2]
     assert len(final_state["retrieved_chunks"]) == 2
 
 
