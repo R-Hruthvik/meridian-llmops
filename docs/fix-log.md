@@ -126,3 +126,18 @@
 - The local endpoint's model-list request returned 200 and included the requested `kilo-auto/free`. A real one-token generation returned 200 with content, usage, and served model `nvidia/nemotron-3-ultra-550b-a55b:free`. Listing is explicitly labelled listing-only; `/v1/settings/test` and its legacy alias now perform an actual one-token generation.
 - Test-first fixes cover exact provider URL/header/body contracts, direct/proxy key separation, usage, retries, malformed JSON/SSE, environment precedence/aliases, and secret redaction. Final implementation evidence: 94 focused tests passed, one query/graph test intentionally deferred to Task 3.3; scoped Ruff and whitespace checks passed. Independent task review closed the substantive findings.
 - Deferred limitations: the existing single API key cannot express an admin role; Phase 5 adds that distinction. A review noted provider-controlled JSON property names are not redacted by the client helper; Task 3.5 must sanitize serialized debug output as well as values. Main RAG HTTP error handling and per-request provenance are Task 3.3.
+
+## Task 3.4 — Dense-score calibration (2026-10-12)
+
+- Added `scripts/calibrate_threshold.py`: isolated real FastEmbed/Qdrant ingestion, per-question top dense scores, answerable/unanswerable distributions, deterministic accuracy/Youden threshold sweep, and a JSON summary option. It refuses missing/empty/unusable corpora and invalid evaluation data rather than publishing a misleading zero-score recommendation; known ingestion/index errors produce concise nonzero exits.
+- Real command: `.venv/bin/python scripts/calibrate_threshold.py --docs sample_docs --questions evals/retrieval_smoke.json --output .superpowers/sdd/meridian-phase3-plan/calibration-result.json` (temporary index/storage; no user corpus mutation).
+
+| Group | Cases | Minimum | Median | Maximum |
+|---|---:|---:|---:|---:|
+| Answerable | 22 | 0.708430 | 0.781553 | 0.885611 |
+| Unanswerable | 2 | 0.390372 | 0.451279 | 0.512185 |
+
+- Measured Youden optimum: **0.7084295241**, sensitivity/specificity/accuracy 1.000 on these 24 cases. Chosen configuration default: **MIN_DENSE_SCORE=0.70**, rounded slightly below the positive minimum to keep a margin. The setting and range validation were committed with shared provider configuration in `2833754`; query consumption is part of the in-progress Task 3.3 integration.
+- Both unanswerable queries also had five positive BM25 candidates, from incidental overlaps such as "recommended" and "world". Raw BM25 positivity therefore cannot by itself prove sufficiency. Task 3.3 applies substantive-query coverage or structured-identifier evidence while retaining dense-score sufficiency as an alternative.
+- Tests first covered hand-calculated threshold math, CLI behavior, missing/empty directories, a real supported-but-empty text file, and typed ingestion/Qdrant failures. Final scoped verification: **12 tests passed**, Ruff passed; independent CLI/math review is clean after the failure cases were added.
+- Limitation: the evaluation set has only two negatives; this is corpus-specific calibration, not evidence of general hallucination rejection. The expanded golden dataset and wider evaluation remain Phase 7.
