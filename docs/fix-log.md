@@ -269,3 +269,18 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Set MIN_DENSE_SCORE default0.70 (rounded below the measured positive minimum0.7084295241) — preserves a small margin while negatives top out0.5121848747. Cost if wrong: corpus/model-specific false positives; onlytwo negatives measured.
 - A BM25 hit for sufficiency must be positive and cover at least half of substantive query terms, or match a structured identifier — raw positivity incorrectly admits both realnegativequeries through incidental words. Dense evidence remains an alternative. Cost if wrong: false refusals for sparse lexical-only matches; covered by identifier and paraphrase regressions, revisit with Phase7golden set.
 - Retain current single-key authentication on the new settings generation test until Phase5 adds user/admin roles — existing authentication cannot express an admin distinction without expanding that phase here. Cost if wrong: a current valid shared key can call generation tests; no public endpoint introduced.
+
+## Task 4.1 Honest reranker evaluation (2026-10-12)
+
+- Replaced the mislabeled lexical `CrossEncoderReranker` with `LexicalReranker` (word-overlap heuristic) and a real FastEmbed `TextCrossEncoder` implementation. FastEmbed 0.9.0 exposes `TextCrossEncoder(model_name, ...)` and `rerank(query, documents, batch_size=64)`; its supported model list does not include the former `BAAI/bge-reranker-large` default, so the configured default is the supported `Xenova/ms-marco-MiniLM-L-6-v2` (80 MB).
+- `RERANKER` defaults to `none`; lexical and learned modes are opt-in. Both rerank only the first `max(20, 2*top_k)` fused candidates and return at most `top_k`. `scores.rerank` remains null when no reranker runs.
+- Evaluation command: `uv run python -u scripts/eval_retrieval.py --reranker all` (CPU; 22 answerable questions in `evals/retrieval_smoke.json`, top-k 5). Measured table:
+
+  | Reranker | hit@5 | MRR | retrieval p95 |
+  |---|---:|---:|---:|
+  | none | 1.000 | 0.924 | 54.4 ms |
+  | lexical | 0.955 | 0.886 | 57.6 ms |
+  | cross_encoder | 1.000 | 0.955 | 11323.8 ms |
+
+- The cross-encoder model files were fetched and evaluated, not skipped. Its MRR gain over `none` is 0.031, but CPU p95 exceeds the 150 ms gate by 11173.8 ms; lexical lowers both quality metrics. Keep `RERANKER=none` as the default.
+- Evidence: `uv run python -u scripts/eval_retrieval.py --reranker all` -> table above; focused reranker/retrieval/endpoint tests -> 18 passed; scoped Ruff and mypy -> clean. Small smoke set and CPU-only latency limit generalization.

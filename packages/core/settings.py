@@ -59,7 +59,11 @@ class Settings(BaseSettings):
     critic_llm_model: str = "gpt-4o-mini"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     fastembed_cache_path: str = "storage/fastembed"
-    reranker_model: str = "BAAI/bge-reranker-large"
+    reranker: Literal["none", "lexical", "cross_encoder"] = "none"
+    reranker_model: str = Field(
+        default="Xenova/ms-marco-MiniLM-L-6-v2",
+        validation_alias=AliasChoices("RERANK_MODEL", "RERANKER_MODEL"),
+    )
 
     # Qdrant Vector Database
     qdrant_host: str = "localhost"

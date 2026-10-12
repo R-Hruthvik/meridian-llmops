@@ -1,17 +1,15 @@
-"""Cross-Encoder Reranker using contextual query-document cross-attention scoring."""
+"""Lexical and FastEmbed cross-encoder rerankers."""
 
 import re
+
+from fastembed.rerank.cross_encoder import TextCrossEncoder
 
 from packages.core.config import get_settings
 from packages.core.models import Chunk, SearchResult
 
 
-class CrossEncoderReranker:
-    """Re-ranks candidate chunks against the user query for high-precision context filtering."""
-
-    def __init__(self, model_name: str | None = None):
-        settings = get_settings()
-        self.model_name = model_name or settings.reranker_model
+class LexicalReranker:
+    """word-overlap heuristic; not a learned model"""
 
     def score_pair(self, query: str, text: str) -> float:
         stopwords = {"the", "is", "at", "which", "on", "a", "an", "and", "or", "to", "in", "for", "with", "what", "how", "why", "where"}
@@ -39,10 +37,40 @@ class CrossEncoderReranker:
                     document_id=chunk.document_id,
                     text=chunk.text,
                     score=score,
-                    retrieval_method="cross_encoder_rerank",
+                    retrieval_method="lexical_rerank",
                     metadata=chunk.metadata,
                 )
             )
 
         scored.sort(key=lambda x: x.score, reverse=True)
         return scored[:top_k]
+
+
+class CrossEncoderReranker:
+    """Rerank chunks with FastEmbed's learned query-document cross-encoder."""
+
+    def __init__(self, model_name: str | None = None, cache_path: str | None = None):
+        settings = get_settings()
+        self.model_name = model_name or settings.reranker_model
+        self._model = TextCrossEncoder(
+            model_name=self.model_name,
+            cache_dir=cache_path or settings.fastembed_cache_path,
+            threads=4,
+        )
+
+    def rerank(self, query: str, chunks: list[Chunk], top_k: int = 5) -> list[SearchResult]:
+        candidates = chunks[: max(20, 2 * top_k)]
+        scores = self._model.rerank(query, [chunk.text for chunk in candidates], batch_size=64)
+        ranked = [
+            SearchResult(
+                chunk_id=chunk.id,
+                document_id=chunk.document_id,
+                text=chunk.text,
+                score=float(score),
+                retrieval_method="cross_encoder_rerank",
+                metadata=chunk.metadata,
+            )
+            for chunk, score in zip(candidates, scores, strict=True)
+        ]
+        ranked.sort(key=lambda result: result.score, reverse=True)
+        return ranked[:top_k]

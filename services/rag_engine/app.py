@@ -46,6 +46,7 @@ from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.index_inspector import build_index_status
 from services.rag_engine.observability.langfuse_client import MeridianTracer
 from services.rag_engine.retrieval.hybrid import HybridRetriever
+from services.rag_engine.retrieval.reranker import CrossEncoderReranker, LexicalReranker
 from services.rag_engine.routers.review import router as review_router
 
 
@@ -63,6 +64,13 @@ async def lifespan(app: FastAPI):
         )
         ingestion_pipeline.embedder = embedder
     retriever.embedder = ingestion_pipeline.embedder
+    retriever.reranker = None
+    if settings.reranker == "lexical":
+        retriever.reranker = LexicalReranker()
+    elif settings.reranker == "cross_encoder":
+        retriever.reranker = await asyncio.to_thread(
+            CrossEncoderReranker, settings.reranker_model, settings.fastembed_cache_path
+        )
     await asyncio.to_thread(vector_store.ensure_collection)
     docs_loaded = await asyncio.to_thread(ingestion_pipeline.load_persisted_knowledge_base)
     logger.info("Hydrated %d documents from dedicated storage.", docs_loaded)

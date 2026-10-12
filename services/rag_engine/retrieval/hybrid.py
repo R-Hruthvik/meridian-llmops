@@ -159,15 +159,16 @@ class HybridRetriever:
 
         if self.reranker is not None and candidates:
             stage = time.perf_counter()
+            rerank_candidates = candidates[: max(20, 2 * top_k)]
             reranked = self.reranker.rerank(
                 query=query,
-                chunks=[chunk for chunk, _ in candidates],
+                chunks=[chunk for chunk, _ in rerank_candidates],
                 top_k=max(top_k, 1),
             )
             timings["rerank"] = _ms(stage)
             by_id = {result.chunk_id: result.score for result in reranked}
             candidates = [
-                (chunk, {**scores, "rerank": by_id.get(chunk.id), "final": by_id.get(chunk.id) or scores["final"]})
+                (chunk, {**scores, "rerank": by_id[chunk.id], "final": by_id[chunk.id]})
                 for chunk, scores in candidates
                 if chunk.id in by_id
             ]

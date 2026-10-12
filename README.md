@@ -35,7 +35,7 @@ Meridian unifies a multi-layer enterprise AI architecture into a single modular 
                              v              v
                  +---------------------------------------+
                  |   Reciprocal Rank Fusion + Reranker   |
-                 |   (BAAI/bge-reranker-large)           |
+                 |   (optional; RERANKER=none by default)|
                  +-------------------+-------------------+
                                      |
                                      v

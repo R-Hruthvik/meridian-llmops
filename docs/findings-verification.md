@@ -9,7 +9,7 @@ Verified against checkout `f2a32e6e837bddf53f7fe3c7aadde01d73af9f00` on 2026-10-
 | F-03 | Not confirmed | `services/ingestion/chunker.py:35-40`; `services/ingestion/vector_store.py:17-27,149-155` | Chunk IDs are UUIDs or normalized through UUID5 before Qdrant upsert. |
 | F-04 | Confirmed | `services/ingestion/vector_store.py:133-212`; `services/rag_engine/retrieval/hybrid.py:53-58` | Qdrant write/search failures can fall back to memory; write may still report success and local-map filtering can discard Qdrant-only hits. |
 | F-05 | Not confirmed | `services/rag_engine/app.py:433-437`; `services/rag_engine/agent/graph.py:39-60,79-86` | Request `top_k` reaches retrieval and bounds returned results. |
-| F-06 | Confirmed | `services/rag_engine/retrieval/reranker.py:9-44` | The named cross-encoder remains a lexical overlap/Jaccard heuristic and reports `cross_encoder_rerank`. |
+| F-06 | Differs | `services/rag_engine/retrieval/reranker.py` | The overlap scorer is now named `LexicalReranker`; a separate FastEmbed `TextCrossEncoder` implements learned reranking. Evaluation keeps reranking opt-in because neither mode passes the quality/latency gate. |
 | F-07 | Confirmed | `services/ingestion/chunker.py:12-14,47-65` | Overlap is stored but unused; the limit counts characters and is checked after appending full lines. |
 | F-08 | Confirmed | `services/rag_engine/app.py:377-389`; `web/src/components/IngestionStudio.tsx:234-247` | Parsers exist, but ingest route accepts JSON text and UI uses `FileReader.readAsText`; PDF/DOCX upload is not wired. |
 | F-09 | Confirmed | `services/rag_engine/app.py:477-485` | Query response reconstruction drops source metadata and labels all results `hybrid_rrf`. |
