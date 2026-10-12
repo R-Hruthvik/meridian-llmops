@@ -128,22 +128,27 @@ class LiteLLMClient:
         if target_provider not in (*PROVIDERS, "litellm"):
             raise ProviderConfigError(target_provider, f"Unknown LLM provider: {target_provider}")
         is_proxy = target_provider == "litellm"
-        spec = PROVIDERS.get(target_provider)
-        target_base = (base_url or (self.base_url if is_proxy else spec["base_url_default"])).rstrip("/")
+        if is_proxy:
+            spec = None
+            configured_base = base_url or self.base_url
+        else:
+            spec = PROVIDERS[target_provider]
+            configured_base = base_url or spec["base_url_default"]
+        target_base = configured_base.rstrip("/")
         target_key = (api_key or self.master_key) if is_proxy else api_key
-        if spec and spec["auth_style"] != "none" and not target_key:
+        if spec is not None and spec["auth_style"] != "none" and not target_key:
             raise ProviderConfigError(target_provider, f"API key is required for provider {target_provider}")
         if not target_base:
             raise ProviderConfigError(target_provider, f"Base URL is required for provider {target_provider}")
         endpoint = self._endpoint(target_provider, target_base)
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
-        if target_key and (is_proxy or spec["auth_style"] != "none"):
-            if spec and spec["auth_style"] == "anthropic":
+        if target_key and (spec is None or spec["auth_style"] != "none"):
+            if spec is not None and spec["auth_style"] == "anthropic":
                 headers.update({"x-api-key": target_key, "anthropic-version": "2023-06-01"})
             else:
                 headers["Authorization"] = f"Bearer {target_key}"
 
-        if spec and spec["request_format"] == "anthropic":
+        if spec is not None and spec["request_format"] == "anthropic":
             payload_messages = [m for m in messages if m.get("role") != "system"]
             payload: dict[str, Any] = {"model": model, "messages": payload_messages, "max_tokens": max_tokens, "temperature": temperature, "stream": False}
             system_prompt = "\n".join(m.get("content", "") for m in messages if m.get("role") == "system")

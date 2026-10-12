@@ -141,3 +141,7 @@
 - Both unanswerable queries also had five positive BM25 candidates, from incidental overlaps such as "recommended" and "world". Raw BM25 positivity therefore cannot by itself prove sufficiency. Task 3.3 applies substantive-query coverage or structured-identifier evidence while retaining dense-score sufficiency as an alternative.
 - Tests first covered hand-calculated threshold math, CLI behavior, missing/empty directories, a real supported-but-empty text file, and typed ingestion/Qdrant failures. Final scoped verification: **12 tests passed**, Ruff passed; independent CLI/math review is clean after the failure cases were added.
 - Limitation: the evaluation set has only two negatives; this is corpus-specific calibration, not evidence of general hallucination rejection. The expanded golden dataset and wider evaluation remain Phase 7.
+
+### Task 3.2 typing follow-up
+
+- Repository mypy identified two optional-provider-spec index errors. A separate validated direct-provider lookup removes the ambiguity while preserving proxy behavior; scoped review confirmed unchanged URL/key/body handling. Provider-client tests: 29 passed; Ruff and `mypy services/gateway/client.py` passed.
