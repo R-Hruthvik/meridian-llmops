@@ -1,31 +1,6 @@
-"""Pydantic schemas for citation verification, claim models, and human review items."""
+"""Pydantic schemas for human review items."""
 
-from pydantic import BaseModel, Field
-
-
-class CitationSchema(BaseModel):
-    """Citation pointing to source chunk quote and support score."""
-    chunk_id: str
-    document_id: str | None = None
-    page: int = 1
-    section: str = "General"
-    quote: str
-    support_score: float = Field(ge=0.0, le=1.0)
-    verification_status: str = "supported"  # supported, partially_supported, unsupported
-
-
-class ClaimSchema(BaseModel):
-    """Atomic claim extracted from generated answer with supporting citations."""
-    text: str
-    citations: list[CitationSchema] = []
-    verification_status: str = "supported"  # supported, partially_supported, unsupported
-
-
-class VerificationResult(BaseModel):
-    """Result payload from the 3-Tier Citation Verification Engine."""
-    claims: list[ClaimSchema]
-    overall_status: str = "supported"  # supported, partially_supported, unsupported
-    overall_confidence: float = 1.0
+from pydantic import BaseModel
 
 
 class ReviewItemResponse(BaseModel):

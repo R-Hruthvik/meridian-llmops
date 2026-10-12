@@ -56,7 +56,6 @@ class Settings(BaseSettings):
     deepseek_base_url: str | None = None
     ollama_base_url: str | None = None
     custom_base_url: str | None = None
-    critic_llm_model: str = "gpt-4o-mini"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     fastembed_cache_path: str = "storage/fastembed"
     reranker: Literal["none", "lexical", "cross_encoder"] = "none"
@@ -64,6 +63,7 @@ class Settings(BaseSettings):
         default="Xenova/ms-marco-MiniLM-L-6-v2",
         validation_alias=AliasChoices("RERANK_MODEL", "RERANKER_MODEL"),
     )
+    verify_mode: Literal["citations", "llm", "off"] = "citations"
 
     # Qdrant Vector Database
     qdrant_host: str = "localhost"

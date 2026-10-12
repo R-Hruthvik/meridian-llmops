@@ -3,7 +3,6 @@
 from packages.core.config import get_settings
 from packages.core.models import (
     Chunk,
-    CriticVerdict,
     Document,
     DocumentFormat,
     Entity,
@@ -11,6 +10,7 @@ from packages.core.models import (
     QueryResponse,
     Relationship,
     SearchResult,
+    VerificationSummary,
 )
 
 
@@ -75,20 +75,10 @@ def test_query_request_and_response():
         ],
         cycle_count=1,
         verified=True,
+        verification=VerificationSummary(status="supported", scope="llm_judgment"),
     )
     assert resp.verified is True
     assert len(resp.source_chunks) == 1
-
-
-def test_critic_verdict():
-    verdict = CriticVerdict(
-        is_grounded=True,
-        confidence_score=0.98,
-        unsupported_claims=[],
-        reasoning="All factual assertions found in source chunks.",
-    )
-    assert verdict.is_grounded is True
-    assert verdict.confidence_score == 0.98
 
 
 def test_settings():

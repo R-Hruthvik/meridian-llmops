@@ -1,7 +1,7 @@
 """Core Pydantic domain models for Meridian LLMOps platform."""
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -70,14 +70,6 @@ class SearchResult(BaseModel):
     heading_path: str = ""
     scores: dict[str, Any] = Field(default_factory=dict)
     chunk_index: int | None = None
-
-
-class CriticVerdict(BaseModel):
-    """Verdict rendered by the Critic Agent (LLM-as-a-judge)."""
-    is_grounded: bool = Field(..., description="True if response is fully supported by retrieved context")
-    confidence_score: float = Field(..., ge=0.0, le=1.0, description="Confidence in grounding verdict")
-    unsupported_claims: list[str] = Field(default_factory=list, description="Claims flagged as ungrounded")
-    reasoning: str = Field(..., description="Explanation of evaluation decision")
 
 
 class GuardrailResult(BaseModel):
@@ -169,6 +161,23 @@ class ServingProvenance(BaseModel):
     fresh: bool = Field(False, description="True only when this request's own upstream call returned non-empty content attributed to the fields above")
 
 
+class VerificationSummary(BaseModel):
+    """Verification outcome exposed by the query API."""
+
+    status: Literal["citations_ok", "citations_failed", "supported", "unsupported", "unchecked"] = Field(
+        "unchecked", description="Verification status; citations statuses describe format and numeric consistency only"
+    )
+    scope: Literal["format_and_numeric_consistency", "llm_judgment", "unchecked"] = Field(
+        "unchecked", description="What the verification outcome assesses"
+    )
+    invalid_citations: list[int] = Field(default_factory=list)
+    uncited_claims: list[str] = Field(default_factory=list)
+    numeric_mismatches: list[str] = Field(default_factory=list)
+    unsupported_claims: list[str] = Field(default_factory=list)
+    contradictions: list[str] = Field(default_factory=list)
+    details: str | None = None
+
+
 class QueryResponse(BaseModel):
     """Unified system response payload."""
     query: str
@@ -176,7 +185,7 @@ class QueryResponse(BaseModel):
     source_chunks: list[SearchResult] = Field(default_factory=list)
     entities: list[Entity] = Field(default_factory=list)
     cycle_count: int = Field(1, description="Number of LangGraph cycles executed")
-    verified: bool = Field(True, description="Whether the response passed Critic verification")
+    verified: bool = Field(False, description="Deprecated; true only when verification.status is supported")
     refusal: bool = Field(False, description="Whether the response is a safe refusal fallback")
     execution_time_ms: float = Field(0.0, description="Total latency in milliseconds")
     degraded_reason: str | None = Field(None, description="Why this response was produced on a degraded path (e.g. LLM generation failed); null when a normal generation succeeded")
@@ -184,6 +193,8 @@ class QueryResponse(BaseModel):
     serving_model: str | None = Field("gpt-4o-mini", description="Model that generated the response as reported upstream; null when no LLM served it")
     serving: ServingProvenance = Field(default_factory=ServingProvenance, description="Explicit serving provenance; the authoritative signal for issue #35")
     answer_status: str = Field("answered", description="answered or insufficient_context")
+    verification: VerificationSummary = Field(default_factory=VerificationSummary)
+    debug: dict[str, Any] = Field(default_factory=dict)
     sources: list[SearchResult] = Field(default_factory=list)
     request_id: str | None = None
     provider: str | None = None

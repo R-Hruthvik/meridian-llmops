@@ -53,12 +53,10 @@ def _base_state() -> dict:
         "retrieved_chunks": [],
         "entities": [],
         "draft_answer": "",
-        "critic_verdict": None,
         "cycle_count": 0,
         # max_cycles=1 guarantees the retrieve node runs exactly once, so the
         # recorded k and the cut length are unambiguous.
         "max_cycles": 1,
-        "is_grounded": False,
         "is_refusal": False,
         "tenant_id": "test-tenant",
     }

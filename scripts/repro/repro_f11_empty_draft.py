@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from qdrant_client import QdrantClient
 
 from packages.core.config import get_settings
+from packages.core.errors import ProviderError
 from packages.core.models import Chunk
 from services.ingestion.embedder import FastEmbedEmbedder
 from services.ingestion.graph_store import KnowledgeGraphStore
@@ -40,13 +41,17 @@ async def main():
 
     retriever = HybridRetriever(embedder=embedder, vector_store=vector_store, bm25_index=BM25Index(chunks))
     graph = build_rag_agent_graph(retriever, KnowledgeGraphStore(in_memory=True), llm_client=FailingClient())
-    state = await graph.ainvoke({
-        "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
-        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
-        "tenant_id": "repro",
-    })
-    print(json.dumps({"is_refusal": state.get("is_refusal"), "generation_error": state.get("generation_error")}))
+    try:
+        state = await graph.ainvoke({
+            "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
+            "retrieved_chunks": [], "entities": [], "draft_answer": "",
+            "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
+            "tenant_id": "repro",
+        })
+    except ProviderError as error:
+        print(json.dumps({"provider_error": error.status, "returned_as_refusal": False}))
+        return
+    print(json.dumps({"answer_status": state.get("answer_status"), "is_refusal": state.get("is_refusal", False)}))
 
 
 asyncio.run(main())

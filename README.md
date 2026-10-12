@@ -40,11 +40,11 @@ Meridian unifies a multi-layer enterprise AI architecture into a single modular 
                                      |
                                      v
                  +---------------------------------------+
-                 |       Generator & Critic Agent        |
-                 |  (LLM-as-a-judge Grounding Check)     |
+                 |       Generator & Verification        |
+                 | (Citations checks or optional LLM judge)|
                  +-------------------+-------------------+
                                      |
-                       [Is Response Grounded?]
+                       [Verification status?]
                        /                     \
                    (Yes)                     (No, Cycle < 3)
                      |                              |
@@ -73,8 +73,8 @@ Meridian unifies a multi-layer enterprise AI architecture into a single modular 
 │   ├── ingestion/                # Structural chunking, multi-format parsers, Qdrant & Neo4j stores
 │   └── rag_engine/               # Cyclic LangGraph agent, hybrid retrieval, reranker & Langfuse
 ├── evals/
-│   ├── golden_dataset.json       # 100+ edge-case & adversarial benchmark test cases
-│   └── test_deepeval_ci.py       # DeepEval CI quality gate (Faithfulness >= 0.90)
+│   ├── golden_dataset.json       # Golden query and adversarial cases
+│   └── test_deepeval_ci.py       # Golden dataset API behavior checks
 ├── tests/                        # Full unit and integration test suite
 ├── docs/                         # ADRs (0001-0013), Spec, and Domain Glossary (CONTEXT.md)
 ├── docker-compose.yml            # Multi-container orchestration (Qdrant, Neo4j, LiteLLM, Langfuse)

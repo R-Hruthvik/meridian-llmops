@@ -5,7 +5,6 @@ import pytest
 from packages.core.errors import ProviderError
 from packages.core.models import Chunk
 from services.ingestion.graph_store import KnowledgeGraphStore
-from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.retrieval.hybrid import HybridRetriever, RankedChunk, RetrievalResult
 from tests.fakes import FakeEmbedder, FakeLLM, make_vector_store
@@ -40,22 +39,6 @@ def populated_retriever_and_graph():
 
     retriever = HybridRetriever(embedder=embedder, vector_store=vstore, bm25_index=BM25Index(chunks))
     return retriever, gstore
-
-
-def test_critic_agent_evaluates_grounding():
-    critic = CriticAgent()
-    context = "Qdrant is a vector database written in Rust. Neo4j is a graph database."
-
-    # Grounded statement
-    grounded_draft = "According to the context, Qdrant is a Rust-based vector database and Neo4j is a graph database."
-    verdict1 = critic.evaluate(query="What is Qdrant?", draft=grounded_draft, context=context)
-    assert verdict1.is_grounded is True
-
-    # Hallucinated statement
-    hallucinated_draft = "Qdrant was invented in 1985 by IBM and uses quantum computing."
-    verdict2 = critic.evaluate(query="What is Qdrant?", draft=hallucinated_draft, context=context)
-    assert verdict2.is_grounded is False
-    assert len(verdict2.unsupported_claims) > 0
 
 
 @pytest.mark.asyncio
@@ -96,10 +79,8 @@ async def test_unsupported_chunks_skip_generation_even_with_a_raw_bm25_hit():
         "retrieved_chunks": [],
         "entities": [],
         "draft_answer": "",
-        "critic_verdict": None,
         "cycle_count": 0,
         "max_cycles": 2,
-        "is_grounded": False,
         "is_refusal": False,
         "tenant_id": "test-tenant",
     }
@@ -109,7 +90,7 @@ async def test_unsupported_chunks_skip_generation_even_with_a_raw_bm25_hit():
     assert result["answer_status"] == "insufficient_context"
     assert result["draft_answer"] == "I don't have enough information in the provided documents to answer that."
     assert client.calls == 0
-    assert result["retrieved_chunks"][0]["filename"] == "ops.md"
+    assert result["retrieved_chunks"][0].filename == "ops.md"
 
 
 @pytest.mark.asyncio
@@ -124,8 +105,8 @@ async def test_prompt_budget_dropping_all_sources_skips_generation():
     graph = build_rag_agent_graph(Retriever(), KnowledgeGraphStore(in_memory=True), llm_client=client)
     state = {
         "query": "What is Qdrant?", "current_search_query": "What is Qdrant?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
-        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "retrieved_chunks": [], "entities": [], "draft_answer": "",
+        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
         "tenant_id": "test",
     }
 
@@ -151,8 +132,8 @@ async def test_prompt_sufficiency_is_rechecked_after_budget_selection():
     graph = build_rag_agent_graph(Retriever(), KnowledgeGraphStore(in_memory=True), llm_client=client)
     state = {
         "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
-        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "retrieved_chunks": [], "entities": [], "draft_answer": "",
+        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
         "tenant_id": "test",
     }
 
@@ -185,8 +166,8 @@ async def test_generation_failures_are_typed_provider_errors(failure):
     )
     state = {
         "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
-        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "retrieved_chunks": [], "entities": [], "draft_answer": "",
+        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
         "tenant_id": "test",
     }
 
@@ -225,8 +206,8 @@ async def test_debug_prompt_logging_is_correlated_and_redacts_key_in_json_proper
     )
     state = {
         "query": "What is Qdrant?", "current_search_query": "What is Qdrant?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
-        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "retrieved_chunks": [], "entities": [], "draft_answer": "",
+        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
         "tenant_id": "test", "request_id": "request-123",
     }
 
@@ -257,8 +238,8 @@ async def test_debug_prompt_logging_is_off_by_default(caplog):
     )
     state = {
         "query": "What is Qdrant?", "current_search_query": "What is Qdrant?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
-        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "retrieved_chunks": [], "entities": [], "draft_answer": "",
+        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
         "tenant_id": "test", "request_id": "request-disabled",
     }
 
@@ -292,21 +273,27 @@ async def test_max_cycles_limits_total_retrieval_attempts():
     graph = build_rag_agent_graph(retriever, KnowledgeGraphStore(in_memory=True), llm_client=client)
     state = {
         "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
-        "cycle_count": 0, "max_cycles": 2, "is_grounded": False, "is_refusal": False,
+        "retrieved_chunks": [], "entities": [], "draft_answer": "",
+        "cycle_count": 0, "max_cycles": 2, "is_refusal": False,
         "tenant_id": "test",
     }
 
     result = await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
 
     assert retriever.calls == client.calls == result["cycle_count"] == 2
-    assert result["is_refusal"] is True
+    assert result["answer_status"] == "unverified"
+    assert result["is_refusal"] is False
 
 
 @pytest.mark.asyncio
 async def test_agent_graph_successful_flow(populated_retriever_and_graph):
     retriever, gstore = populated_retriever_and_graph
-    graph = build_rag_agent_graph(retriever=retriever, graph_store=gstore, llm_client=FakeLLM(), min_dense_score=0.2)
+    graph = build_rag_agent_graph(
+        retriever=retriever,
+        graph_store=gstore,
+        llm_client=FakeLLM(content="Meridian uses LiteLLM proxy for gateway routing and rate limiting. [1]"),
+        min_dense_score=0.2,
+    )
 
     initial_state = {
         "query": "What does Meridian platform use for gateway routing?",
@@ -314,17 +301,15 @@ async def test_agent_graph_successful_flow(populated_retriever_and_graph):
         "retrieved_chunks": [],
         "entities": [],
         "draft_answer": "",
-        "critic_verdict": None,
         "cycle_count": 0,
         "max_cycles": 3,
-        "is_grounded": False,
         "is_refusal": False,
         "tenant_id": "test-tenant",
     }
 
     final_state = await graph.ainvoke(initial_state)
 
-    assert final_state["is_grounded"] is True
+    assert final_state["verification_result"].status == "citations_ok"
     assert final_state["is_refusal"] is False
     assert "LiteLLM" in final_state["draft_answer"]
     assert len(final_state["retrieved_chunks"]) > 0
@@ -344,10 +329,8 @@ async def test_agent_graph_self_healing_safe_refusal_when_unanswerable(populated
         "retrieved_chunks": [],
         "entities": [],
         "draft_answer": "",
-        "critic_verdict": None,
         "cycle_count": 0,
         "max_cycles": 3,
-        "is_grounded": False,
         "is_refusal": False,
         "tenant_id": "test-tenant",
     }

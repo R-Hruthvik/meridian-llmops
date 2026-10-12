@@ -29,6 +29,7 @@ from packages.core.models import (
     SearchResult,
     ServingProvenance,
     UpdateLLMSettingsRequest,
+    VerificationSummary,
 )
 from packages.core.secrets_store import SECRET_SUFFIX
 from packages.core.settings import get_settings as _core_get_settings
@@ -389,6 +390,7 @@ agent_graph = build_rag_agent_graph(
     min_dense_score=_settings.min_dense_score,
     graph_enabled=_settings.graph_enabled,
     debug_log_prompts=_settings.debug_log_prompts,
+    verify_mode=_settings.verify_mode,
 )
 
 
@@ -614,25 +616,29 @@ async def query_endpoint(
                 "retrieved_chunks": [],
                 "entities": [],
                 "draft_answer": "",
-                "critic_verdict": None,
                 "cycle_count": 0,
                 "max_cycles": req.max_cycles,
-                "is_grounded": False,
                 "is_refusal": False,
                 "tenant_id": tenant_id,
                 "answer_status": "answered",
+                "verification_result": None,
                 "timings_ms": {},
                 "request_id": request_id,
                 "serving_provider": None,
                 "serving_model": None,
                 "usage": None,
+                "debug": {},
             }
             final_state = await agent_graph.ainvoke(
                 initial_state,
                 config={"configurable": {"top_k": req.top_k}},
             )
             span.set_attribute("cycle_count", final_state["cycle_count"])
-            span.set_attribute("is_grounded", final_state["is_grounded"])
+            verification_result = final_state.get("verification_result")
+            span.set_attribute(
+                "verification_status",
+                verification_result.status if verification_result else "unchecked",
+            )
 
         # 3. Output Guardrails
         raw_answer = final_state.get("draft_answer", "")
@@ -641,6 +647,10 @@ async def query_endpoint(
                 out_result = output_guardrails.evaluate(raw_answer)
                 span.set_attribute("allowed", out_result.allowed)
                 final_answer = out_result.sanitized_text
+                if not out_result.allowed:
+                    final_state["answer_status"] = "refused"
+                    final_state["is_refusal"] = True
+                    final_state["verification_result"] = VerificationSummary(status="unchecked", scope="unchecked")
         else:
             final_answer = raw_answer
 
@@ -663,23 +673,13 @@ async def query_endpoint(
     llm_served = bool(provider_value and model_value)
 
     chunks_data = [
-        SearchResult(
-            chunk_id=c.get("chunk_id", "c"),
-            document_id=c.get("document_id", "d"),
-            text=c.get("text", ""),
-            score=c.get("score", 0.0),
-            retrieval_method="hybrid",
-            metadata=c.get("metadata", {}),
-            rank=c.get("rank"),
-            filename=c.get("filename", ""),
-            title=c.get("title", ""),
-            page_start=c.get("page_start"),
-            heading_path=c.get("heading_path", ""),
-            scores=c.get("scores", {}),
-            chunk_index=c.get("chunk_index"),
-        )
-        for c in final_state.get("retrieved_chunks", [])
+        SearchResult.model_validate(chunk)
+        for chunk in final_state.get("retrieved_chunks", [])
     ]
+    verification_result = final_state.get("verification_result")
+    verification = VerificationSummary.model_validate(
+        verification_result.model_dump() if verification_result is not None else {}
+    )
 
     degraded_reason: str | None = final_state.get("generation_error")
     return QueryResponse(
@@ -688,7 +688,7 @@ async def query_endpoint(
         source_chunks=chunks_data,
         entities=final_state.get("entities", []),
         cycle_count=final_state.get("cycle_count", 1),
-        verified=final_state.get("is_grounded", False),
+        verified=verification.status == "supported",
         refusal=final_state.get("is_refusal", False),
         execution_time_ms=elapsed_ms,
         serving_provider=provider_value,
@@ -700,6 +700,8 @@ async def query_endpoint(
         ),
         degraded_reason=degraded_reason,
         answer_status=final_state.get("answer_status", "answered"),
+        verification=verification,
+        debug=final_state.get("debug", {}),
         sources=chunks_data,
         request_id=request_id,
         provider=provider_value,
@@ -913,6 +915,7 @@ async def update_llm_settings(
             min_dense_score=_core_get_settings().min_dense_score,
             graph_enabled=_core_get_settings().graph_enabled,
             debug_log_prompts=_core_get_settings().debug_log_prompts,
+            verify_mode=_core_get_settings().verify_mode,
         )
 
     return masked_llm_view(_runtime_llm_settings)

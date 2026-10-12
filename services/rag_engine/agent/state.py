@@ -1,28 +1,29 @@
-"""State schema for LangGraph cyclic RAG execution."""
+"""Typed state schema for LangGraph cyclic RAG execution."""
 
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
+
+from packages.core.models import Entity, SearchResult
+from services.rag_engine.verification import VerificationResult
 
 
-class RagAgentState(TypedDict):
-    """The central state passed across LangGraph nodes."""
+class RagAgentState(TypedDict, total=False):
     query: str
     current_search_query: str
-    retrieved_chunks: list[dict[str, Any]]
-    entities: list[dict[str, Any]]
+    retrieved_chunks: list[SearchResult]
+    entities: list[Entity]
     draft_answer: str
-    critic_verdict: dict[str, Any] | None
     cycle_count: int
     max_cycles: int
-    is_grounded: bool
-    is_refusal: bool
     tenant_id: str
-    claims: list[dict[str, Any]]
-    verification_result: dict[str, Any] | None
-    generation_error: str | None
-    answer_status: str
+    answer_status: Literal["answered", "insufficient_context", "unverified", "refused"]
+    verification_result: VerificationResult | None
     timings_ms: dict[str, float]
     request_id: str
     serving_provider: str | None
     serving_model: str | None
     usage: dict[str, Any] | None
-
+    generation_error: str | None
+    is_refusal: bool
+    debug: dict[str, Any]
+    retry_top_k: int
+    base_top_k: int

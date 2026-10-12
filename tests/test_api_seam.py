@@ -3,22 +3,41 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from packages.core.models import Chunk
+from services.ingestion.graph_store import KnowledgeGraphStore
+from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.app import app
+from services.rag_engine.retrieval.hybrid import RankedChunk, RetrievalResult
+from tests.fakes import FakeLLM
+
+
+class _FixedRetriever:
+    def __init__(self, chunk: Chunk):
+        self.chunk = chunk
+
+    def retrieve(self, query: str, top_k: int = 5, tenant_id: str = "default", debug: bool = False):
+        ranked = RankedChunk(self.chunk, 1, {"dense": 0.95, "bm25": 0.0, "final": 0.95})
+        return RetrievalResult(query, top_k, [ranked], timings_ms={"total": 1.0})
+
+
+def _install_answer_graph(monkeypatch, chunk: Chunk, answer: str, verify_fn=None) -> FakeLLM:
+    from services.rag_engine import app as app_module
+
+    llm = FakeLLM(content=answer)
+    graph = build_rag_agent_graph(
+        retriever=_FixedRetriever(chunk),
+        graph_store=KnowledgeGraphStore(in_memory=True),
+        llm_client=llm,
+        min_dense_score=0.70,
+        verify_mode="citations",
+        verify_fn=verify_fn,
+    )
+    monkeypatch.setattr(app_module, "agent_graph", graph)
+    return llm
 
 
 @pytest.fixture
 def client():
-    # Ensure the seam document exists in the tenant the queries below use.
-    from services.rag_engine.app import ingestion_pipeline, retriever, vector_store
-    docs = ingestion_pipeline.get_documents()
-    if not any(d.get("tenant_id") == "tenant-enterprise-1" for d in docs):
-        ingestion_pipeline.ingest_text(
-            title="Meridian Storage Architecture",
-            text="Meridian platform uses Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.",
-            source="test_seam.md",
-            tenant_id="tenant-enterprise-1",
-        )
-        retriever.update_chunks(vector_store.get_all_chunks())
     return TestClient(app)
 
 
@@ -28,7 +47,22 @@ def test_api_health(client):
     assert res.json()["service"] == "meridian-rag-engine"
 
 
-def test_api_successful_query_flow(client):
+def test_api_successful_query_flow(client, monkeypatch):
+    from services.rag_engine.app import ingestion_pipeline, vector_store
+
+    text = "Meridian platform uses Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships."
+    result = ingestion_pipeline.ingest_text(
+        title="Meridian Storage Architecture",
+        text=text,
+        source="test_seam.md",
+        tenant_id="tenant-enterprise-1",
+    )
+    chunk = next(chunk for chunk in vector_store.get_all_chunks("tenant-enterprise-1") if chunk.document_id == result.document_id)
+    llm = _install_answer_graph(
+        monkeypatch,
+        chunk,
+        "Meridian uses Qdrant for dense vector similarity and Neo4j for knowledge graph relationships [1].",
+    )
     headers = {"X-API-Key": "meridian-test-secret-key-2026", "X-Tenant-Id": "tenant-enterprise-1"}
     response = client.post(
         "/v1/query",
@@ -42,11 +76,13 @@ def test_api_successful_query_flow(client):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["verified"] is True
+    assert data["verified"] is False
+    assert data["verification"]["status"] == "citations_ok"
     assert data["refusal"] is False
     assert "Qdrant" in data["answer"] or "Neo4j" in data["answer"]
     assert len(data["source_chunks"]) > 0
     assert data["execution_time_ms"] > 0
+    assert llm.calls
 
 
 def test_api_unanswerable_query_returns_insufficient_context(client):
@@ -82,7 +118,9 @@ def test_api_prompt_injection_blocked(client):
     assert "Prompt injection detected" in response.json()["detail"]
 
 
-def test_api_document_ingestion_and_subsequent_query(client):
+def test_api_document_ingestion_and_subsequent_query(client, monkeypatch):
+    from services.rag_engine.app import vector_store
+
     headers = {"X-API-Key": "meridian-test-secret-key-2026"}
     # Ingest new document
     ingest_resp = client.post(
@@ -96,6 +134,16 @@ def test_api_document_ingestion_and_subsequent_query(client):
     assert ingest_resp.status_code == 200
     assert ingest_resp.json()["chunks"] >= 1
 
+    chunk = next(
+        chunk for chunk in vector_store.get_all_chunks("default")
+        if "Project Falcon uses Kyber-1024" in chunk.text
+    )
+    llm = _install_answer_graph(
+        monkeypatch,
+        chunk,
+        "Project Falcon uses Kyber-1024 post-quantum key encapsulation for satellite communications [1].",
+    )
+
     # Query newly ingested document
     query_resp = client.post(
         "/v1/query",
@@ -105,3 +153,48 @@ def test_api_document_ingestion_and_subsequent_query(client):
     assert query_resp.status_code == 200
     answer_text = query_resp.json()["answer"]
     assert "Kyber" in answer_text and "1024" in answer_text
+    assert query_resp.json()["verification"]["status"] == "citations_ok"
+    assert llm.calls
+
+
+def test_api_final_unsupported_answer_is_replaced_by_safe_refusal(client, monkeypatch):
+    from services.rag_engine.app import ingestion_pipeline, vector_store
+    from services.rag_engine.verification import VerificationResult
+
+    result = ingestion_pipeline.ingest_text(
+        title="Qdrant Test Document",
+        text="Qdrant stores vector embeddings for semantic retrieval.",
+        source="unsupported_test.md",
+        tenant_id="default",
+    )
+    chunk = next(chunk for chunk in vector_store.get_all_chunks("default") if chunk.document_id == result.document_id)
+
+    async def reject_answer(question, answer, sources, **kwargs):
+        return VerificationResult(
+            status="unsupported",
+            scope="llm_judgment",
+            unsupported_claims=["Rejected draft claim."],
+        )
+
+    llm = _install_answer_graph(
+        monkeypatch,
+        chunk,
+        "Rejected draft claim.",
+        verify_fn=reject_answer,
+    )
+    response = client.post(
+        "/v1/query",
+        headers={"X-API-Key": "meridian-test-secret-key-2026"},
+        json={"query": "What does Qdrant store?", "max_cycles": 1},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer_status"] == "refused"
+    assert body["refusal"] is True
+    assert body["verification"]["status"] == "unsupported"
+    assert body["verified"] is False
+    assert "safely refused" in body["answer"]
+    assert "Rejected draft claim" not in body["answer"]
+    assert len(body["source_chunks"]) == 1
+    assert llm.calls

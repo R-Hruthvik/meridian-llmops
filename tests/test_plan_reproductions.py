@@ -9,7 +9,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from services.ingestion.vector_store import point_id
-from services.rag_engine.agent.critic import CriticAgent
 from services.rag_engine.app import app
 
 ROOT = Path(__file__).parents[1]
@@ -63,17 +62,8 @@ async def test_f11_provider_failure_is_not_returned_as_refusal(monkeypatch):
         await graph.ainvoke({
         "query": "What does Meridian use for gateway routing?",
         "current_search_query": "What does Meridian use for gateway routing?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "", "critic_verdict": None,
-        "cycle_count": 0, "max_cycles": 1, "is_grounded": False, "is_refusal": False,
+        "retrieved_chunks": [], "entities": [], "draft_answer": "",
+        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
         "tenant_id": "repro",
         })
     assert error.value.provider_message == "invalid credentials"
-
-
-@pytest.mark.xfail(strict=True, reason="Lexical overlap currently accepts the contradictory statement.")
-def test_f13_contradictory_statement_is_rejected():
-    verdict = CriticAgent().evaluate(
-        "What is Qdrant?", "Qdrant is not a vector database used to store embeddings.",
-        "Qdrant is a vector database used to store embeddings.",
-    )
-    assert verdict.is_grounded is False

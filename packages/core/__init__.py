@@ -3,7 +3,6 @@
 from packages.core.config import Settings, get_settings
 from packages.core.models import (
     Chunk,
-    CriticVerdict,
     Document,
     DocumentFormat,
     Entity,
@@ -16,7 +15,6 @@ from packages.core.models import (
 
 __all__ = [
     "Chunk",
-    "CriticVerdict",
     "Document",
     "DocumentFormat",
     "Entity",
