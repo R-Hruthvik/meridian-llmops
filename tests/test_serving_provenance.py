@@ -5,7 +5,7 @@ The old code echoed `get_active_llm_config()` back to the user, so a proxy
 `kilo` was reported as `gpt-4o-mini`. These tests pin three things:
   1. the upstream `model` in the SSE/JSON body is captured, not the requested one;
   2. a substitution is surfaced in the response (and logged, model name only);
-  3. when no LLM served the request (greeting bypass, refusal, degraded path)
+  3. when no LLM served the request (insufficient context, refusal, degraded path)
      the response says so instead of naming a model.
 """
 
@@ -270,8 +270,9 @@ def test_insufficient_context_does_not_claim_a_model_served_it(seeded_client, mo
     assert data["serving"] == {"provider": None, "model": None, "fresh": False}
 
 
-def test_greeting_bypass_does_not_claim_a_model_served_it(seeded_client):
-    """The greeting/bypass path never calls an LLM at all."""
+def test_greeting_uses_the_normal_rag_path(seeded_client, monkeypatch):
+    """A greeting no longer takes a special bypass around the RAG graph."""
+    _stub_upstream(monkeypatch, lambda _q: "Hello there. [1]")
     response = seeded_client.post(
         "/v1/query",
         headers={"X-API-Key": API_KEY},
@@ -279,8 +280,8 @@ def test_greeting_bypass_does_not_claim_a_model_served_it(seeded_client):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["serving_model"] is None
-    assert data["serving"] == {"provider": None, "model": None, "fresh": False}
+    assert data["serving_model"] == UPSTREAM_MODEL
+    assert data["serving"] == {"provider": "custom", "model": UPSTREAM_MODEL, "fresh": True}
 
 
 def test_empty_upstream_completion_is_a_typed_provider_error(seeded_client, monkeypatch):
