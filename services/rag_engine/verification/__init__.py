@@ -50,7 +50,7 @@ class _JudgeVerdict(BaseModel):
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 _DATE_RE = re.compile(r"(?<!\d)(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{4})(?!\d)")
 _NUMBER_RE = re.compile(
-    r"(?<![\w])(?P<prefix>[$€£¥₹]|USD|EUR|GBP|INR)?\s*"
+    r"(?<![\w])(?P<sign>[+-])?\s*(?P<prefix>[$€£¥₹]|USD|EUR|GBP|INR)?\s*(?P<currency_sign>[+-])?\s*"
     r"(?P<number>\d(?:[\d, ]*\d)?(?:\.\d+)?)"
     r"\s*(?P<suffix>USD|EUR|GBP|INR)?\s*(?P<percent>%)?(?![\w])",
     re.IGNORECASE,
@@ -83,7 +83,8 @@ def _normalized_values(text: str) -> tuple[set[str], list[tuple[str, str]], dict
 
     text_without_dates = _DATE_RE.sub(" ", text_without_citations)
     for match in _NUMBER_RE.finditer(text_without_dates):
-        number = re.sub(r"[,\s]", "", match.group("number"))
+        sign = match.group("sign") or match.group("currency_sign") or ""
+        number = sign + re.sub(r"[,\s]", "", match.group("number"))
         prefix = (match.group("prefix") or "").upper()
         suffix = (match.group("suffix") or "").upper()
         currency = prefix if prefix in {"$", "€", "£", "¥", "₹", "USD", "EUR", "GBP", "INR"} else suffix

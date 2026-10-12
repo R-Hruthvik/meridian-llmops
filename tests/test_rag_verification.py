@@ -81,6 +81,30 @@ async def test_number_mismatch_is_reported_for_cited_source():
     assert result.numeric_mismatches == ["30"]
 
 
+async def test_negative_percentage_does_not_match_positive_source_value():
+    result = await verify_answer(
+        question="What was the change?",
+        answer="The change was -30%. [1]",
+        sources=[source(1, "The change was 30%.")],
+        mode="citations",
+    )
+
+    assert result.status == "citations_failed"
+    assert result.numeric_mismatches == ["-30%"]
+
+
+async def test_negative_number_does_not_match_positive_source_value():
+    result = await verify_answer(
+        question="What was the balance?",
+        answer="The balance was -30 dollars. [1]",
+        sources=[source(1, "The balance was 30 dollars.")],
+        mode="citations",
+    )
+
+    assert result.status == "citations_failed"
+    assert result.numeric_mismatches == ["-30"]
+
+
 async def test_currency_amount_does_not_match_percentage_with_same_number():
     result = await verify_answer(
         question="What was the recorded amount?",
