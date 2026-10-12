@@ -108,3 +108,11 @@
 - Legacy originals under `documents/` are deleted and restored using their stored basenames, including filenames with spaces. The existing JSON ingest response retains `title` and `chunks_indexed` for the current UI alongside the new per-file fields; the multipart response remains the new contract.
 - Final integration verification: `.venv/bin/python -m pytest tests -q` with the normal plugin set and local socket access -> **263 passed, 5 expected failures, 38 warnings, 15.09 seconds**. `.venv/bin/ruff check .` -> all checks passed. `.venv/bin/mypy packages services evals --ignore-missing-imports --explicit-package-bases --python-version 3.11` -> no issues in 53 source files. Changed-code `git diff --check` passed; pre-existing whitespace in the owner's `AGENTS.md` was left untouched.
 - Phase 2 gate passed. Phase 3 has not started.
+
+## Task 3.1 — Grounded prompt builder (2026-10-12)
+
+- Confirmed: generation previously used a permissive context prompt without an outside-knowledge prohibition or mandatory citation rule, and added a random request nonce to the system prompt.
+- Added `generation/prompt.py` with the plan's exact grounding rules, numbered filename/page/heading sources, a default 6000 approximate-token source budget, selected-source tracking, and dropped-source logging. API source dictionaries remain unchanged.
+- Source delimiter sequences are escaped case-insensitively so a document cannot close its own wrapper. Ordinary source text, code operators, ampersands, and literal entities are preserved for exact quotation; header line breaks cannot forge source entries.
+- Tests first reproduced budget/source containment behavior and both review issues. Final scoped verification: 7 prompt tests passed, Ruff and owned-file whitespace checks passed; independent spec/quality review is clean. Provider tests were being implemented concurrently and their interim failures were not treated as prompt failures.
+- Integration into graph/API is Task 3.3; the existing lexical critic remains a Phase 4 concern.
