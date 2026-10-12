@@ -5,7 +5,7 @@
 
 ## Seed (from DIRECTION.md / README / last block audit)
 
-- [ ] `web` — theme and identity: light theme, own typography, distinct layout language (owner: "generic purple-gradient template", score 2/10)
+- [ ] `web` — theme and identity: light theme, own typography, distinct layout language (owner: "generic purple-gradient template")
 - [ ] `web` — turn plain form fields into real tools with validation, loading, and error states
 - [ ] `web` — label the lens-rail glyphs (spec §6 says icon+tooltip; owner wants labels — amend spec first)
 - [ ] `web` — bake accessible contrast into the new palette (deferred: `--text-faint` 2.86:1, `--warn` 3.78:1)

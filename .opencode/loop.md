@@ -52,5 +52,4 @@ Size a round to its work: small fix ~15 minutes, a real redesign spread across s
 - Open a PR once the branch is worth a human look; update it as you go. A round that lands and pushes is complete whether or not the PR is merged.
 - Append to `docs/superpowers/loops/lessons.md` the moment you learn something hard (one line, factual). Append to `docs/superpowers/loops/progress.md` what you did, what it measured, what's next.
 - Never leave the tree half-edited. If you must stop mid-change, `git stash` or `git checkout --` back to green, and note the resume point in the progress file.
-- After a substantial change, ask the owner: **"What's your satisfaction score for this change, out of 10?"** Record it in `README.md` with the date, what shipped, and what gaps remain. Their answer decides what the next round prioritizes.
 - If reality contradicts the task's premise, say so instead of forcing it.

@@ -8,8 +8,7 @@
 
 ## 1. Why this exists
 
-The owner rated the product **2 / 10** on how it feels to use, and identified
-three concurrent problems:
+The owner identified three concurrent problems:
 
 - **How it looks** — generic purple gradients, rounded cards everywhere, no identity
 - **How it works** — still reads as three separate screens, not one workbench
@@ -222,8 +221,6 @@ this is the single biggest density win.
    - Clicking a chunk row opens the Corpus overlay with the chunk focused
    - All three lenses reachable; all five capabilities reachable as overlays
    - Degraded / refused / no-model-served states render honestly
-5. Ask the owner: **"What's your satisfaction score for this change, out of 10?"**
-   and record it in `README.md`.
 
 ## 13. Out of scope
 
