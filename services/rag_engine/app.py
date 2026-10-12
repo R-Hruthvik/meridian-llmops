@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
 
 from packages.core.db import AsyncSessionLocal, init_db
-from packages.core.errors import IndexReadError, IndexWriteError, IngestionError
+from packages.core.errors import IndexReadError, IndexWriteError, IngestionError, ProviderError
 from packages.core.models import (
     DocumentFormat,
     GuardrailResult,
@@ -199,7 +199,13 @@ _default_llm_settings: dict[str, Any] = {
     "openrouter_api_key": "",
     "deepseek_api_key": "",
     "custom_api_key": "",
-    "custom_base_url": "https://api.groq.com/openai/v1",
+    "openai_base_url": "",
+    "anthropic_base_url": "",
+    "groq_base_url": "",
+    "openrouter_base_url": "",
+    "deepseek_base_url": "",
+    "ollama_base_url": "",
+    "custom_base_url": "",
     "default_model": "gpt-4o-mini",
     "litellm_base_url": "http://localhost:4000",
     "provider_models": {
@@ -290,69 +296,47 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
     (agent graph, connectivity test). Never expose via API responses.
     """
     settings = dict(_runtime_llm_settings)
-    provider = settings.get("active_provider", "openai").lower()
+    env_settings = _core_get_settings()
+    generic = {
+        "provider": env_settings.provider,
+        "api_key": env_settings.api_key,
+        "base_url": env_settings.base_url,
+        "model": env_settings.model,
+    }
+    generic_active = any(isinstance(v, str) and v.strip() for k, v in generic.items() if k != "provider")
+    provider = (generic["provider"] or ("custom" if generic_active else settings.get("active_provider", "openai"))).lower()
+    if generic_active:
+        defaults = {
+            "openai": ("https://api.openai.com/v1", "gpt-4o-mini"),
+            "anthropic": ("https://api.anthropic.com", "claude-3-5-sonnet-20241022"),
+            "openrouter": ("https://openrouter.ai/api/v1", "meta-llama/llama-3.3-70b-instruct"),
+            "deepseek": ("https://api.deepseek.com/v1", "deepseek-chat"),
+            "groq": ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+            "ollama": ("http://localhost:11434/v1", "llama3:latest"),
+            "custom": ("", ""),
+        }
+        default_url, default_model = defaults.get(provider, ("", ""))
+        return {
+            "provider": provider,
+            "model": generic["model"] or default_model,
+            "api_key": generic["api_key"] or None,
+            "base_url": generic["base_url"] or default_url,
+        }
     provider_models = settings.get("provider_models", {})
     configured_model = settings.get("default_model")
+    from services.gateway.providers import PROVIDERS
 
-    # Resolve api_key from persisted settings first, then check session-tested keys as override.
-    # Any provider may have no stored key, so this is str | None; "" stays the falsy sentinel.
-    persisted_key: str | None = ""
-    if provider == "groq":
-        if configured_model and not configured_model.startswith(("gpt-", "claude-", "o1", "o3")):
-            model = configured_model
-        else:
-            model = provider_models.get("groq", "groq/compound-mini")
-        persisted_key = settings.get("groq_api_key") or settings.get("custom_api_key")
-        base_url = settings.get("custom_base_url") or "https://api.groq.com/openai/v1"
-    elif provider == "openai":
-        if configured_model and configured_model.startswith(("gpt-", "o1", "o3", "chatgpt")):
-            model = configured_model
-        else:
-            model = provider_models.get("openai", "gpt-4o-mini")
-        persisted_key = settings.get("openai_api_key")
-        base_url = "https://api.openai.com/v1"
-    elif provider == "anthropic":
-        if configured_model and configured_model.startswith("claude-"):
-            model = configured_model
-        else:
-            model = provider_models.get("anthropic", "claude-3-5-sonnet-20241022")
-        persisted_key = settings.get("anthropic_api_key")
-        base_url = "https://api.anthropic.com/v1"
-    elif provider == "openrouter":
-        model = configured_model or provider_models.get("openrouter", "meta-llama/llama-3.3-70b-instruct")
-        persisted_key = settings.get("openrouter_api_key") or settings.get("custom_api_key")
-        base_url = settings.get("custom_base_url") or "https://openrouter.ai/api/v1"
-    elif provider == "deepseek":
-        model = configured_model or provider_models.get("deepseek", "deepseek-chat")
-        persisted_key = settings.get("deepseek_api_key") or settings.get("custom_api_key")
-        base_url = settings.get("custom_base_url") or "https://api.deepseek.com/v1"
-    elif provider in ["custom", "openai_compatible"]:
-        model = configured_model or "groq/compound-mini"
-        persisted_key = settings.get("custom_api_key")
-        base_url = settings.get("custom_base_url", "https://api.groq.com/openai/v1")
-    elif provider == "ollama":
-        model = configured_model or provider_models.get("ollama", "llama3:latest")
-        api_key = None
-        base_url = settings.get("custom_base_url") or "http://localhost:11434/v1"
-        return {
-            "provider": provider,
-            "model": model,
-            "api_key": api_key,
-            "base_url": base_url,
-        }
-    else:
-        model = configured_model or "gpt-4o-mini"
-        api_key = None
-        base_url = settings.get("litellm_base_url", "http://localhost:4000")
-        return {
-            "provider": provider,
-            "model": model,
-            "api_key": api_key,
-            "base_url": base_url,
-        }
-
-    # Use session-tested key as override if available, otherwise use persisted key
-    api_key = _tested_api_keys.get(provider) or persisted_key
+    if provider == "openai_compatible":
+        provider = "custom"
+    if provider not in PROVIDERS:
+        return {"provider": provider, "model": configured_model or "", "api_key": None, "base_url": ""}
+    default_models = {"openai": "gpt-4o-mini", "anthropic": "claude-3-5-sonnet-20241022", "openrouter": "meta-llama/llama-3.3-70b-instruct", "deepseek": "deepseek-chat", "groq": "llama-3.3-70b-versatile", "ollama": "llama3:latest", "custom": ""}
+    model = configured_model or provider_models.get(provider) or default_models[provider]
+    api_key = _core_get_settings().__getattribute__(f"{provider}_api_key") or settings.get(f"{provider}_api_key")
+    api_key = _tested_api_keys.get(provider) or api_key
+    base_url = _core_get_settings().__getattribute__(f"{provider}_base_url") or settings.get(f"{provider}_base_url") or PROVIDERS[provider]["base_url_default"]
+    if provider == "custom":
+        base_url = _core_get_settings().custom_base_url or settings.get("custom_base_url") or base_url
 
     return {
         "provider": provider,
@@ -741,24 +725,25 @@ class TestAndFetchModelsRequest(BaseModel):
 @app.get("/v1/settings/llm")
 async def get_llm_settings(tenant_id: str = Depends(verify_api_key)):
     """Returns the current LLM configuration (keys never exposed)."""
+    resolved = _resolve_active_llm_config_with_secrets()
+    provider_names = ("openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom")
+    provider_flags = {
+        name: bool(getattr(_core_get_settings(), f"{name}_api_key") or _runtime_llm_settings.get(f"{name}_api_key") or name == "ollama")
+        for name in provider_names
+    }
+    if resolved["provider"] in provider_flags and resolved.get("api_key"):
+        provider_flags[resolved["provider"]] = True
     # Return all settings EXCEPT api keys - never expose any key information
     safe_settings = {
-        "active_provider": _runtime_llm_settings.get("active_provider"),
-        "default_model": _runtime_llm_settings.get("default_model"),
+        "active_provider": resolved["provider"],
+        "default_model": resolved["model"],
+        "base_url": resolved["base_url"],
         "litellm_base_url": _runtime_llm_settings.get("litellm_base_url"),
         "custom_base_url": _runtime_llm_settings.get("custom_base_url"),
         "provider_models": _runtime_llm_settings.get("provider_models"),
         "provider_available_models": _runtime_llm_settings.get("provider_available_models"),
         # Add configured status for each provider (True/False, no key info)
-        "providers_configured": {
-            "openai": bool(_runtime_llm_settings.get("openai_api_key")),
-            "anthropic": bool(_runtime_llm_settings.get("anthropic_api_key")),
-            "groq": bool(_runtime_llm_settings.get("groq_api_key")),
-            "openrouter": bool(_runtime_llm_settings.get("openrouter_api_key")),
-            "deepseek": bool(_runtime_llm_settings.get("deepseek_api_key")),
-            "custom": bool(_runtime_llm_settings.get("custom_api_key") or _runtime_llm_settings.get("custom_base_url")),
-            "ollama": True,  # Always available locally
-        },
+        "providers_configured": provider_flags,
     }
     return safe_settings
 
@@ -766,8 +751,25 @@ async def get_llm_settings(tenant_id: str = Depends(verify_api_key)):
 @app.get("/v1/settings/providers")
 async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
     """Returns status and details for all configured and supported LLM providers."""
-    active = _runtime_llm_settings.get("active_provider", "openai").lower()
-    custom_url = _runtime_llm_settings.get("custom_base_url", "https://api.groq.com/openai/v1")
+    active_config = _resolve_active_llm_config_with_secrets()
+    active = active_config["provider"].lower()
+    provider_configured = {
+        name: bool(getattr(_core_get_settings(), f"{name}_api_key") or _runtime_llm_settings.get(f"{name}_api_key") or name == "ollama")
+        for name in ("openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom")
+    }
+    if active in provider_configured and active_config.get("api_key"):
+        provider_configured[active] = True
+    provider_urls = {
+        "openai": _runtime_llm_settings.get("openai_base_url") or "https://api.openai.com/v1",
+        "anthropic": _runtime_llm_settings.get("anthropic_base_url") or "https://api.anthropic.com",
+        "groq": _runtime_llm_settings.get("groq_base_url") or "https://api.groq.com/openai/v1",
+        "openrouter": _runtime_llm_settings.get("openrouter_base_url") or "https://openrouter.ai/api/v1",
+        "deepseek": _runtime_llm_settings.get("deepseek_base_url") or "https://api.deepseek.com/v1",
+        "ollama": _runtime_llm_settings.get("ollama_base_url") or "http://localhost:11434/v1",
+        "custom": _runtime_llm_settings.get("custom_base_url") or "",
+    }
+    if active in provider_urls:
+        provider_urls[active] = active_config["base_url"]
     prov_models = _runtime_llm_settings.get("provider_models", {})
 
     providers_info = [
@@ -775,10 +777,10 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
             "id": "openai",
             "name": "OpenAI",
             "description": "GPT-4o, GPT-4o-mini, o1, o3-mini",
-            "configured": bool(_runtime_llm_settings.get("openai_api_key")),
+            "configured": provider_configured["openai"],
             "is_active": active == "openai",
-            "base_url": "https://api.openai.com/v1",
-            "current_model": _runtime_llm_settings.get("default_model") if active == "openai" else prov_models.get("openai", "gpt-4o-mini"),
+            "base_url": provider_urls["openai"],
+            "current_model": active_config["model"] if active == "openai" else prov_models.get("openai", "gpt-4o-mini"),
             "models": ["gpt-4o-mini", "gpt-4o", "o3-mini", "o1"],
             "type": "cloud",
         },
@@ -786,10 +788,10 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
             "id": "anthropic",
             "name": "Anthropic",
             "description": "Claude 3.7 Sonnet, Claude 3.5 Sonnet & Haiku",
-            "configured": bool(_runtime_llm_settings.get("anthropic_api_key")),
+            "configured": provider_configured["anthropic"],
             "is_active": active == "anthropic",
-            "base_url": "https://api.anthropic.com/v1",
-            "current_model": _runtime_llm_settings.get("default_model") if active == "anthropic" else prov_models.get("anthropic", "claude-3-5-sonnet-20241022"),
+            "base_url": provider_urls["anthropic"],
+            "current_model": active_config["model"] if active == "anthropic" else prov_models.get("anthropic", "claude-3-5-sonnet-20241022"),
             "models": ["claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
             "type": "cloud",
         },
@@ -797,10 +799,10 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
             "id": "groq",
             "name": "Groq Cloud",
             "description": "Ultra-fast LPU inference (Llama 3.3, Mixtral)",
-            "configured": bool(_runtime_llm_settings.get("groq_api_key")),
+            "configured": provider_configured["groq"],
             "is_active": active == "groq",
-            "base_url": _runtime_llm_settings.get("custom_base_url") or "https://api.groq.com/openai/v1",
-            "current_model": _runtime_llm_settings.get("default_model") if active == "groq" else prov_models.get("groq", "llama-3.3-70b-versatile"),
+            "base_url": provider_urls["groq"],
+            "current_model": active_config["model"] if active == "groq" else prov_models.get("groq", "llama-3.3-70b-versatile"),
             "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
             "type": "cloud",
         },
@@ -808,10 +810,10 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
             "id": "openrouter",
             "name": "OpenRouter",
             "description": "Unified routing across 200+ models",
-            "configured": bool(_runtime_llm_settings.get("openrouter_api_key")),
+            "configured": provider_configured["openrouter"],
             "is_active": active == "openrouter",
-            "base_url": "https://openrouter.ai/api/v1",
-            "current_model": _runtime_llm_settings.get("default_model") if active == "openrouter" else prov_models.get("openrouter", "meta-llama/llama-3.3-70b-instruct"),
+            "base_url": provider_urls["openrouter"],
+            "current_model": active_config["model"] if active == "openrouter" else prov_models.get("openrouter", "meta-llama/llama-3.3-70b-instruct"),
             "models": ["meta-llama/llama-3.3-70b-instruct", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat"],
             "type": "cloud",
         },
@@ -819,10 +821,10 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
             "id": "deepseek",
             "name": "DeepSeek",
             "description": "DeepSeek-V3 & DeepSeek-R1 reasoning models",
-            "configured": bool(_runtime_llm_settings.get("deepseek_api_key")),
+            "configured": provider_configured["deepseek"],
             "is_active": active == "deepseek",
-            "base_url": "https://api.deepseek.com/v1",
-            "current_model": _runtime_llm_settings.get("default_model") if active == "deepseek" else prov_models.get("deepseek", "deepseek-chat"),
+            "base_url": provider_urls["deepseek"],
+            "current_model": active_config["model"] if active == "deepseek" else prov_models.get("deepseek", "deepseek-chat"),
             "models": ["deepseek-chat", "deepseek-reasoner"],
             "type": "cloud",
         },
@@ -830,10 +832,10 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
             "id": "ollama",
             "name": "Local Ollama",
             "description": "Local offline model execution via Ollama daemon",
-            "configured": True,
+            "configured": provider_configured["ollama"],
             "is_active": active == "ollama",
-            "base_url": "http://localhost:11434",
-            "current_model": _runtime_llm_settings.get("default_model") if active == "ollama" else prov_models.get("ollama", "llama3"),
+            "base_url": provider_urls["ollama"],
+            "current_model": active_config["model"] if active == "ollama" else prov_models.get("ollama", "llama3"),
             "models": ["llama3:latest", "mistral:latest", "qwen2.5:latest"],
             "type": "local",
         },
@@ -841,10 +843,10 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
             "id": "custom",
             "name": "Custom OpenAI-Compatible / Local vLLM",
             "description": "Custom API endpoint (vLLM, LMStudio, TGI, SGLang)",
-            "configured": bool(_runtime_llm_settings.get("custom_base_url") or _runtime_llm_settings.get("custom_api_key")),
+            "configured": bool(provider_configured["custom"] or (active == "custom" and active_config.get("base_url"))),
             "is_active": active in ["custom", "openai_compatible"],
-            "base_url": custom_url,
-            "current_model": _runtime_llm_settings.get("default_model") if active in ["custom", "openai_compatible"] else prov_models.get("custom", "llama-3.3-70b-versatile"),
+            "base_url": provider_urls["custom"],
+            "current_model": active_config["model"] if active == "custom" else prov_models.get("custom", "llama-3.3-70b-versatile"),
             "models": ["llama-3.3-70b-versatile", "deepseek-chat", "gpt-4o-mini"],
             "type": "custom",
         },
@@ -865,6 +867,11 @@ async def update_llm_settings(
     updates = payload.model_dump(exclude_none=True)
 
     async with _settings_lock:
+        selected_provider = (updates.get("active_provider") or _runtime_llm_settings.get("active_provider", "openai")).lower()
+        if updates.get("api_key") is not None:
+            updates[f"{selected_provider}_api_key"] = updates["api_key"]
+        if updates.get("base_url") is not None:
+            updates[f"{selected_provider}_base_url"] = updates["base_url"]
         _runtime_llm_settings.update(_merge_preserving_saved(_runtime_llm_settings, updates))
 
         # Also update provider_models map if default_model and active_provider were supplied
@@ -1041,7 +1048,7 @@ async def test_and_fetch_models(
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             if provider == "openai":
-                url = "https://api.openai.com/v1/models"
+                url = (base_url.rstrip("/") if base_url else "https://api.openai.com/v1") + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
                 if org_id:
                     headers["OpenAI-Organization"] = org_id
@@ -1066,7 +1073,8 @@ async def test_and_fetch_models(
                     status_msg = f"OpenAI error (HTTP {resp.status_code}): {resp.text[:100]}"
 
             elif provider == "anthropic":
-                url = "https://api.anthropic.com/v1/models"
+                anthro_base = base_url.rstrip("/") if base_url else "https://api.anthropic.com"
+                url = anthro_base + ("/models" if anthro_base.endswith("/v1") else "/v1/models")
                 headers = {
                     "x-api-key": api_key,
                     "anthropic-version": "2023-06-01",
@@ -1093,7 +1101,7 @@ async def test_and_fetch_models(
                     status_msg = f"Anthropic error (HTTP {resp.status_code}): {resp.text[:100]}"
 
             elif provider == "groq":
-                url = "https://api.groq.com/openai/v1/models"
+                url = (base_url.rstrip("/") if base_url else "https://api.groq.com/openai/v1") + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
                 resp = await client.get(url, headers=headers)
                 if resp.status_code == 200:
@@ -1107,7 +1115,7 @@ async def test_and_fetch_models(
                     status_msg = f"Groq error (HTTP {resp.status_code}): {resp.text[:100]}"
 
             elif provider == "openrouter":
-                url = "https://openrouter.ai/api/v1/models"
+                url = (base_url.rstrip("/") if base_url else "https://openrouter.ai/api/v1") + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
                 resp = await client.get(url, headers=headers)
                 if resp.status_code == 200:
@@ -1121,7 +1129,7 @@ async def test_and_fetch_models(
                     status_msg = f"OpenRouter error (HTTP {resp.status_code}): {resp.text[:100]}"
 
             elif provider == "deepseek":
-                url = "https://api.deepseek.com/v1/models"
+                url = (base_url.rstrip("/") if base_url else "https://api.deepseek.com/v1") + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
                 resp = await client.get(url, headers=headers)
                 if resp.status_code == 200:
@@ -1173,8 +1181,8 @@ async def test_and_fetch_models(
                 if provider in ["groq", "openrouter", "deepseek", "custom"]:
                     _runtime_llm_settings["custom_api_key"] = api_key
                 _runtime_llm_settings[f"{provider}_api_key"] = api_key
-            if base_url and provider in ["groq", "openrouter", "deepseek", "custom"] and not _is_masked(base_url):
-                _runtime_llm_settings["custom_base_url"] = base_url
+            if base_url and provider in ["openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom"] and not _is_masked(base_url):
+                _runtime_llm_settings[f"{provider}_base_url"] = base_url
             _save_persisted_settings(_runtime_llm_settings)
 
     elapsed_ms = (time.time() - start_time) * 1000
@@ -1186,38 +1194,33 @@ async def test_and_fetch_models(
         "message": status_msg,
         "latency_ms": elapsed_ms,
         "models": models,
+        "listing_only": True,
     }
 
 
+@app.post("/v1/settings/test")
 @app.post("/v1/settings/llm/test")
 async def test_llm_connection(tenant_id: str = Depends(verify_api_key)):
-    """Tests LLM provider connectivity with a test ping."""
+    """Runs a one-token generation to verify active provider credentials and endpoint."""
     start = time.time()
-    provider = _runtime_llm_settings.get("active_provider", "openai").lower()
     config = _resolve_active_llm_config_with_secrets()
-    api_key = config.get("api_key", "")
-    base_url = config.get("base_url", "https://api.openai.com/v1")
-    model = config.get("model", "gpt-4o-mini")
-    endpoint = f"{base_url.rstrip('/')}/models"
-
-    status_msg = f"Successfully connected to {model} via {provider}"
-    is_success = True
-
+    provider = config["provider"]
+    model = config["model"]
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            headers: dict[str, str] = {"Content-Type": "application/json"}
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-            resp = await client.get(
-                endpoint,
-                headers=headers,
-            )
-            if resp.status_code != 200:
-                status_msg = f"Endpoint error (HTTP {resp.status_code})"
-                is_success = False
-    except (httpx.HTTPError, httpx.RequestError, OSError) as e:
-        status_msg = f"Connection Failed: {str(e)[:80]}"
+        await llm_client.chat_completion(
+            messages=[{"role": "user", "content": "Reply with OK."}],
+            model=model,
+            max_tokens=1,
+            temperature=0,
+            provider=provider,
+            api_key=config["api_key"],
+            base_url=config["base_url"],
+        )
+        is_success = True
+        status_msg = f"Successfully generated a test token with {model} via {provider}"
+    except ProviderError as e:
         is_success = False
+        status_msg = e.message
 
     latency = (time.time() - start) * 1000
     return {

@@ -103,10 +103,17 @@ class UpdateLLMSettingsRequest(BaseModel):
     groq_api_key: str | None = None
     openrouter_api_key: str | None = None
     deepseek_api_key: str | None = None
+    ollama_api_key: str | None = None
+    openai_base_url: str | None = None
+    anthropic_base_url: str | None = None
+    groq_base_url: str | None = None
+    openrouter_base_url: str | None = None
+    deepseek_base_url: str | None = None
+    ollama_base_url: str | None = None
+    custom_base_url: str | None = None
     active_provider: str | None = None
     openai_org_id: str | None = None
     default_model: str | None = None
-    custom_base_url: str | None = None
     model: str | None = None
     base_url: str | None = None
     timeout_seconds: int | None = Field(None, ge=1, le=300, description="Request timeout")
@@ -115,8 +122,9 @@ class UpdateLLMSettingsRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
     @field_validator("provider", "api_key", "custom_api_key", "openai_api_key", "anthropic_api_key",
-                     "groq_api_key", "openrouter_api_key", "deepseek_api_key", "model", "base_url",
+                     "groq_api_key", "openrouter_api_key", "deepseek_api_key", "ollama_api_key", "model", "base_url",
                      "active_provider", "openai_org_id", "default_model", "custom_base_url",
+                     "openai_base_url", "anthropic_base_url", "groq_base_url", "openrouter_base_url", "deepseek_base_url", "ollama_base_url",
                      mode="before")
     @classmethod
     def empty_string_to_none(cls, v):

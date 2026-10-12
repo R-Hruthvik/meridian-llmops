@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 
 from packages.core.config import get_settings, validate_production
+from packages.core.errors import ProviderError
 from packages.core.models import GuardrailResult
 from services.gateway.auth import verify_api_key
 from services.gateway.client import LiteLLMClient
@@ -88,6 +89,11 @@ async def chat_completions(
             model=req.model,
             temperature=req.temperature,
             max_tokens=req.max_tokens,
+        )
+    except ProviderError as e:
+        raise HTTPException(
+            status_code=e.status,
+            detail=f"LLM provider error: {e.message}",
         )
     except httpx.HTTPError as e:
         raise HTTPException(

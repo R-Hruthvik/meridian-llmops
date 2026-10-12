@@ -155,10 +155,9 @@ class TestFix4FakeLatency:
         content = filepath.read_text()
 
         func_body = content.split("def test_llm_connection")[1].split("\n\n\n")[0]
-        assert "httpx.AsyncClient" in func_body, \
-            "test_llm_connection must make a real HTTP call via httpx"
-        assert "/models" in func_body or "/chat/completions" in func_body, \
-            "Should hit a real provider endpoint"
+        assert "llm_client.chat_completion" in func_body, \
+            "test_llm_connection must make a real generation call through the provider client"
+        assert "max_tokens=1" in func_body, "Connectivity test should request only one token"
 
     def test_connection_test_returns_real_status(self):
         """When the endpoint is unreachable, status should be 'error', not always 'connected'."""
@@ -284,8 +283,9 @@ class TestFix6ErrorHandling:
         assert "raise" in content, "Client must raise on errors"
         assert "fallback_answer" not in content, "Must not fabricate fallback answers"
 
-    def test_client_raises_on_http_status_error(self):
-        """When the LLM API returns non-200, an HTTPStatusError should be raised."""
+    def test_client_raises_typed_provider_error_on_http_status(self):
+        """When the LLM API returns non-200, a typed provider error is raised."""
+        from packages.core.errors import ProviderError
         from services.gateway.client import LiteLLMClient
 
         client = LiteLLMClient()
@@ -298,7 +298,7 @@ class TestFix6ErrorHandling:
                 mock_resp.request = MagicMock()
                 mock_post.return_value = mock_resp
 
-                with pytest.raises(httpx.HTTPStatusError):
+                with pytest.raises(ProviderError):
                     await client.chat_completion(
                         messages=[{"role": "user", "content": "Hello"}],
                         model="gpt-4o-mini",
@@ -306,8 +306,9 @@ class TestFix6ErrorHandling:
 
         asyncio.run(run_test())
 
-    def test_client_raises_on_connection_error(self):
+    def test_client_raises_typed_provider_error_on_connection_error(self):
         """When the LLM API is unreachable, an error should be raised (not a fallback)."""
+        from packages.core.errors import ProviderError
         from services.gateway.client import LiteLLMClient
 
         client = LiteLLMClient()
@@ -316,7 +317,7 @@ class TestFix6ErrorHandling:
             with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
                 mock_post.side_effect = httpx.ConnectError("Connection refused")
 
-                with pytest.raises(httpx.HTTPError):
+                with pytest.raises(ProviderError):
                     await client.chat_completion(
                         messages=[{"role": "user", "content": "Hello"}],
                         model="gpt-4o-mini",

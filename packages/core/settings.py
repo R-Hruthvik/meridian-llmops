@@ -9,7 +9,7 @@ import os
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
         env_nested_delimiter="__",
         secrets_dir="/run/secrets",
     )
@@ -36,6 +37,25 @@ class Settings(BaseSettings):
     litellm_base_url: str = "http://localhost:4000"
     litellm_master_key: str = Field(default_factory=lambda: os.environ.get("LITELLM_MASTER_KEY", ""))
     default_llm_model: str = "gpt-4o-mini"
+    # Generic provider environment settings intentionally override saved UI settings.
+    provider: str | None = Field(default=None, validation_alias=AliasChoices("PROVIDER", "LLM_PROVIDER"))
+    api_key: str | None = Field(default=None, validation_alias=AliasChoices("API_KEY", "LLM_API_KEY"))
+    base_url: str | None = Field(default=None, validation_alias=AliasChoices("BASE_URL", "LLM_BASE_URL"))
+    model: str | None = Field(default=None, validation_alias=AliasChoices("MODEL", "LLM_MODEL"))
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    groq_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    deepseek_api_key: str | None = None
+    ollama_api_key: str | None = None
+    custom_api_key: str | None = None
+    openai_base_url: str | None = None
+    anthropic_base_url: str | None = None
+    groq_base_url: str | None = None
+    openrouter_base_url: str | None = None
+    deepseek_base_url: str | None = None
+    ollama_base_url: str | None = None
+    custom_base_url: str | None = None
     critic_llm_model: str = "gpt-4o-mini"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     fastembed_cache_path: str = "storage/fastembed"
@@ -69,6 +89,7 @@ class Settings(BaseSettings):
     # Relational Database & Human-in-the-Loop Review Queue
     database_url: str = Field(default_factory=lambda: os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./verified_rag.db"))
     confidence_threshold: float = 0.85
+    min_dense_score: float = Field(default=0.70, ge=0.0, le=1.0)
 
 
 _FORBIDDEN_PRODUCTION_SECRETS = frozenset({

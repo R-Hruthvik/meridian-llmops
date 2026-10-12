@@ -9,6 +9,10 @@ os.environ.setdefault("API_KEY_SECRET", "meridian-test-secret-key-2026")
 os.environ.setdefault("LITELLM_MASTER_KEY", "sk-test-litellm-key")
 os.environ.setdefault("NEO4J_PASSWORD", "test-neo4j-password")
 os.environ.setdefault("APP_ENV", "testing")
+os.environ.setdefault("API_KEY", "")
+os.environ.setdefault("BASE_URL", "")
+os.environ.setdefault("MODEL", "")
+os.environ.setdefault("PROVIDER", "")
 os.environ["VECTOR_BACKEND"] = "qdrant_local"
 os.environ["QDRANT_LOCAL_PATH"] = ":memory:"
 

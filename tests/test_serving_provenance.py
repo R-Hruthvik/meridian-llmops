@@ -108,7 +108,17 @@ async def test_client_falls_back_to_requested_model_when_upstream_omits_it(monke
 async def test_client_records_empty_upstream_content_as_unusable(monkeypatch):
     """An empty completion must not be attributable to a serving model."""
     body = _json.dumps({"model": UPSTREAM_MODEL, "choices": [{"message": {"content": "  "}}]})
-    _resp, snapshot = await _call_client(monkeypatch, body)
+    from packages.core.errors import ProviderError
+
+    # Client records provenance before surfacing the typed failure.
+    client = LiteLLMClient()
+    class _FakeHTTP:
+        async def post(self, *args, **kwargs):
+            return _FakeResponse(body)
+    monkeypatch.setattr(client, "_get_client", lambda: _FakeHTTP())
+    with pytest.raises(ProviderError, match="empty completion"):
+        await client.chat_completion([{"role": "user", "content": "hi"}], model="kilo", provider="custom", api_key="test-api-key", base_url="http://localhost:20128/v1")
+    snapshot = client.served_snapshot()
     assert snapshot == (1, "custom", UPSTREAM_MODEL, "kilo", False)
 
 

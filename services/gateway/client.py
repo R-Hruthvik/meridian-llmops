@@ -1,68 +1,119 @@
-"""LLM Client routing requests to LiteLLM Gateway, Groq, OpenAI, Anthropic, or Ollama."""
+"""Provider-aware async client for chat completions."""
 
+import asyncio
 import json
 import logging
 from typing import Any
 
 import httpx
 
-logger = logging.getLogger("meridian.gateway.client")
-
 from packages.core.config import get_settings
-from packages.core.retry_config import retry_on_api_error
+from packages.core.errors import ProviderConfigError, ProviderError
+from services.gateway.providers import PROVIDERS
+
+logger = logging.getLogger("meridian.gateway.client")
 
 
 class LiteLLMClient:
-    """Client for dispatching LLM queries through LiteLLM Gateway or direct provider endpoints."""
+    """Dispatch chat completions to LiteLLM or a supported direct provider."""
 
-    def __init__(self, base_url: str | None = None, master_key: str | None = None):
+    def __init__(
+        self,
+        base_url: str | None = None,
+        master_key: str | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ):
         settings = get_settings()
         self.base_url = base_url or settings.litellm_base_url
         self.master_key = master_key or settings.litellm_master_key
+        self._transport = transport
         self._client: httpx.AsyncClient | None = None
-        # Provenance of the last SUCCESSFUL upstream completion (issue #35). Routers
-        # like omniroute substitute their own model, so the requested name is not proof
-        # of who served the request. seq lets a caller tell "this request called the
-        # LLM" from "it read a stale record left by an earlier request".
         self._served_seq = 0
         self._last_served: dict[str, Any] | None = None
+        self.last_response: dict[str, Any] | None = None
 
     def served_snapshot(self) -> tuple[int, str | None, str | None, str | None, bool]:
-        """(seq, provider, model, requested_model, upstream_had_content) for the last successful call."""
         served = self._last_served or {}
-        return (
-            self._served_seq,
-            served.get("provider"),
-            served.get("model"),
-            served.get("requested"),
-            bool(served.get("has_content")),
-        )
+        return (self._served_seq, served.get("provider"), served.get("model"), served.get("requested"), bool(served.get("has_content")))
 
     def _record_served(self, provider: str, model: str, requested: str, has_content: bool) -> None:
         self._served_seq += 1
-        self._last_served = {
-            "provider": provider,
-            "model": model,
-            "requested": requested,
-            "has_content": has_content,
-        }
+        self._last_served = {"provider": provider, "model": model, "requested": requested, "has_content": has_content}
 
     def _get_client(self) -> httpx.AsyncClient:
-        """Lazily create and return a shared httpx AsyncClient with connection pooling."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
-                timeout=25.0,
+                timeout=httpx.Timeout(connect=5.0, read=60.0, write=60.0, pool=5.0),
                 limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+                transport=self._transport,
             )
         return self._client
 
     async def close(self) -> None:
-        """Close the shared httpx client and release connection pool."""
         if self._client is not None and not self._client.is_closed:
             await self._client.aclose()
             self._client = None
 
-    @retry_on_api_error(max_attempts=3)
+    @staticmethod
+    def _endpoint(provider: str, base_url: str) -> str:
+        if provider == "litellm":
+            base = base_url.rstrip("/")
+            if base.endswith("/chat/completions"):
+                return base
+            return f"{base}/chat/completions" if base.endswith("/v1") else f"{base}/v1/chat/completions"
+        spec = PROVIDERS[provider]
+        base = base_url.rstrip("/")
+        if base.endswith(spec["path"]):
+            return base
+        if provider == "anthropic" and base.endswith("/v1"):
+            base = base[:-3]
+        return f"{base}{spec['path']}"
+
+    @staticmethod
+    def _redact(value: Any, secret: str | None) -> Any:
+        if not secret:
+            return value
+        if isinstance(value, str):
+            return value.replace(secret, "[REDACTED]")
+        if isinstance(value, list):
+            return [LiteLLMClient._redact(item, secret) for item in value]
+        if isinstance(value, dict):
+            return {key: LiteLLMClient._redact(item, secret) for key, item in value.items()}
+        return value
+
+    @staticmethod
+    def _redact_literal(value: str, secret: str | None) -> str:
+        return value.replace(secret, "[REDACTED]") if secret else value
+
+    @staticmethod
+    def _extract(data: dict[str, Any], provider: str) -> tuple[str, str | None, dict[str, Any] | None]:
+        model = data.get("model") if isinstance(data.get("model"), str) else None
+        usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
+        if provider == "anthropic":
+            content_blocks = data.get("content")
+            content = "".join(block.get("text", "") for block in content_blocks or [] if isinstance(block, dict))
+            return content, model, usage
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices:
+            choice = choices[0]
+            if not isinstance(choice, dict):
+                raise ValueError("invalid completion choice")
+            message = choice.get("message")
+            if isinstance(message, dict):
+                content = message.get("content", "")
+                if isinstance(content, list):
+                    content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+                if not isinstance(content, str):
+                    raise TypeError("invalid completion content")
+                return content, model, usage
+            text = choice.get("text", "")
+            if isinstance(text, str):
+                return text, model, usage
+            raise ValueError("invalid completion content")
+        if isinstance(data.get("response"), str):
+            return data["response"], model, usage
+        raise ValueError("missing completion choices")
+
     async def chat_completion(
         self,
         messages: list[dict[str, str]],
@@ -73,169 +124,99 @@ class LiteLLMClient:
         api_key: str | None = None,
         base_url: str | None = None,
     ) -> dict[str, Any]:
-        """Dispatches chat completion to configured provider (Groq, OpenAI, Anthropic, Ollama, LiteLLM)."""
-        target_base = (base_url or self.base_url).rstrip("/")
-        target_key = api_key or self.master_key
-        target_model = model or "gpt-4o-mini"
-        target_provider = (provider or "openai").lower()
+        target_provider = (provider or "litellm").lower()
+        if target_provider not in (*PROVIDERS, "litellm"):
+            raise ProviderConfigError(target_provider, f"Unknown LLM provider: {target_provider}")
+        is_proxy = target_provider == "litellm"
+        spec = PROVIDERS.get(target_provider)
+        target_base = (base_url or (self.base_url if is_proxy else spec["base_url_default"])).rstrip("/")
+        target_key = (api_key or self.master_key) if is_proxy else api_key
+        if spec and spec["auth_style"] != "none" and not target_key:
+            raise ProviderConfigError(target_provider, f"API key is required for provider {target_provider}")
+        if not target_base:
+            raise ProviderConfigError(target_provider, f"Base URL is required for provider {target_provider}")
+        endpoint = self._endpoint(target_provider, target_base)
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if target_key and (is_proxy or spec["auth_style"] != "none"):
+            if spec and spec["auth_style"] == "anthropic":
+                headers.update({"x-api-key": target_key, "anthropic-version": "2023-06-01"})
+            else:
+                headers["Authorization"] = f"Bearer {target_key}"
 
-        # Build endpoint URL and headers based on provider
-        headers: dict[str, str] = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-
-        if target_base.endswith(("/chat/completions", "/messages")):
-            endpoint = target_base
-        elif target_provider == "anthropic":
-            endpoint = f"{target_base}/v1/messages" if "anthropic.com" in target_base else f"{target_base}/v1/chat/completions"
-        elif target_base.endswith("/v1"):
-            endpoint = f"{target_base}/chat/completions"
-        else:
-            endpoint = f"{target_base}/v1/chat/completions"
-
-        if target_provider == "anthropic" and "anthropic.com" in target_base:
-            headers["x-api-key"] = target_key or ""
-            headers["anthropic-version"] = "2023-06-01"
-            system_prompt = ""
-            user_messages = []
-            for m in messages:
-                if m.get("role") == "system":
-                    system_prompt = m.get("content", "")
-                else:
-                    user_messages.append(m)
-
-            payload: dict[str, Any] = {
-                "model": target_model,
-                "messages": user_messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-                "stream": False,
-            }
+        if spec and spec["request_format"] == "anthropic":
+            payload_messages = [m for m in messages if m.get("role") != "system"]
+            payload: dict[str, Any] = {"model": model, "messages": payload_messages, "max_tokens": max_tokens, "temperature": temperature, "stream": False}
+            system_prompt = "\n".join(m.get("content", "") for m in messages if m.get("role") == "system")
             if system_prompt:
                 payload["system"] = system_prompt
         else:
-            if target_key:
-                headers["Authorization"] = f"Bearer {target_key}"
-            payload = {
-                "model": target_model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "stream": False,
-            }
+            payload = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": False}
 
-        try:
-            client = self._get_client()
-            resp = await client.post(endpoint, headers=headers, json=payload)
-            if resp.status_code == 200:
-                raw_text = resp.text.strip()
-                content = ""
-                upstream_usage: dict[str, Any] | None = None
-                # Issue #35: the model that actually served this, as reported upstream.
-                upstream_model: str | None = None
-
-                if raw_text.startswith("data:") or "\ndata:" in raw_text:
-                    extracted_parts = []
-                    for line in raw_text.splitlines():
-                        line = line.strip()
-                        if line.startswith("data:") and not line.endswith("[DONE]"):
-                            json_str = line[5:].strip()
-                            if json_str:
-                                try:
-                                    chunk = json.loads(json_str)
-                                    choices = chunk.get("choices", [])
-                                    if upstream_model is None:
-                                        chunk_model = chunk.get("model")
-                                        if isinstance(chunk_model, str) and chunk_model.strip():
-                                            upstream_model = chunk_model.strip()
-                                    if choices:
-                                        delta = choices[0].get("delta", {})
-                                        if isinstance(delta, dict):
-                                            part = delta.get("content") or delta.get("text") or ""
-                                            if part:
-                                                extracted_parts.append(part)
-                                        if "usage" in chunk and isinstance(chunk["usage"], dict):
-                                            upstream_usage = chunk["usage"]
-                                except (json.JSONDecodeError, ValueError):
-                                    continue
-                    content = "".join(extracted_parts)
-                else:
-                    try:
-                        data: dict[str, Any] = resp.json()
-                        body_model = data.get("model")
-                        if isinstance(body_model, str) and body_model.strip():
-                            upstream_model = body_model.strip()
-                        if "usage" in data and isinstance(data["usage"], dict):
-                            upstream_usage = data["usage"]
-                        if "choices" in data and isinstance(data["choices"], list) and len(data["choices"]) > 0:
-                            choice = data["choices"][0]
-                            if isinstance(choice, dict):
-                                if "message" in choice and isinstance(choice["message"], dict):
-                                    content = choice["message"].get("content", "")
-                                elif "text" in choice:
-                                    content = choice.get("text", "")
-                                elif "delta" in choice and isinstance(choice["delta"], dict):
-                                    content = choice["delta"].get("content", "")
-                                elif isinstance(choice, str):
-                                    content = choice
-                        elif "content" in data and isinstance(data["content"], list) and len(data["content"]) > 0:
-                            content = data["content"][0].get("text", "")
-                        elif "response" in data and isinstance(data["response"], str):
-                            content = data["response"]
-                        elif "message" in data and isinstance(data["message"], dict):
-                            content = data["message"].get("content", "")
-                    except (json.JSONDecodeError, ValueError):
-                        content = raw_text
-
-                if upstream_usage and isinstance(upstream_usage, dict) and "total_tokens" in upstream_usage:
-                    usage: dict[str, Any] = dict(upstream_usage)
-                else:
-                    if upstream_usage is None:
-                        logger.warning(
-                            "Upstream %s (%s) missing usage field, estimating tokens",
-                            target_provider,
-                            target_model,
-                        )
-                    usage = {"total_tokens": len(content.split()) + 50, "estimated": True}
-                    if upstream_usage:
-                        usage.update({k: v for k, v in upstream_usage.items() if k != "total_tokens"})
-
-                served_model = upstream_model or target_model
-                self._record_served(
-                    provider=target_provider,
-                    model=served_model,
-                    requested=target_model,
-                    has_content=bool(content.strip()),
-                )
-
+        for attempt in range(2):
+            try:
+                resp = await self._get_client().post(endpoint, headers=headers, json=payload)
+                if resp.status_code in (429, *range(500, 600)) and attempt == 0:
+                    await asyncio.sleep(0.1)
+                    continue
+                if resp.status_code < 200 or resp.status_code >= 300:
+                    provider_message = self._redact_literal(resp.text, target_key)[:500]
+                    status = 429 if resp.status_code == 429 else 502
+                    raise ProviderError(target_provider, status, f"Provider {target_provider} returned HTTP {resp.status_code}", provider_message)
+                try:
+                    if resp.text.lstrip().startswith("data:") or "\ndata:" in resp.text:
+                        parts: list[str] = []
+                        upstream_model = None
+                        usage = None
+                        for line in resp.text.splitlines():
+                            line = line.strip()
+                            if not line.startswith("data:") or line[5:].strip() == "[DONE]":
+                                continue
+                            chunk = self._redact(json.loads(line[5:].strip()), target_key)
+                            if not isinstance(chunk, dict):
+                                raise TypeError("stream chunk must be a JSON object")
+                            if upstream_model is None and isinstance(chunk.get("model"), str) and chunk["model"].strip():
+                                upstream_model = chunk["model"].strip()
+                            choices = chunk.get("choices", [])
+                            if not isinstance(choices, list):
+                                raise TypeError("stream choices must be a list")
+                            for choice in choices:
+                                if not isinstance(choice, dict):
+                                    raise TypeError("stream choice must be a JSON object")
+                                delta = choice.get("delta", {})
+                                if not isinstance(delta, dict):
+                                    raise TypeError("stream delta must be a JSON object")
+                                piece = delta.get("content", "")
+                                if isinstance(piece, list):
+                                    piece = "".join(part.get("text", "") for part in piece if isinstance(part, dict))
+                                if not isinstance(piece, str):
+                                    raise TypeError("stream content must be text")
+                                parts.append(piece)
+                            if isinstance(chunk.get("usage"), dict):
+                                usage = chunk["usage"]
+                        data = {"choices": [{"message": {"content": "".join(parts)}}], "usage": usage, "model": upstream_model}
+                        content = "".join(parts)
+                    else:
+                        data = resp.json()
+                        if not isinstance(data, dict):
+                            raise ValueError("response must be a JSON object")
+                        data = self._redact(data, target_key)
+                        content, upstream_model, usage = self._extract(data, target_provider)
+                except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                    raise ProviderError(target_provider, 502, f"Provider {target_provider} returned an invalid completion response", str(exc)) from exc
+                served_model = upstream_model or model
+                self._record_served(target_provider, served_model, model, bool(content.strip()))
+                self.last_response = {"provider": target_provider, "requested_model": model, "model": served_model, "raw": data}
+                if not content.strip():
+                    raise ProviderError(target_provider, 502, f"Provider {target_provider} returned an empty completion")
                 return {
-                    "id": "cmpl-response",
-                    "object": "chat.completion",
-                    "model": served_model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "message": {"role": "assistant", "content": content},
-                            "finish_reason": "stop",
-                        }
-                    ],
+                    "id": data.get("id", "cmpl-response"), "object": "chat.completion", "model": served_model,
+                    "provider": target_provider, "requested_model": model, "raw_response": data,
+                    "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
                     "usage": usage,
                 }
-            else:
-                error_preview = resp.text[:200]
-                logger.error(
-                    "LLM API Response %d - %s: %s",
-                    resp.status_code,
-                    endpoint,
-                    error_preview,
-                )
-                raise httpx.HTTPStatusError(
-                    f"LLM API ({target_provider} / {target_model}) returned HTTP {resp.status_code}: {error_preview}",
-                    response=resp,
-                    request=resp.request,
-                )
-        except Exception as e:
-            logger.error("LLM Connection Error - %s: %s", endpoint, e)
-            self._client = None
-            raise
+            except ProviderError:
+                raise
+            except httpx.HTTPError as exc:
+                self._client = None
+                raise ProviderError(target_provider, 502, f"Provider {target_provider} request failed", self._redact_literal(str(exc), target_key)) from exc
+        raise ProviderError(target_provider, 502, f"Provider {target_provider} request failed")
