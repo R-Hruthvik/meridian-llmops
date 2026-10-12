@@ -284,3 +284,19 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 
 - The cross-encoder model files were fetched and evaluated, not skipped. Its MRR gain over `none` is 0.031, but CPU p95 exceeds the 150 ms gate by 11173.8 ms; lexical lowers both quality metrics. Keep `RERANKER=none` as the default.
 - Evidence: `uv run python -u scripts/eval_retrieval.py --reranker all` -> table above; focused reranker/retrieval/endpoint tests -> 18 passed; scoped Ruff and mypy -> clean. Small smoke set and CPU-only latency limit generalization.
+
+## Task 4.2 Verification modes and real-provider checkpoint (2026-10-12)
+
+- Verification semantics: `citations` checks sentence/line citation presence, source indices, and cited numeric values; it reports citation validity without judging factual truth. `llm` uses a temperature-zero judge and returns `supported`, `unsupported`, or `unchecked`; `off` returns `unchecked` without a provider call. Insufficient-context answers skip the citation-presence requirement.
+- Real-provider contradiction check already run with `mode="llm"`: for “What is Qdrant?”, source `[1] Qdrant is a vector database.`, and answer `Qdrant is not a vector database. [1]`, the result was `unsupported`; the judge identified the claim and said source [1] directly contradicted it. No credential or private environment value was recorded.
+
+## Task 4.4 Contradiction verification regression (2026-10-12)
+
+- Added `test_contradiction_not_supported` for the documented Qdrant contradiction. A fake judge returning `supported=false` yields `unsupported`, and the contradiction remains in the verification result. The existing citations-mode regression for the same answer continues to assert `citations_ok`.
+- Verification: both contradiction tests passed with `.venv/bin/pytest`; `ruff check tests/test_rag_verification.py` passed. System `pytest` could not load project conftest because its environment lacks `qdrant_client`.
+
+## Phase 4 gate (2026-10-12)
+
+- Updated the stale greeting provenance test for Phase 4's removal of the greeting bypass. It now exercises the normal RAG path with a stubbed upstream response, avoiding an unmocked provider call in the suite; the existing insufficient-context test covers the no-model provenance path.
+- Final verification: `uv run pytest -q` -> **357 passed, 3 xfailed**; `uv run ruff check .` -> clean; `uv run mypy packages services evals scripts --ignore-missing-imports --explicit-package-bases --python-version 3.11` -> **67 source files clean**. Pytest emitted the existing missing `/run/secrets` and FastAPI `on_event` deprecation warnings.
+- Phase 4 decisions: keep `RERANKER=none` because the CPU cross-encoder exceeded the 150 ms p95 gate; citation mode claims only citation/numeric consistency, while factual support requires LLM mode; final unsupported judge verdicts return a safe refusal with sources and unsupported verification retained.

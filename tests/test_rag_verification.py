@@ -171,6 +171,26 @@ class FakeJudge:
         return {"choices": [{"message": {"content": self.response}}]}
 
 
+async def test_contradiction_not_supported():
+    judge = FakeJudge(
+        '{"supported": false, '
+        '"unsupported_claims": ["Qdrant is not a vector database."], '
+        '"contradictions": ["Qdrant is not a vector database."]}'
+    )
+
+    result = await verify_answer(
+        question="What is Qdrant?",
+        answer="Qdrant is not a vector database. [1]",
+        sources=[source(1, "Qdrant is a vector database.")],
+        mode="llm",
+        llm_client=judge,
+    )
+
+    assert result.status == "unsupported"
+    assert result.contradictions == ["Qdrant is not a vector database."]
+    assert judge.calls == 1
+
+
 async def test_llm_mode_parses_judge_json_and_sends_question_sources_and_answer():
     judge = FakeJudge(
         '```json\n{"supported": true, "unsupported_claims": [], "contradictions": [],}\n```'
