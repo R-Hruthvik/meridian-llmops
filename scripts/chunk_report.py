@@ -14,6 +14,7 @@ if __package__ in (None, ""):
 
 from services.ingestion.chunker import TokenAwareChunker, count_tokens
 from services.ingestion.parsers import parse_file
+from services.ingestion.parsers.base import ParsedDocument
 from services.ingestion.storage import DocumentStorageManager
 
 
@@ -74,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("document", help="Stored document ID or path to a supported file")
     parser.add_argument("--storage-root", type=Path, default=None)
     args = parser.parse_args(argv)
+    parsed: ParsedDocument | None = None
     source = Path(args.document)
     if source.is_file():
         try:
@@ -96,7 +98,6 @@ def main(argv: list[str] | None = None) -> int:
     if document is None:
         print(f"Document ID not found: {args.document}", file=sys.stderr)
         return 1
-    parsed = None
     original = Path(document.get("original_path", ""))
     if original.is_file():
         try:

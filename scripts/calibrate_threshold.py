@@ -11,6 +11,7 @@ import statistics
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -85,7 +86,7 @@ def recommend_threshold(
     values = sorted(set(answerable_scores + unanswerable_scores))
     candidates = values + [math.nextafter(values[-1], math.inf)]
     total = len(answerable_scores) + len(unanswerable_scores)
-    best = None
+    best: dict[str, Any] | None = None
     for threshold in candidates:
         true_positive = sum(score >= threshold for score in answerable_scores)
         false_negative = len(answerable_scores) - true_positive
@@ -111,6 +112,7 @@ def recommend_threshold(
         }
         if best is None or (objective, threshold) > (best['objective'], best['threshold']):
             best = result
+    assert best is not None  # At least one candidate exists when both score groups are non-empty.
     return best
 
 
@@ -139,7 +141,7 @@ def calibrate(questions_path: Path, docs_dir: Path, tenant: str) -> dict:
         )
         if store.count(tenant_id=tenant) == 0:
             raise CalibrationInputError(f'docs produced no indexed chunks: {docs_dir}')
-        groups = {'answerable': [], 'unanswerable': []}
+        groups: dict[str, list[dict[str, Any]]] = {'answerable': [], 'unanswerable': []}
         for case in cases:
             vector = retriever.embedder.embed_query(case['question'])
             dense_hits = store.search(vector, k=1, tenant_id=tenant)
