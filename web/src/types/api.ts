@@ -3,7 +3,7 @@ export interface SearchResult {
   document_id: string;
   text: string;
   score: number;
-  retrieval_method: 'dense' | 'sparse_bm25' | 'hybrid' | 'graph';
+  retrieval_method: 'dense' | 'sparse_bm25' | 'hybrid' | 'graph' | 'HYBRID_RRF';
   metadata?: Record<string, unknown>;
   rank?: number | null;
   filename?: string;
@@ -28,10 +28,30 @@ export interface QueryRequest {
   enforce_guardrails?: boolean;
 }
 
+export interface RetrievedChunk {
+  rank: number;
+  chunk_id: string;
+  document_id: string;
+  filename: string;
+  title: string;
+  page_start: number | null;
+  heading_path: string;
+  text: string;
+  scores: {
+    dense: number | null;
+    bm25: number | null;
+    dense_rank: number | null;
+    bm25_rank: number | null;
+    rrf: number;
+    rerank: number | null;
+    final: number;
+  };
+}
+
 export interface RetrieveResponse {
   query: string;
   top_k: number;
-  chunks: SearchResult[];
+  chunks: RetrievedChunk[];
   timings_ms: Record<string, number>;
 }
 

@@ -200,9 +200,12 @@ describe('RagWorkspace', () => {
       chunks: [{
         chunk_id: 'chunk-retrieved',
         document_id: 'doc-retrieved',
+        filename: 'guide.pdf',
+        page_start: 4,
+        heading_path: 'Networking',
         text: 'Retrieved evidence',
-        score: 0.8,
-        retrieval_method: 'hybrid',
+        rank: 1,
+        scores: { dense: 0.72, bm25: 0.38, rrf: 0.031, final: 0.8 },
       }],
       timings_ms: { total: 8 },
     });
@@ -217,7 +220,10 @@ describe('RagWorkspace', () => {
       'default',
     ));
     expect(api.query).not.toHaveBeenCalled();
-    expect(await screen.findByText('doc-retr…')).toBeInTheDocument();
+    expect(await screen.findByText('guide.pdf')).toBeInTheDocument();
+    expect(screen.getByText('80%')).toBeInTheDocument();
+    expect(screen.getByText('HYBRID_RRF')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Chunk 1 • HYBRID_RRF · 80%/ })).toBeInTheDocument();
   });
 
   it('names the guardrail toggle for what it does, and it governs the request', async () => {

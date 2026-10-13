@@ -157,7 +157,17 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   // An answer must be able to reach the source that produced it: the ranked row
   // hands the document and chunk ids to the Corpus overlay, which names the row
   // it was opened from in its breadcrumb.
-  const chunks: SearchResult[] = retrievalResponse?.chunks ?? response?.source_chunks ?? [];
+  const chunks: SearchResult[] = retrievalResponse
+    ? retrievalResponse.chunks.map((chunk) => {
+        const finalScore = chunk.scores.final;
+        const score = Number.isFinite(finalScore)
+          ? finalScore
+          : Number.isFinite(chunk.scores.rrf)
+            ? chunk.scores.rrf
+            : 0;
+        return { ...chunk, score, retrieval_method: 'HYBRID_RRF' };
+      })
+    : response?.source_chunks ?? [];
   const openChunk = (index: number) => {
     const chunk = chunks[index];
     if (!chunk) return;

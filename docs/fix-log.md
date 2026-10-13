@@ -408,3 +408,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: `npm run test:run` -> **282 passed across 17 files**; `npm run build` -> TypeScript and Vite production build succeeded.
 - Deviations from plan: the missing retrieval-only and source-metadata behaviors required minimal UI/API implementation so the requested tests could exercise real behavior.
 - Open risks / follow-ups: none for Task 6.7.
+
+### Task 6.7 review follow-up — retrieval chunk contract
+- Verified before change: `/v1/retrieve` returns `rank`, `scores.final`, and source metadata; it does not return the `score` or `retrieval_method` fields used by query responses. This rendered retrieval-only score/method as invalid values.
+- Test added (failing first): retrieval-only UI regression now uses the backend payload and asserts `80%`, `HYBRID_RRF`, and the accessible chunk label; it failed because the table could not find `80%`.
+- Change summary: added a retrieval-specific response type matching `RankedChunk.to_dict()`. Retrieval-only rows derive a finite score from `scores.final` (falling back to `rrf`, then zero) and use the defined `HYBRID_RRF` method label.
+- Evidence after: focused API and Ask tests -> **79 passed**; full `npm run test:run` -> **282 passed across 17 files**; `npm run build` -> TypeScript and Vite production build succeeded.
+- Deviations from plan: none.
+- Open risks / follow-ups: none.
