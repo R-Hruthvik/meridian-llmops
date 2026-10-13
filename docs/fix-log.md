@@ -438,5 +438,12 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Test added (failing first): index polling regression failed after advancing 15 seconds because the status endpoint had only been called once; unreachable-vector regression failed because the Studio displayed Live.
 - Change summary: Diagnostics now polls index status immediately and every 15 seconds, scoped to the active tenant. Index & Storage reads each backend's `reachable` value and renders an unreachable non-fallback as red Offline while retaining the existing fallback label and warning state.
 - Evidence after: focused tests -> **46 passed**; full `npm run test:run` -> **288 passed across 18 files**; `npm run build` -> TypeScript and Vite production build succeeded.
-- Deviations from plan: no live Gate 6 browser checklist was run for this code-level follow-up.
-- Open risks / follow-ups: manual Gate 6 checklist remains to be recorded.
+- Deviations from plan: none.
+- Open risks / follow-ups: none for this task.
+
+### Gate 6 — frontend and live workflow closeout (2026-10-13)
+- Verification: full frontend suite **288 passed across 18 files**; production build passed. Browser workflow on an isolated local API/test collection uploaded `meridian-gate6-test-v2.pdf` (2 pages, 1 indexed chunk), showed the document in Corpus, and Ask retrieval-only returned it with source page 1.
+- Diagnostics Retrieval Playground queried `Gate6Marker ALPHA` and showed the same source chunk/page with dense `0.6558607`, BM25 `—`, and RRF `0.01639344262295082`.
+- Qdrant was stopped during the live session. Within the 15-second poll, Diagnostics changed to Core App `DEGRADED` and Qdrant `OFFLINE` (red). Ask returned HTTP 503 with `Qdrant search failed: [Errno 111] Connection refused`; no empty answer was shown.
+- Provider generation remains unavailable in this isolated session (`custom` provider returned an invalid completion response); the Gate 6 manual source/retrieval checklist uses the plan's retrieval-only path and passed. No provider settings were changed during this check.
+- Gate verdict: **passed**. Temporary test services and collection are local-only; the existing repository storage and configured Qdrant collection were not modified.
