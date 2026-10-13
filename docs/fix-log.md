@@ -94,7 +94,7 @@
 - Task 2.5: added `scripts/ingest_folder.py` with per-file progress, warnings, duplicates, totals, indexed chunk count, and nonzero failure exit. Explicit isolated storage uses persistent local Qdrant; reopen/duplicate behavior is tested.
 - Task 2.6: added `scripts/chunk_report.py` for file/document inspection (min/median/p95/max tokens, first three/last chunks, pages and empty pages), and `scripts/make_synthetic_corpus.py` for a deterministic 200-file MD/TXT/HTML corpus. The generator refuses to overwrite existing corpus files.
 - Integration root cause: the pipeline published `token-aware-v1` while `check_consistency` expected a separate stale `structural-v1` constant. A regression failed for the exact version mismatch before making the manifest import the chunker's constant. The previously failing API/retrieval/provenance group then passed: 22 tests.
-- Review limitations carried into later planned phases: document catalog/detail/chunk/delete routes still need the Phase 5 tenant ownership enforcement; the provisional unanswerable threshold still needs Phase 3 calibration; UI multipart upload integration remains Phase 6. The backend/API delivery does not imply that the existing browser UI can upload binary files yet.
+- Review limitations: Phase 5.5 closed tenant ownership enforcement for document catalog/detail/chunk/delete and tenant-scoped retrieval/graph evidence. Phase 3 calibrated the provisional unanswerable threshold; expanded golden-set coverage remains Phase 7. UI multipart upload integration remains Phase 6; backend/API support does not imply the browser UI can upload binary files yet.
 
 ### Gate 2 evidence
 
@@ -125,7 +125,7 @@
 - The user's `.env` parsed successfully with `API_KEY`, `BASE_URL`, and `MODEL`. Generic values override stale saved UI configuration and select custom OpenAI-compatible routing when `PROVIDER` is omitted. Standard `LLM_*` aliases also work, with generic names taking priority. `.env.example` contains general placeholders, not the user's values; the real `.env` is unchanged and ignored by Git.
 - The local endpoint's model-list request returned 200 and included the requested `kilo-auto/free`. A real one-token generation returned 200 with content, usage, and served model `nvidia/nemotron-3-ultra-550b-a55b:free`. Listing is explicitly labelled listing-only; `/v1/settings/test` and its legacy alias now perform an actual one-token generation.
 - Test-first fixes cover exact provider URL/header/body contracts, direct/proxy key separation, usage, retries, malformed JSON/SSE, environment precedence/aliases, and secret redaction. Final implementation evidence: 94 focused tests passed, one query/graph test intentionally deferred to Task 3.3; scoped Ruff and whitespace checks passed. Independent task review closed the substantive findings.
-- Deferred limitations: the existing single API key cannot express an admin role; Phase 5 adds that distinction. A review noted provider-controlled JSON property names are not redacted by the client helper; Task 3.5 must sanitize serialized debug output as well as values. Main RAG HTTP error handling and per-request provenance are Task 3.3.
+- This review note's limitations were subsequently closed: Phase 5 added API-key-derived tenant and user/admin roles; Task 3.5 sanitized serialized debug output; Task 3.3 added RAG HTTP error handling and per-request provenance.
 
 ## Task 3.4 — Dense-score calibration (2026-10-12)
 
@@ -250,7 +250,7 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 </source_text>
 ```
 
-- Calibration is consumed by the graph at `MIN_DENSE_SCORE=0.70`; lexical evidence also requires substantive term coverage or a structured identifier. The heuristic may reject sparse lexical-only matches; the expanded golden dataset remains Phase 7. Authentication still uses the existing shared key; administrator roles remain Phase 5.
+- Calibration is consumed by the graph at `MIN_DENSE_SCORE=0.70`; lexical evidence also requires substantive term coverage or a structured identifier. The heuristic may reject sparse lexical-only matches; the expanded golden dataset remains Phase 7. Phase 5 now derives tenant and role from API-key configuration.
 
 ### Tasks 3.3 / 3.5 final integration verification
 
@@ -268,7 +268,7 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Escape source markup in the prompt while preserving original API source text — the data-wrapper requirement takes precedence over literal inclusion of raw closing tags. Cost if wrong: code snippets appear as entities in the model input.
 - Set MIN_DENSE_SCORE default0.70 (rounded below the measured positive minimum0.7084295241) — preserves a small margin while negatives top out0.5121848747. Cost if wrong: corpus/model-specific false positives; onlytwo negatives measured.
 - A BM25 hit for sufficiency must be positive and cover at least half of substantive query terms, or match a structured identifier — raw positivity incorrectly admits both realnegativequeries through incidental words. Dense evidence remains an alternative. Cost if wrong: false refusals for sparse lexical-only matches; covered by identifier and paraphrase regressions, revisit with Phase7golden set.
-- Retain current single-key authentication on the new settings generation test until Phase5 adds user/admin roles — existing authentication cannot express an admin distinction without expanding that phase here. Cost if wrong: a current valid shared key can call generation tests; no public endpoint introduced.
+- The Phase 3 settings-generation test initially retained single-key authentication because the auth configuration could not express roles; Phase 5 subsequently introduced API-key tenant and user/admin roles. Cost if wrong: a current valid shared key could call generation tests; no public endpoint was introduced.
 
 ## Task 4.1 Honest reranker evaluation (2026-10-12)
 
