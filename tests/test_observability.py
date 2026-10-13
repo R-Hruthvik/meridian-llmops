@@ -4,6 +4,7 @@ from services.rag_engine.observability.langfuse_client import (
     LangfuseTracer,
     LocalTracer,
     MeridianTracer,
+    Span,
     normalize_usage,
 )
 
@@ -75,6 +76,48 @@ def test_tracer_span_accepts_attributes_as_context_manager():
         pass
     assert tracer.traces[-1]["name"] == "dense_search"
     assert tracer.traces[-1]["attributes"]["result_count"] == 2
+
+
+def test_standalone_spans_and_generations_join_active_request_trace():
+    tracer = LangfuseTracer(enabled=False)
+    tracer.enabled = True
+    tracer._client = object()
+    with tracer.trace("rag-query-pipeline", tenant_id="tenant-a", query="Where is the office?"):
+        with tracer.span("dense_search", tenant_id="tenant-a") as span:
+            span.set_attribute("result_count", 2)
+        with tracer.generation("generate", model="test-model") as generation:
+            generation.set_tokens(4, 2)
+
+    assert len(tracer.traces) == 1
+    trace = tracer.traces[0]
+    assert trace["query"] == "Where is the office?"
+    assert [item["name"] for item in trace["spans"]] == ["dense_search"]
+    assert [item["name"] for item in trace["generations"]] == ["generate"]
+    assert trace["total_tokens"] == 6
+    assert tracer.exported == [trace]
+
+
+def test_metrics_include_bounded_recent_queries_and_retrieval_span_percentiles(monkeypatch):
+    def finish_with_test_duration(span, exc_type, exc, traceback):
+        span.duration_ms = span.attributes["test_duration"]
+        return False
+
+    monkeypatch.setattr(Span, "__exit__", finish_with_test_duration)
+    tracer = LocalTracer(max_traces=60)
+    for index in range(25):
+        with tracer.trace("rag-query-pipeline", tenant_id="tenant-a", query=f"query-{index}"):  # noqa: SIM117
+            with tracer.span("dense_search", test_duration=index + 1):
+                pass
+        with tracer.trace("rag-query-pipeline", tenant_id="tenant-b", query="other tenant"):  # noqa: SIM117
+            with tracer.span("dense_search", test_duration=100):
+                pass
+
+    metrics = tracer.get_tenant_metrics("tenant-a")
+    assert metrics["retrieval_latency_ms"] == {"p50": 13, "p95": 24}
+    assert len(metrics["recent_requests"]) == 20
+    assert metrics["recent_requests"][0]["query"] == "query-24"
+    assert metrics["recent_requests"][-1]["query"] == "query-5"
+    assert metrics["recent_requests"][0]["timings_ms"] == {"dense_search": 25}
 
 
 def test_langfuse_tracer_disabled_is_noop(monkeypatch):

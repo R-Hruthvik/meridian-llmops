@@ -733,7 +733,7 @@ async def query_endpoint(
         return blocked
     start_time = time.perf_counter()
     request_id = str(uuid.uuid4())
-    trace_ctx = tracer.trace(name="rag-query-pipeline", tenant_id=tenant_id)
+    trace_ctx = tracer.trace(name="rag-query-pipeline", tenant_id=tenant_id, query=req.query)
     client_guardrails_enabled = not (
         req.enforce_guardrails is False and _settings.allow_client_disable_guardrails
     )

@@ -10,12 +10,14 @@ import time
 import uuid
 from collections import defaultdict, deque
 from contextlib import AbstractContextManager
+from contextvars import ContextVar, Token
 from pathlib import Path
 from typing import Any, Protocol, Self
 
 from services.ingestion.chunker import count_tokens
 
 logger = logging.getLogger(__name__)
+_active_trace: ContextVar[_TraceContext | None] = ContextVar("active_trace", default=None)
 
 
 class Tracer(Protocol):
@@ -142,14 +144,16 @@ class GenerationSpan(Span):
 
 
 class _TraceContext:
-    def __init__(self, tracer: LocalTracer, name: str, tenant_id: str):
+    def __init__(self, tracer: LocalTracer, name: str, tenant_id: str, query: str | None = None):
         self.tracer = tracer
         self.name = name
         self.tenant_id = tenant_id
+        self.query = query
         self.id = f"trace-{uuid.uuid4().hex[:12]}"
         self.start_time = time.perf_counter()
         self.spans: list[Span] = []
         self.generations: list[GenerationSpan] = []
+        self._context_token: Token[_TraceContext | None] | None = None
 
     def span(self, name: str, **attrs: Any) -> Span:
         span = Span(name, attrs)
@@ -162,6 +166,7 @@ class _TraceContext:
         return generation
 
     def __enter__(self) -> Self:
+        self._context_token = _active_trace.set(self)
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> bool:
@@ -171,6 +176,7 @@ class _TraceContext:
             "id": self.id,
             "name": self.name,
             "tenant_id": self.tenant_id,
+            "query": self.query,
             "duration_ms": latency,
             "error": type(exc).__name__ if exc is not None else None,
             "total_tokens": sum(item["total_tokens"] for item in generations),
@@ -179,6 +185,8 @@ class _TraceContext:
             "generations": generations,
         }
         self.tracer._record_trace(data)
+        if self._context_token is not None:
+            _active_trace.reset(self._context_token)
         return False
 
     def to_dict(self) -> dict[str, Any]:
@@ -186,6 +194,7 @@ class _TraceContext:
             "id": self.id,
             "name": self.name,
             "tenant_id": self.tenant_id,
+            "query": self.query,
             "duration_ms": (time.perf_counter() - self.start_time) * 1000,
             "total_tokens": sum(g.prompt_tokens + g.completion_tokens for g in self.generations),
             "estimated_cost_usd": _sum_costs(g.cost_usd for g in self.generations),
@@ -216,8 +225,8 @@ class LocalTracer:
             }
         )
 
-    def trace(self, name: str, tenant_id: str = "default") -> _TraceContext:
-        return _TraceContext(self, name, tenant_id)
+    def trace(self, name: str, tenant_id: str = "default", query: str | None = None) -> _TraceContext:
+        return _TraceContext(self, name, tenant_id, query)
 
     def span(self, name: str, **attrs: Any) -> AbstractContextManager[Span]:
         return self._standalone_span(name, attrs, generation=False)
@@ -227,6 +236,9 @@ class LocalTracer:
 
     def _standalone_span(self, name: str, attrs: dict[str, Any], generation: bool):
         span = GenerationSpan(name, attrs) if generation else Span(name, attrs)
+        trace = _active_trace.get()
+        if trace is not None and trace.tracer is self:
+            return _AttachedContext(trace, span, generation)
         return _RecordingContext(self, span, attrs.get("tenant_id", "default"))
 
     def _record_trace(self, data: dict[str, Any]) -> None:
@@ -251,6 +263,33 @@ class LocalTracer:
     def get_tenant_metrics(self, tenant_id: str) -> dict[str, Any]:
         metric = self._metrics[tenant_id]
         latencies = sorted(metric["latencies"])
+        request_traces = [
+            trace for trace in self.traces
+            if trace.get("tenant_id") == tenant_id and trace.get("query") is not None
+        ]
+        retrieval_latencies = sorted(
+            sum(
+                span["duration_ms"] for span in trace["spans"]
+                if span["name"] in {"embed_query", "dense_search", "bm25_search", "fusion", "rerank"}
+            )
+            for trace in request_traces
+            if any(
+                span["name"] in {"embed_query", "dense_search", "bm25_search", "fusion", "rerank"}
+                for span in trace["spans"]
+            )
+        )
+        recent_requests = []
+        for trace in reversed(request_traces[-20:]):
+            timings: dict[str, float] = defaultdict(float)
+            for span in [*trace["spans"], *trace["generations"]]:
+                timings[span["name"]] += span["duration_ms"]
+            recent_requests.append(
+                {
+                    "query": trace["query"],
+                    "duration_ms": trace["duration_ms"],
+                    "timings_ms": dict(timings),
+                }
+            )
         return {
             "tenant_id": tenant_id,
             "request_count": metric["request_count"],
@@ -261,6 +300,11 @@ class LocalTracer:
                 "p95": _percentile(latencies, 0.95),
                 "p99": _percentile(latencies, 0.99),
             },
+            "retrieval_latency_ms": {
+                "p50": _percentile(retrieval_latencies, 0.50),
+                "p95": _percentile(retrieval_latencies, 0.95),
+            },
+            "recent_requests": recent_requests,
             "total_tokens": metric["total_tokens"],
             "estimated_tokens": metric["estimated_tokens"],
             "total_cost_usd": (
@@ -284,6 +328,22 @@ class _RecordingContext(AbstractContextManager):
     def __exit__(self, exc_type, exc, traceback):
         result = self.span.__exit__(exc_type, exc, traceback)
         self.tracer._record_standalone(self.span, self.tenant_id)
+        return result
+
+
+class _AttachedContext(AbstractContextManager):
+    def __init__(self, trace: _TraceContext, span: Span, generation: bool):
+        self.trace = trace
+        self.span = span
+        self.generation = generation
+
+    def __enter__(self):
+        return self.span.__enter__()
+
+    def __exit__(self, exc_type, exc, traceback):
+        result = self.span.__exit__(exc_type, exc, traceback)
+        target = self.trace.generations if self.generation else self.trace.spans
+        target.append(self.span)  # type: ignore[arg-type]
         return result
 
 
