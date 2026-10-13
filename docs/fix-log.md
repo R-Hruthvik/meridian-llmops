@@ -12,6 +12,12 @@
 - Scoped check: searched ingestion, rag-engine, and core references for queue writes, confidence-threshold consumers, and query/review linkage; none were found. Documentation diff checked for whitespace errors.
 - Deviations: documentation only; no route wiring or runtime behavior changed.
 
+## Task 9.1 — App factory and lifespan (2026-10-13)
+- Implementation: `08baa0e` moves endpoint registration to an `APIRouter` and keeps `app.py` as a 9-line compatibility entry point; `5350ca5` tests import purity and isolated factory overrides; `10eaf5a`, `9325f19`, `121cf52`, `ce3c6e7`, and `965141a` preserve singleton compatibility while scoping services, readiness, settings, and query gates to app state.
+- Review: independent review approved app-state isolation, import purity, and request-time legacy settings resolution. Factory tests cover two independent app instances and service-backed health/retrieval behavior.
+- Evidence: `uv run pytest -q` -> **453 passed, 2 skipped, 3 xfailed**; scoped Ruff and mypy passed. `services/rag_engine/app.py` is 9 lines.
+- Limitation: the historical `app` singleton remains as a compatibility alias; new integrations should use `create_app(settings, overrides)`.
+
 ## Task 7.3 Retrieval evaluation (2026-10-13)
 - Verified before change: retrieval evaluation only existed as a smoke-set reranker comparison; no golden-set evaluator or threshold file existed. The prior smoke check used a dense-score shortcut for unanswerable cases rather than the generation sufficiency check.
 - Tests added first: injected fake retrieval results covering phrase matching across expected-document chunks, hit@1/3/5, phrase recall@5, MRR, percentile latency, category splits, production sufficiency behavior, and threshold failure reporting. Initial collection failed because the evaluator module did not exist.
