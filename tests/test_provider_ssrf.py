@@ -86,7 +86,7 @@ async def test_generation_allows_remote_https_custom_provider_and_pins_resolutio
 
 
 @pytest.mark.asyncio
-async def test_generation_rejects_private_litellm_proxy_without_opt_in(monkeypatch):
+async def test_generation_rejects_link_local_litellm_proxy_without_opt_in(monkeypatch):
     _resolve_to(monkeypatch, "169.254.169.254")
     client = LiteLLMClient(allow_private_provider_urls=False)
     fake_http = _HTTPClient()
@@ -105,28 +105,47 @@ async def test_generation_rejects_private_litellm_proxy_without_opt_in(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_generation_allows_loopback_litellm_proxy_without_private_opt_in(monkeypatch):
+async def test_generation_rejects_loopback_litellm_proxy_without_private_opt_in(monkeypatch):
     _resolve_to(monkeypatch, "127.0.0.1")
     client = LiteLLMClient(allow_private_provider_urls=False)
     fake_http = _HTTPClient()
     monkeypatch.setattr(client, "_get_client", lambda: fake_http)
 
-    result = await client.chat_completion(
-        [{"role": "user", "content": "hello"}],
-        provider="litellm",
-        model="test-model",
-        api_key="test-key",
-        base_url="http://localhost:4000/v1",
-    )
+    with pytest.raises(ProviderConfigError, match="URL is not allowed"):
+        await client.chat_completion(
+            [{"role": "user", "content": "hello"}],
+            provider="litellm",
+            model="test-model",
+            api_key="test-key",
+            base_url="http://localhost:4000/v1",
+        )
 
-    assert result["choices"][0]["message"]["content"] == "ok"
-    assert fake_http.requests[0][0] == "http://localhost:4000/v1/chat/completions"
+    assert fake_http.requests == []
 
 
 @pytest.mark.asyncio
-async def test_generation_allows_compose_litellm_service_without_private_opt_in(monkeypatch):
+async def test_generation_rejects_compose_litellm_service_without_private_opt_in(monkeypatch):
     _resolve_to(monkeypatch, "172.20.0.5")
     client = LiteLLMClient(allow_private_provider_urls=False)
+    fake_http = _HTTPClient()
+    monkeypatch.setattr(client, "_get_client", lambda: fake_http)
+
+    with pytest.raises(ProviderConfigError, match="URL is not allowed"):
+        await client.chat_completion(
+            [{"role": "user", "content": "hello"}],
+            provider="litellm",
+            model="test-model",
+            api_key="test-key",
+            base_url="http://litellm:4000/v1",
+        )
+
+    assert fake_http.requests == []
+
+
+@pytest.mark.asyncio
+async def test_generation_allows_compose_litellm_service_with_private_opt_in(monkeypatch):
+    _resolve_to(monkeypatch, "172.20.0.5")
+    client = LiteLLMClient(allow_private_provider_urls=True)
     fake_http = _HTTPClient()
     monkeypatch.setattr(client, "_get_client", lambda: fake_http)
 
@@ -140,6 +159,63 @@ async def test_generation_allows_compose_litellm_service_without_private_opt_in(
 
     assert result["choices"][0]["message"]["content"] == "ok"
     assert fake_http.requests[0][0] == "http://litellm:4000/v1/chat/completions"
+
+
+@pytest.mark.asyncio
+async def test_generation_rejects_public_litellm_http_even_with_private_opt_in(monkeypatch):
+    _resolve_to(monkeypatch, "93.184.216.34")
+    client = LiteLLMClient(allow_private_provider_urls=True)
+    fake_http = _HTTPClient()
+    monkeypatch.setattr(client, "_get_client", lambda: fake_http)
+
+    with pytest.raises(ProviderConfigError, match="URL is not allowed"):
+        await client.chat_completion(
+            [{"role": "user", "content": "hello"}],
+            provider="litellm",
+            model="test-model",
+            api_key="test-key",
+            base_url="http://public.example/v1",
+        )
+
+    assert fake_http.requests == []
+
+
+@pytest.mark.asyncio
+async def test_generation_rejects_link_local_provider_even_with_private_opt_in(monkeypatch):
+    _resolve_to(monkeypatch, "169.254.169.254")
+    client = LiteLLMClient(allow_private_provider_urls=True)
+    fake_http = _HTTPClient()
+    monkeypatch.setattr(client, "_get_client", lambda: fake_http)
+
+    with pytest.raises(ProviderConfigError, match="URL is not allowed"):
+        await client.chat_completion(
+            [{"role": "user", "content": "hello"}],
+            provider="litellm",
+            model="test-model",
+            api_key="test-key",
+            base_url="https://169.254.169.254/v1",
+        )
+
+    assert fake_http.requests == []
+
+
+@pytest.mark.asyncio
+async def test_generation_rejects_shared_cgnat_provider_even_with_private_opt_in(monkeypatch):
+    _resolve_to(monkeypatch, "100.64.0.1")
+    client = LiteLLMClient(allow_private_provider_urls=True)
+    fake_http = _HTTPClient()
+    monkeypatch.setattr(client, "_get_client", lambda: fake_http)
+
+    with pytest.raises(ProviderConfigError, match="URL is not allowed"):
+        await client.chat_completion(
+            [{"role": "user", "content": "hello"}],
+            provider="custom",
+            model="test-model",
+            api_key="test-key",
+            base_url="https://shared.example/v1",
+        )
+
+    assert fake_http.requests == []
 
 
 @pytest.mark.asyncio

@@ -39,22 +39,9 @@ def validate_provider_url(
         if "%" in hostname:
             raise ValueError
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        is_loopback_litellm_http = (
-            provider == "litellm"
-            and parsed.scheme == "http"
-            and hostname in {"localhost", "127.0.0.1", "::1"}
-        )
-        is_compose_litellm_http = (
-            provider == "litellm" and parsed.scheme == "http" and hostname == "litellm"
-        )
         if parsed.scheme == "http":
             is_loopback_host = hostname in {"localhost", "127.0.0.1", "::1"}
-            is_trusted_litellm_host = provider == "litellm" and (
-                is_loopback_host or hostname == "litellm"
-            )
-            if not allow_private and not is_trusted_litellm_host:
-                raise ValueError
-            if provider != "litellm" and (not allow_private or not is_loopback_host):
+            if not allow_private or (provider != "litellm" and not is_loopback_host):
                 raise ValueError
         if not resolve:
             return url, hostname, port, ()
@@ -73,24 +60,9 @@ def validate_provider_url(
             if any(
                 address.is_unspecified
                 or address.is_multicast
+                or address.is_link_local
                 or (address.is_reserved and not address.is_loopback)
-                for address in parsed_addresses
-            ):
-                raise ValueError
-        elif is_loopback_litellm_http:
-            if not all(address.is_loopback for address in parsed_addresses):
-                raise ValueError
-        elif is_compose_litellm_http:
-            # Permit only the private bridge address for Compose's named gateway service.
-            if not all(
-                address.is_private
-                and not (
-                    address.is_loopback
-                    or address.is_link_local
-                    or address.is_unspecified
-                    or address.is_multicast
-                    or address.is_reserved
-                )
+                or not (address.is_global or address.is_private or address.is_loopback)
                 for address in parsed_addresses
             ):
                 raise ValueError
@@ -109,6 +81,10 @@ def validate_provider_url(
             raise ValueError
         if parsed.scheme == "http" and provider != "litellm" and not all(
             address.is_loopback for address in parsed_addresses
+        ):
+            raise ValueError
+        if parsed.scheme == "http" and provider == "litellm" and not all(
+            address.is_private or address.is_loopback for address in parsed_addresses
         ):
             raise ValueError
     except (OSError, ValueError, IndexError):
