@@ -62,7 +62,7 @@ First call `/v1/retrieve` with the same question. If the right evidence is absen
 
 ## Empty answer or provider error
 
-Check the HTTP status and response detail, then inspect the API process logs for provider failures. In the workbench Settings, use **Test generation** to check the configured provider, base URL, key, and model. Environment configuration accepts the generic `PROVIDER`, `API_KEY`, `BASE_URL`, and `MODEL` names (also `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` aliases); keep credentials private. Verify the selected model is available at the configured endpoint and that the provider accepts its API format. A retrieval-only `/v1/retrieve` success confirms the issue is downstream of retrieval.
+Check the HTTP status and response detail, then inspect the API process logs for provider failures. In the workbench Settings, use **Test generation** to check the configured provider, base URL, key, and model. Environment configuration accepts the generic `PROVIDER`, `API_KEY`, `BASE_URL`, and `MODEL` names (also `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` aliases); keep credentials private. Remote provider URLs must use HTTPS and resolve to public addresses. Local/private endpoints require the explicit `ALLOW_PRIVATE_PROVIDER_URLS=true` setting. Verify the selected model is available at the configured endpoint and that the provider accepts its API format. A retrieval-only `/v1/retrieve` success confirms the issue is downstream of retrieval.
 
 ## Upload succeeded but search finds nothing
 

@@ -12,5 +12,5 @@ The embedding model has a finite context window. Bounded chunks preserve source 
 
 ## Consequences and current state
 
-Counts are approximate rather than model-tokenizer exact. The implementation and tests are in `services/ingestion/chunker.py` and `tests/test_chunker.py`.
+Counts are approximate rather than model-tokenizer exact. The implementation and tests are in `services/ingestion/chunker.py` and `tests/test_token_chunker.py`.
 

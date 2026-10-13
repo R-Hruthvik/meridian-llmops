@@ -113,6 +113,7 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
       API_KEYS: ${API_KEYS:-}
       APP_ENV: ${APP_ENV:-development}
+      ALLOW_PRIVATE_PROVIDER_URLS: ${ALLOW_PRIVATE_PROVIDER_URLS:-false}
 
 volumes:
   qdrant_data:

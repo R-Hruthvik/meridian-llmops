@@ -424,6 +424,12 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Re-review found numeric comparison discarded leading signs, allowing a negative value to match a positive cited value. Normalization now retains `+`/`-` around numeric values and currency prefixes.
 - Added negative percentage and plain-number regressions. Both failed before the fix and pass afterward; `uv run pytest -q tests/test_rag_verification.py` -> **20 passed**; scoped Ruff and mypy checks passed.
 
+## Task 5.4 Provider settings and outbound URL boundary (2026-10-13)
+- Added `ALLOW_PRIVATE_PROVIDER_URLS` (default false) to server settings and Compose app configuration. Public HTTPS provider targets are resolved and pinned at the shared generation client; model-list requests use the same policy. Redirects and ambient proxy configuration are disabled for generation requests.
+- Local loopback LiteLLM remains available without enabling private URLs. Other local/private provider endpoints require the explicit setting. A reviewed bypass that implicitly trusted all LiteLLM proxy addresses was removed; private/link-local targets are rejected by default before any POST.
+- Evidence: `uv run pytest tests/test_provider_ssrf.py tests/test_provider_client.py tests/test_settings_security.py tests/test_serving_provenance.py -q` -> **80 passed**; scoped Ruff and `git diff --check` -> clean.
+- Limitation: enabling the private URL option is an operator trust decision for private endpoints; it is intended for controlled local/private model services.
+
 ## Task 5.6 Guardrails and prompt-injection hygiene (2026-10-13)
 - Verified before change: a client `enforce_guardrails=false` skipped input checks; uploaded chunks had no injection flags or warning; output checks left email/SSN/card patterns intact; the UI and ADRs claimed NeMo/Colang while the runtime used regexes; `policy.yaml` was unused.
 - Test added (failing first): client-disable default, output PII redaction, ingestion chunk metadata, and upload warning regressions. Against the old behavior, the client-disable test returned 200 instead of 400; output returned the raw email; ingestion had status `indexed` without warning. These failed before their fixes.
