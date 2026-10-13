@@ -90,6 +90,7 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "latency_ms": {
             "p50": statistics.median(row["latency_ms"] for row in rows) if rows else None,
             "p95": _percentile([row["latency_ms"] for row in rows], 0.95),
+            "p99": _percentile([row["latency_ms"] for row in rows], 0.99),
         },
     }
 
@@ -97,7 +98,7 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def evaluate(
     retriever: Any,
     cases: list[dict[str, Any]],
-    top_k: int = 10,
+    top_k: int = 5,
     tenant_id: str = "eval",
     min_dense_score: float = 0.70,
 ) -> dict[str, Any]:
@@ -127,7 +128,7 @@ def evaluate(
         # Use the same check and score shape as the generation sufficiency node.
         sufficient = has_sufficient_context(
             case["question"],
-            [chunk.to_dict() for chunk in ranked],
+            [chunk.to_dict() for chunk in ranked[:top_k]],
             min_dense_score=min_dense_score,
         )
         row = {
@@ -170,7 +171,7 @@ def main() -> int:
     parser.add_argument("--dataset", default="evals/golden_dataset.json")
     parser.add_argument("--thresholds", default="evals/thresholds.json")
     parser.add_argument("--docs", default="sample_docs")
-    parser.add_argument("--top-k", type=int, default=10)
+    parser.add_argument("--top-k", type=int)
     parser.add_argument("--tenant", default="eval")
     args = parser.parse_args()
 
@@ -179,6 +180,7 @@ def main() -> int:
     cases = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
     thresholds = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
     settings = get_settings()
+    top_k = args.top_k if args.top_k is not None else settings.retrieval_default_top_k
     with tempfile.TemporaryDirectory(prefix="eval_retrieval_") as tmp:
         retriever, _store = build_engine(
             Path(args.docs), Path(tmp), settings.embedding_model, settings.fastembed_cache_path, args.tenant
@@ -186,7 +188,7 @@ def main() -> int:
         report = evaluate(
             retriever,
             cases,
-            top_k=args.top_k,
+            top_k=top_k,
             tenant_id=args.tenant,
             min_dense_score=settings.min_dense_score,
         )

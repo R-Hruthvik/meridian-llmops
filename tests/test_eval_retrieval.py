@@ -82,8 +82,9 @@ def test_evaluate_reports_phrase_metrics_latency_categories_and_real_sufficiency
     assert report["metrics"]["recall@5"] == 0.5
     assert report["metrics"]["mrr"] == 0.5
     assert report["metrics"]["unanswerable_accuracy"] == 1.0
-    assert report["metrics"]["latency_ms"] == {"p50": 21.0, "p95": 30}
+    assert report["metrics"]["latency_ms"] == {"p50": 21.0, "p95": 30, "p99": 30}
     assert report["categories"]["factual"]["hit@5"] == 1.0
+    assert report["categories"]["factual"]["latency_ms"] == {"p50": 12, "p95": 12, "p99": 12}
     assert report["categories"]["unanswerable"]["unanswerable_accuracy"] == 1.0
 
 
@@ -116,3 +117,25 @@ def test_unanswerable_accuracy_uses_sufficiency_result_and_threshold_gate():
         "mrr is undefined",
         "unanswerable_accuracy 0.000 < 0.850",
     ]
+
+
+def test_sufficiency_only_uses_configured_top_k_while_retrieving_ten_for_mrr():
+    case = {
+        "id": "unknown",
+        "category": "unanswerable",
+        "question": "What is the private key?",
+        "answerable": False,
+        "expected_doc": None,
+        "expected_phrases": [],
+    }
+    chunks = [
+        ("General onboarding steps", "guide.md", {"dense": 0.1, "bm25": 0})
+        for _ in range(5)
+    ]
+    chunks.append(("The private key is secret", "guide.md", {"dense": 0.9, "bm25": 0}))
+    retriever = FakeRetriever({case["question"]: _result(case["question"], chunks, 5)})
+
+    report = evaluate(retriever, [case], top_k=5, min_dense_score=0.7)
+
+    assert retriever.calls == [(case["question"], 10, "eval")]
+    assert report["metrics"]["unanswerable_accuracy"] == 1.0
