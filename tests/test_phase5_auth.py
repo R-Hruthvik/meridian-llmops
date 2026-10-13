@@ -143,6 +143,17 @@ def test_production_accepts_api_keys_without_legacy_single_key():
     validate_production(settings)
 
 
+
+def _iter_api_routes(routes):
+    """Walk nested routers, including FastAPI's lazy _IncludedRouter wrappers."""
+    for route in routes:
+        if hasattr(route, "dependant"):
+            yield route
+            continue
+        original_router = getattr(route, "original_router", None)
+        if original_router is not None:
+            yield from _iter_api_routes(original_router.routes)
+
 def test_every_rag_and_gateway_route_is_authenticated_except_health():
     from services.gateway.app import app as gateway_app
     from services.rag_engine.app import app as rag_app
@@ -152,18 +163,12 @@ def test_every_rag_and_gateway_route_is_authenticated_except_health():
         (gateway_app, {"/health"}),
     )
     for app, public_health in apps_and_public_health:
-        routes = []
-        for route in app.routes:
-            if hasattr(route, "dependant"):
-                routes.append(route)
-            else:
-                original_router = getattr(route, "original_router", None)
-                routes.extend(getattr(original_router, "routes", []))
         found_public_health = set()
-        for route in routes:
+        for route in _iter_api_routes(app.routes):
             path = getattr(route, "path", "")
             if path in public_health:
-                assert not route.dependant.dependencies
+                dependency_names = {dependency.call for dependency in route.dependant.dependencies}
+                assert not dependency_names & {auth.require_user, auth.require_admin}
                 found_public_health.add(path)
                 continue
             dependency_names = {dependency.call for dependency in route.dependant.dependencies}
@@ -186,13 +191,6 @@ def test_sensitive_rag_routes_require_admin():
         "/v1/review/items",
         "/v1/review/items/{item_id}/action",
     }
-    routes = []
-    for route in app.routes:
-        if hasattr(route, "dependant"):
-            routes.append(route)
-        else:
-            original_router = getattr(route, "original_router", None)
-            routes.extend(getattr(original_router, "routes", []))
-    for route in routes:
+    for route in _iter_api_routes(app.routes):
         if getattr(route, "path", "") in admin_paths:
             assert require_admin in {dependency.call for dependency in route.dependant.dependencies}

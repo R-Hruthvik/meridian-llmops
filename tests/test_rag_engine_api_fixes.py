@@ -57,9 +57,20 @@ def test_guardrail_check_post_alias_is_reachable_on_rag_engine(client):
     assert resp.json()["allowed"] is True
 
 
+
+def _iter_api_routes(routes):
+    """Walk nested routers, including FastAPI's lazy _IncludedRouter wrappers."""
+    for route in routes:
+        if hasattr(route, "dependant"):
+            yield route
+            continue
+        original_router = getattr(route, "original_router", None)
+        if original_router is not None:
+            yield from _iter_api_routes(original_router.routes)
+
 def test_guardrail_post_is_the_documented_main_app_contract(client):
     route = next(
-        route for route in client.app.routes
+        route for route in _iter_api_routes(client.app.routes)
         if getattr(route, "path", None) == "/v1/guardrails/check"
         and "POST" in getattr(route, "methods", set())
     )
