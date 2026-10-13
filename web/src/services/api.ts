@@ -1,6 +1,7 @@
 import type {
   DocumentDetail,
   DocumentListResponse,
+  DocumentUploadResponse,
   ApiErrorPayload,
   ApiFailureDetail,
   GuardrailResult,
@@ -164,6 +165,20 @@ class MeridianApiClient {
         body: JSON.stringify(req),
       },
       'Ingestion failed',
+    );
+  }
+
+  async uploadDocuments(files: File[], tenantId: string = 'default'): Promise<DocumentUploadResponse> {
+    const body = new FormData();
+    for (const file of files) body.append('files', file);
+    return this.requestJSON<DocumentUploadResponse>(
+      `${this.baseUrl}/v1/documents`,
+      {
+        method: 'POST',
+        headers: { 'X-API-Key': this.apiKey, 'X-Tenant-Id': tenantId },
+        body,
+      },
+      'Document upload failed',
     );
   }
 

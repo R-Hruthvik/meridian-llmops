@@ -353,6 +353,30 @@ describe('MeridianApiClient', () => {
     });
   });
 
+  describe('uploadDocuments()', () => {
+    it('posts multiple files as multipart with auth and tenant headers', async () => {
+      api.setApiKey('upload-key');
+      const files = [
+        new File(['# handbook'], 'handbook.md', { type: 'text/markdown' }),
+        new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' }),
+      ];
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+        mockResponse({ results: [] }, 200) as unknown as Response,
+      );
+
+      await api.uploadDocuments(files, 'acme');
+
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/v1/documents');
+      expect(init.method).toBe('POST');
+      expect((init.headers as Record<string, string>)['X-API-Key']).toBe('upload-key');
+      expect((init.headers as Record<string, string>)['X-Tenant-Id']).toBe('acme');
+      expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+      expect(init.body).toBeInstanceOf(FormData);
+      expect((init.body as FormData).getAll('files')).toEqual(files);
+    });
+  });
+
   describe('review queue calls', () => {
     it('lists pending items with tenant header', async () => {
       const items = [

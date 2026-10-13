@@ -336,3 +336,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: `npm run test:run` -> **266 passed**; `npm run build` -> **TypeScript and Vite build succeeded**. A first full-suite run caught two new opacity color tokens outside the token registry; the notice now uses existing `fail-wash`/surface tokens and the full suite passes. Existing React `act()` and deliberate lazy-import failure logs remain.
 - Deviations from plan: added the app-shell notice component and its test so errors remain visible even when existing surface loaders catch the rejected promise. No Task 6.2+ changes.
 - Open risks / follow-ups: errors from HTTP calls are now visible globally and remain rejected for inline handling; UI callers that intentionally catch errors may still need individual inline treatment as Phase 6 continues.
+
+## Task 6.2 Multipart document upload (2026-10-13) — fixes: F-08
+- Verified before change: `IngestionStudio` used `FileReader.readAsText`, accepted only one file, and submitted text through `/v1/ingest`; the existing `/v1/documents` endpoint accepts repeatable multipart `files` and returns per-file status, page/chunk counts, warnings, duplicate references, or rejection reasons.
+- Test added (failing first): multipart API auth/tenant/header test and upload UI selection/result/drop tests -> **3 expected failures** before implementation (missing upload API, single-file picker, and no per-file result UI).
+- Change summary: added typed upload results and `api.uploadDocuments`, which posts repeated `files` in `FormData` with API-key and tenant headers and lets the browser set the multipart content type. The ingestion UI now supports selecting or dropping multiple `.md`, `.txt`, `.pdf`, `.docx`, and `.html` files and displays each API result, including status, pages, chunks, warnings, duplicates, and rejection errors. Manual text ingestion remains available.
+- Evidence after: focused upload tests -> **45 passed**; `npm run test:run` -> **266 passed**; `npm run build` -> TypeScript and Vite build succeeded.
+- Deviations from plan: none.
+- Open risks / follow-ups: none for this task; file parsing and duplicate decisions remain backend responsibilities.

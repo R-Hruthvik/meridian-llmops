@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { IngestionStudio, isBinaryLike } from './IngestionStudio';
+import { IngestionStudio } from './IngestionStudio';
 import { api } from '../services/api';
 
 describe('IngestionStudio Component', () => {
@@ -231,7 +231,7 @@ describe('IngestionStudio Component', () => {
     expect(within(row).getByText('7')).toHaveClass('num');
   });
 
-  it('G2: file picker accepts text types only (no PDF/DOCX)', async () => {
+  it('G2: file picker supports multiple Markdown, text, PDF, DOCX, and HTML files', async () => {
     const user = userEvent.setup();
     vi.spyOn(api, 'getDocuments').mockResolvedValue({
       total_documents: 0,
@@ -244,13 +244,16 @@ describe('IngestionStudio Component', () => {
     await user.click(screen.getByText('Ingest New Document'));
 
     const fileInput = screen.getByLabelText('Upload document file') as HTMLInputElement;
-    expect(fileInput.accept).not.toContain('.pdf');
-    expect(fileInput.accept).not.toContain('.docx');
+    expect(fileInput.multiple).toBe(true);
+    expect(fileInput.accept).toContain('.pdf');
+    expect(fileInput.accept).toContain('.docx');
     expect(fileInput.accept).toContain('.md');
-    expect(screen.getByText(/binary PDF\/DOCX are not supported/i)).toBeInTheDocument();
+    expect(fileInput.accept).toContain('.txt');
+    expect(fileInput.accept).toContain('.html');
+    expect(screen.getByText(/Markdown, Text, PDF, DOCX, and HTML/i)).toBeInTheDocument();
   });
 
-  it('G2: binary file content triggers a client-side warning', async () => {
+  it('uploads selected files and renders each backend result with pages, chunks, warnings, and duplicate status', async () => {
     const user = userEvent.setup();
     vi.spyOn(api, 'getDocuments').mockResolvedValue({
       total_documents: 0,
@@ -263,13 +266,30 @@ describe('IngestionStudio Component', () => {
     await user.click(screen.getByText('Ingest New Document'));
 
     const fileInput = screen.getByLabelText('Upload document file') as HTMLInputElement;
-    const binaryFile = new File(['PK\0\x03\x04binary-content'], 'doc.pdf', { type: 'application/pdf' });
-    fireEvent.change(fileInput, { target: { files: [binaryFile] } });
+    const indexedFile = new File(['%PDF-1.4 bytes'], 'manual.pdf', { type: 'application/pdf' });
+    const duplicateFile = new File(['same'], 'copy.md', { type: 'text/markdown' });
+    const rejectedFile = new File(['bad'], 'broken.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    vi.spyOn(api, 'uploadDocuments').mockResolvedValueOnce({
+      results: [
+        { filename: 'manual.pdf', status: 'indexed_with_warnings', document_id: 'doc-pdf', format: 'pdf', pages: 4, chunks: 2, warnings: ['1 page has no extractable text'], duplicate_of: null },
+        { filename: 'copy.md', status: 'indexed', document_id: 'doc-copy', format: 'md', pages: 0, chunks: 3, warnings: [], duplicate_of: 'doc-original' },
+        { filename: 'broken.docx', status: 'rejected', document_id: null, format: null, pages: 0, chunks: 0, warnings: [], duplicate_of: null, error: 'Unsupported file type' },
+      ],
+    });
+    fireEvent.change(fileInput, { target: { files: [indexedFile, duplicateFile, rejectedFile] } });
+    await user.click(screen.getByText('Upload & Index Files'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/looks like a binary file/i);
+    expect(await screen.findByText('manual.pdf')).toBeInTheDocument();
+    expect(screen.getByText('indexed_with_warnings')).toBeInTheDocument();
+    expect(screen.getByText(/4 pages/)).toBeInTheDocument();
+    expect(screen.getByText(/2 chunks/)).toBeInTheDocument();
+    expect(screen.getByText('1 page has no extractable text')).toBeInTheDocument();
+    expect(screen.getByText(/Duplicate of doc-original/)).toBeInTheDocument();
+    expect(screen.getByText('Unsupported file type')).toBeInTheDocument();
+    expect(api.uploadDocuments).toHaveBeenCalledWith([indexedFile, duplicateFile, rejectedFile], 'default');
   });
 
-  it('G2: %PDF signature without NUL still warns as binary', async () => {
+  it('uploads files dropped onto the file picker', async () => {
     const user = userEvent.setup();
     vi.spyOn(api, 'getDocuments').mockResolvedValue({
       total_documents: 0,
@@ -277,21 +297,16 @@ describe('IngestionStudio Component', () => {
       total_entities: 0,
       documents: [],
     });
+    vi.spyOn(api, 'uploadDocuments').mockResolvedValueOnce({ results: [] });
 
     render(<IngestionStudio tenantId="default" />);
     await user.click(screen.getByText('Ingest New Document'));
+    const file = new File(['# notes'], 'notes.md', { type: 'text/markdown' });
+    const fileDrop = screen.getByLabelText('Upload document file').parentElement as HTMLElement;
+    fireEvent.drop(fileDrop, { dataTransfer: { files: [file] } });
+    await user.click(screen.getByText('Upload & Index Files'));
 
-    const fileInput = screen.getByLabelText('Upload document file') as HTMLInputElement;
-    const pdfText = new File(['%PDF-1.4 fake binary garble \x01\x02\x03\x04 obj stream'], 'doc.pdf', { type: 'application/pdf' });
-    fireEvent.change(fileInput, { target: { files: [pdfText] } });
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/looks like a binary file/i);
-  });
-
-  it('G2: isBinaryLike flags signatures/garble but passes plain text', () => {
-    expect(isBinaryLike('%PDF-1.4 binary content')).toBe(true);
-    expect(isBinaryLike('PK\x03\x04 zip content')).toBe(true);
-    expect(isBinaryLike('# Hello\nPlain markdown text.')).toBe(false);
+    await waitFor(() => expect(api.uploadDocuments).toHaveBeenCalledWith([file], 'default'));
   });
 
   it('G3: success card shows filename and created_at from the backend', async () => {

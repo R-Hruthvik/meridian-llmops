@@ -116,6 +116,22 @@ export interface IngestResponse {
   created_at?: string;
 }
 
+export interface DocumentUploadResult {
+  filename: string;
+  status: 'indexed' | 'indexed_with_warnings' | 'rejected';
+  document_id: string | null;
+  format: string | null;
+  pages: number;
+  chunks: number;
+  warnings: string[];
+  duplicate_of: string | null;
+  error?: string | null;
+}
+
+export interface DocumentUploadResponse {
+  results: DocumentUploadResult[];
+}
+
 export interface GuardrailCheckRequest {
   text: string;
 }

@@ -19,7 +19,13 @@ import {
 } from 'lucide-react';
 import { StatusChip } from './StatusChip';
 import { api } from '../services/api';
-import type { DocumentDetail, DocumentListResponse, DocumentSummary, IngestResponse } from '../types/api';
+import type {
+  DocumentDetail,
+  DocumentListResponse,
+  DocumentSummary,
+  DocumentUploadResponse,
+  IngestResponse,
+} from '../types/api';
 
 interface IngestionStudioProps {
   tenantId: string;
@@ -45,21 +51,6 @@ const Readout: React.FC<{ label: string; value: string }> = ({ label, value }) =
   </div>
 );
 
-export const isBinaryLike = (content: string): boolean => {
-  if (!content) return false;
-  if (content.includes('\0')) return true;
-  if (content.startsWith('%PDF') || content.startsWith('PK')) return true;
-  // FileReader.readAsText on PDF/DOCX often yields garble without NUL:
-  // flag a high non-printable / replacement-char ratio in the head sample.
-  const sample = content.slice(0, 4000);
-  let bad = 0;
-  for (const ch of sample) {
-    const code = ch.charCodeAt(0);
-    if (ch === '�' || code < 9 || (code >= 14 && code < 32) || code === 127) bad++;
-  }
-  return sample.length > 0 && bad / sample.length > 0.1;
-};
-
 export const IngestionStudio: React.FC<IngestionStudioProps> = ({
   tenantId,
   focusedDocumentId = null,
@@ -71,8 +62,9 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<IngestResponse | null>(null);
+  const [uploadResult, setUploadResult] = useState<DocumentUploadResponse | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [fileWarning, setFileWarning] = useState<string | null>(null);
 
   // Catalog State
   const [docList, setDocList] = useState<DocumentListResponse>({
@@ -195,6 +187,27 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
   };
 
   const handleIngest = async () => {
+    if (selectedFiles.length > 0) {
+      setLoading(true);
+      setError(null);
+      setResult(null);
+      setUploadResult(null);
+      try {
+        const response = await api.uploadDocuments(selectedFiles, tenantId);
+        setUploadResult(response);
+        const indexedCount = response.results.filter((item) => item.status !== 'rejected').length;
+        showToast(`Processed ${response.results.length} files; ${indexedCount} indexed.`);
+        setSelectedFiles([]);
+        await fetchDocuments();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Document upload failed';
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!text.trim() || !title.trim()) {
       setError('Please provide both document title and text content.');
       return;
@@ -211,6 +224,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
         tenantId
       );
       setResult(res);
+      setUploadResult(null);
       showToast(`Successfully indexed "${title}" with ${res.chunks_indexed} chunks!`);
       setTitle('');
       setText('');
@@ -225,26 +239,12 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setFileWarning(null);
-    setTitle(file.name.replace(/\.[^/.]+$/, ''));
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = (event.target?.result as string) || '';
-      // Backend /v1/ingest accepts text JSON only (no file endpoint) —
-      // binary files (PDF/DOCX) read as text garble. Warn when content
-      // looks binary so the user pastes extracted text instead.
-      if (isBinaryLike(content)) {
-        setFileWarning(
-          `"${file.name}" looks like a binary file (PDF/DOCX are not supported). The ingest API accepts text only — please paste extracted text instead.`,
-        );
-      }
-      setText(content);
-    };
-    reader.readAsText(file);
+  const handleFileSelection = (files: FileList | null) => {
+    if (!files?.length) return;
+    setSelectedFiles(Array.from(files));
+    setResult(null);
+    setUploadResult(null);
+    setError(null);
   };
 
   const handleViewDetails = async (doc: DocumentSummary) => {
@@ -683,27 +683,34 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
               </div>
 
               {/* File Upload Trigger */}
-              <div className="relative rounded-sm border border-dashed border-hairline-strong bg-surface p-5 text-center transition-colors hover:bg-accent-wash">
+              <div
+                className="relative rounded-sm border border-dashed border-hairline-strong bg-surface p-5 text-center transition-colors hover:bg-accent-wash"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  handleFileSelection(event.dataTransfer.files);
+                }}
+              >
                 <input
                   type="file"
-                  onChange={handleFileUpload}
+                  onChange={(event) => handleFileSelection(event.target.files)}
+                  multiple
                   disabled={loading}
-                  accept=".txt,.md,.markdown,.json,.html,.csv,.yaml,.yml,.xml,.log,text/plain,text/markdown,text/html,application/json"
+                  accept=".md,.txt,.pdf,.docx,.html"
                   aria-label="Upload document file"
                   className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
                 />
                 <FileUp className="mx-auto mb-1 size-5 text-accent-ink" />
-                <p className="text-body font-semibold text-ink">Click or drag file to upload</p>
+                <p className="text-body font-semibold text-ink">Click or drag files to upload</p>
                 <p className="mt-0.5 text-micro text-muted">
-                  Text only: Markdown, Text, HTML, JSON, CSV, YAML (binary PDF/DOCX are not supported)
+                  Markdown, Text, PDF, DOCX, and HTML files
                 </p>
-                {fileWarning && (
-                  <p
-                    role="alert"
-                    className="mt-2 rounded-sm border border-hairline bg-warn-wash px-2.5 py-1.5 text-micro font-semibold text-warn"
-                  >
-                    {fileWarning}
-                  </p>
+                {selectedFiles.length > 0 && (
+                  <ul aria-label="Selected files" className="mt-2 text-left text-micro text-muted">
+                    {selectedFiles.map((file, index) => (
+                      <li key={`${file.name}-${index}`} className="truncate">{file.name}</li>
+                    ))}
+                  </ul>
                 )}
               </div>
 
@@ -725,7 +732,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
               <div className="flex justify-end pt-1">
                 <button
                   onClick={handleIngest}
-                  disabled={loading || !text.trim() || !title.trim()}
+                  disabled={loading || (!selectedFiles.length && (!text.trim() || !title.trim()))}
                   className="flex items-center gap-2 rounded bg-accent px-4 py-1.5 text-label font-bold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading ? (
@@ -736,7 +743,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                   ) : (
                     <>
                       <FileCheck className="size-3.5" />
-                      <span>Index &amp; Store Permanently</span>
+                      <span>{selectedFiles.length ? 'Upload & Index Files' : 'Index & Store Permanently'}</span>
                     </>
                   )}
                 </button>
@@ -770,7 +777,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                     Generating dense vector embeddings &amp; extracting Neo4j entities
                   </p>
                 </div>
-              ) : !result ? (
+              ) : !result && !uploadResult ? (
                 <div className="rounded-sm border border-dashed border-hairline bg-surface px-3 py-8 text-center">
                   <FileCode className="mx-auto mb-2 size-6 text-faint" />
                   <p className="text-body font-semibold text-ink">Ready for Document Upload</p>
@@ -779,7 +786,51 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                     dense vectors, and persisted to disk catalog.
                   </p>
                 </div>
-              ) : (
+              ) : uploadResult ? (
+                <div className="flex flex-col gap-3" aria-label="Upload results">
+                  {uploadResult.results.map((fileResult, index) => (
+                    <div
+                      key={`${fileResult.filename}-${index}`}
+                      className="rounded-sm border border-hairline bg-surface p-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="truncate text-label font-bold text-ink">{fileResult.filename}</p>
+                        <StatusChip variant={fileResult.status === 'rejected' ? 'fail' : 'ok'}>
+                          {fileResult.status}
+                        </StatusChip>
+                      </div>
+                      <p className="mt-1 text-micro text-muted">
+                        {fileResult.pages} {fileResult.pages === 1 ? 'page' : 'pages'} · {fileResult.chunks}{' '}
+                        {fileResult.chunks === 1 ? 'chunk' : 'chunks'}
+                        {fileResult.format ? ` · ${fileResult.format.toUpperCase()}` : ''}
+                      </p>
+                      {fileResult.document_id && (
+                        <p className="mt-1 text-micro text-muted">
+                          Doc ID: <span className="id-mono text-ink">{fileResult.document_id}</span>
+                        </p>
+                      )}
+                      {fileResult.duplicate_of && (
+                        <p className="mt-1 text-micro font-semibold text-warn">
+                          Duplicate of {fileResult.duplicate_of}
+                        </p>
+                      )}
+                      {fileResult.error && (
+                        <p className="mt-1 text-micro font-semibold text-fail">{fileResult.error}</p>
+                      )}
+                      {fileResult.warnings.map((warning) => (
+                        <p key={warning} className="mt-1 text-micro text-warn">{warning}</p>
+                      ))}
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setActiveTab('catalog')}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-sm border border-hairline px-3 py-1.5 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    <BookOpen className="size-3.5" />
+                    <span>View in Document Catalog</span>
+                  </button>
+                </div>
+              ) : result ? (
                 <div className="flex flex-col gap-3">
                   <div className="flex items-start gap-2.5 rounded-sm border border-hairline bg-ok-wash p-3">
                     <StatusChip variant="ok">Indexed</StatusChip>
@@ -820,7 +871,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                     <span>View in Document Catalog</span>
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
