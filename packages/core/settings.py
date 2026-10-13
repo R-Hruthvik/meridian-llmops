@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="ADMIN_API_KEY")
     rate_limit_per_minute: int = 60
     max_upload_mb: int = Field(default=25, gt=0)
+    allow_private_provider_urls: bool = False
 
     # LiteLLM AI Gateway
     litellm_base_url: str = "http://localhost:4000"

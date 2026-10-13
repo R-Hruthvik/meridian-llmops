@@ -97,7 +97,10 @@ def test_model_fetch_rejects_unsafe_url_components(url, monkeypatch):
 
 @pytest.mark.parametrize("ip", ["10.1.2.3", "169.254.1.1", "0.0.0.0", "224.0.0.1", "192.0.2.1"])
 def test_model_fetch_rejects_non_public_resolved_addresses(ip, monkeypatch):
+    from services.rag_engine import app as rag_app
+
     _resolved_to(monkeypatch, ip)
+    monkeypatch.setattr(rag_app._settings, "allow_private_provider_urls", False)
     result, calls, _ = _call_fetch(monkeypatch, "openai", "https://provider.example")
     assert calls == []
     assert result["success"] is False
@@ -139,7 +142,9 @@ def test_model_fetch_transport_uses_only_the_validated_address(monkeypatch):
     validated_url, validated_host, validated_port, validated_addresses = rag_app._validate_model_fetch_url(
         "openai", "https://provider.example/models"
     )
-    backend = rag_app._PinnedAddressBackend(FakeNetwork())
+    from services.gateway.safe_http import PinnedAddressBackend
+
+    backend = PinnedAddressBackend(FakeNetwork())
     backend.pin(validated_host, validated_port, validated_addresses)
 
     assert asyncio.run(backend.connect_tcp(validated_host, validated_port)) == "connected"
@@ -153,10 +158,33 @@ def test_model_fetch_transport_uses_only_the_validated_address(monkeypatch):
 )
 @pytest.mark.parametrize("provider", ["ollama", "custom", "openai_compatible"])
 def test_local_providers_allow_loopback_urls(provider, url, monkeypatch):
+    from services.rag_engine import app as rag_app
+
+    monkeypatch.setattr(rag_app._settings, "allow_private_provider_urls", True)
     host = "::1" if "[::1]" in url else "127.0.0.1"
     _resolved_to(monkeypatch, host)
     result, calls, _ = _call_fetch(monkeypatch, provider, url)
     assert calls
+    assert result["success"] is True
+
+
+def test_local_provider_model_fetch_requires_private_url_flag(monkeypatch):
+    from services.rag_engine import app as rag_app
+
+    _resolved_to(monkeypatch, "127.0.0.1")
+    monkeypatch.setattr(rag_app._settings, "allow_private_provider_urls", False)
+    result, calls, _ = _call_fetch(monkeypatch, "ollama", "http://localhost:11434")
+    assert calls == []
+    assert result["success"] is False
+
+
+def test_custom_model_fetch_allows_public_https_endpoint(monkeypatch):
+    from services.rag_engine import app as rag_app
+
+    _resolved_to(monkeypatch, "93.184.216.34")
+    monkeypatch.setattr(rag_app._settings, "allow_private_provider_urls", False)
+    result, calls, _ = _call_fetch(monkeypatch, "custom", "https://provider.example/v1")
+    assert calls == ["https://provider.example/v1/models"]
     assert result["success"] is True
 
 

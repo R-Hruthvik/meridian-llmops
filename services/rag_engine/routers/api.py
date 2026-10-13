@@ -1,11 +1,9 @@
 """Unified Meridian RAG Engine & LLMOps FastAPI Application."""
 
 import asyncio
-import ipaddress
 import json
 import logging
 import os
-import socket
 import time
 import uuid
 from collections.abc import MutableMapping
@@ -13,9 +11,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Annotated, Any, cast
-from urllib.parse import urlsplit
 
-import httpcore
 import httpx
 from fastapi import (
     APIRouter,
@@ -53,6 +49,13 @@ from services.gateway.auth import validate_auth_configuration
 from services.gateway.client import LiteLLMClient
 from services.gateway.guardrails.input_rails import InputGuardrails
 from services.gateway.guardrails.output_rails import OutputGuardrails
+from services.gateway.safe_http import (
+    PinnedAsyncHTTPTransport as _PinnedAsyncHTTPTransport,
+)
+from services.gateway.safe_http import (
+    ProviderURLNotAllowed,
+    validate_provider_url,
+)
 from services.ingestion import storage as ingestion_storage
 from services.ingestion.embedder import FastEmbedEmbedder
 from services.ingestion.graph_store import KnowledgeGraphStore
@@ -350,77 +353,13 @@ def _merge_preserving_saved(base: dict[str, Any], incoming: dict[str, Any]) -> d
 
 def _validate_model_fetch_url(provider: str, url: str) -> tuple[str, str, int, tuple[str, ...]]:
     try:
-        parsed = urlsplit(url)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-            raise ValueError
-        if (
-            parsed.username is not None
-            or parsed.password is not None
-            or "?" in url
-            or "#" in url
-        ):
-            raise ValueError
-        hostname = parsed.hostname.encode("idna").decode("ascii").lower()
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        addresses = {
-            ipaddress.ip_address(str(info[4][0]).split("%", 1)[0])
-            for info in socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
-        }
-        if not addresses:
-            raise ValueError
-        if provider in {"ollama", "custom", "openai_compatible"}:
-            if hostname not in {"localhost", "127.0.0.1", "::1"}:
-                raise ValueError
-            if not all(address.is_loopback for address in addresses):
-                raise ValueError
-        elif not all(
-            address.is_global
-            and not (address.is_private or address.is_loopback or address.is_link_local
-                     or address.is_unspecified or address.is_multicast or address.is_reserved)
-            for address in addresses
-        ):
-            raise ValueError
-    except (OSError, ValueError, IndexError):
+        return validate_provider_url(
+            provider,
+            url,
+            allow_private=_settings.allow_private_provider_urls,
+        )
+    except ProviderURLNotAllowed:
         raise ValueError("Provider URL is not allowed.") from None
-    return url, hostname, port, tuple(sorted(str(address) for address in addresses))
-
-
-class _PinnedAddressBackend:
-    """Connects only to the validated IPs while HTTPCore keeps the URL hostname for TLS."""
-
-    def __init__(self, network_backend: Any):
-        self._network_backend = network_backend
-        self._addresses: dict[tuple[str, int], tuple[str, ...]] = {}
-
-    def pin(self, host: str, port: int, addresses: tuple[str, ...]) -> None:
-        self._addresses[(host.lower(), port)] = addresses
-
-    async def connect_tcp(self, host: str, port: int, **kwargs: Any) -> Any:
-        addresses = self._addresses.get((host.lower(), port), ())
-        if not addresses:
-            raise OSError("No validated provider address is available.")
-        last_error: Exception | None = None
-        for address in addresses:
-            try:
-                return await self._network_backend.connect_tcp(address, port, **kwargs)
-            except (httpcore.ConnectError, httpcore.ConnectTimeout) as error:
-                last_error = error
-        if last_error:
-            raise last_error
-        raise OSError("No validated provider address is available.")
-
-    async def connect_unix_socket(self, path: str, **kwargs: Any) -> Any:
-        return await self._network_backend.connect_unix_socket(path, **kwargs)
-
-    async def sleep(self, seconds: float) -> None:
-        await self._network_backend.sleep(seconds)
-
-
-class _PinnedAsyncHTTPTransport(httpx.AsyncHTTPTransport):
-    def __init__(self):
-        super().__init__(trust_env=False)
-        self.address_backend = _PinnedAddressBackend(self._pool._network_backend)
-        self._pool._network_backend = self.address_backend
 
 
 async def _model_fetch_get(
@@ -1096,7 +1035,7 @@ async def update_llm_settings(
 
         _save_persisted_settings(dict(_runtime_llm_settings))
 
-        new_llm_client = LiteLLMClient()
+        new_llm_client = LiteLLMClient(allow_private_provider_urls=_settings.allow_private_provider_urls)
         llm_client = new_llm_client
         new_agent_graph = build_rag_agent_graph(
             retriever=retriever,
@@ -1545,7 +1484,7 @@ def _build_services(settings) -> dict[str, Any]:
     pipeline = IngestionPipeline(vector_store=vector, graph_store=graph, max_upload_bytes=settings.max_upload_mb * 1024 * 1024)
     trace = LangfuseTracer()
     retrieval = HybridRetriever(embedder=None, vector_store=vector, tracer=trace)
-    llm = LiteLLMClient()
+    llm = LiteLLMClient(allow_private_provider_urls=settings.allow_private_provider_urls)
     return {
         "vector_store": vector,
         "graph_store": graph,

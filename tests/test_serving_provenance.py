@@ -42,7 +42,7 @@ def _sse(chunks: list[dict]) -> str:
 
 async def _call_client(monkeypatch, body: str, model: str = "kilo") -> tuple[dict, tuple]:
     """Drive a real LiteLLMClient against a canned upstream body."""
-    client = LiteLLMClient()
+    client = LiteLLMClient(allow_private_provider_urls=True)
 
     class _FakeHTTP:
         async def post(self, *args, **kwargs):
@@ -111,7 +111,7 @@ async def test_client_records_empty_upstream_content_as_unusable(monkeypatch):
     from packages.core.errors import ProviderError
 
     # Client records provenance before surfacing the typed failure.
-    client = LiteLLMClient()
+    client = LiteLLMClient(allow_private_provider_urls=True)
     class _FakeHTTP:
         async def post(self, *args, **kwargs):
             return _FakeResponse(body)
@@ -142,6 +142,7 @@ def seeded_client(monkeypatch, tmp_path):
         api_key="test-provider-key",
         base_url="http://localhost:20128/v1",
         model="test-model",
+        allow_private_provider_urls=True,
     )
     monkeypatch.setattr(app_module, "_core_get_settings", lambda: settings)
 
@@ -161,7 +162,7 @@ def seeded_client(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module, "ingestion_pipeline", pipeline)
     monkeypatch.setattr(app_module, "retriever", isolated_retriever)
     monkeypatch.setitem(globals(), "retriever", isolated_retriever)
-    query_client = LiteLLMClient()
+    query_client = LiteLLMClient(allow_private_provider_urls=True)
     monkeypatch.setattr(app_module, "llm_client", query_client)
     monkeypatch.setattr(app_module, "agent_graph", build_rag_agent_graph(
         retriever=isolated_retriever,

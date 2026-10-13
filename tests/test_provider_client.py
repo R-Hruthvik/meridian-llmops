@@ -31,7 +31,9 @@ async def test_provider_request_shapes(provider, base_url, expected_url, expecte
             return httpx.Response(200, json={"model": "served", "content": [{"type": "text", "text": "ok"}], "usage": {"input_tokens": 1, "output_tokens": 1}})
         return httpx.Response(200, json={"model": "served", "choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 2}})
 
-    client = LiteLLMClient(transport=httpx.MockTransport(handler))
+    client = LiteLLMClient(
+        transport=httpx.MockTransport(handler), allow_private_provider_urls=provider == "ollama"
+    )
     try:
         result = await client.chat_completion(
             [{"role": "system", "content": "rules"}, {"role": "user", "content": "hi"}],
@@ -93,7 +95,7 @@ async def test_direct_provider_does_not_fall_back_to_litellm_key():
 async def test_proxy_route_may_use_litellm_master_key():
     seen = []
     transport = httpx.MockTransport(lambda request: (seen.append(request.headers.get("authorization")) or httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})))
-    client = LiteLLMClient(base_url="http://litellm.local", master_key="proxy-secret", transport=transport)
+    client = LiteLLMClient(base_url="http://litellm.local", master_key="proxy-secret", transport=transport, allow_private_provider_urls=True)
     try:
         await client.chat_completion([{"role": "user", "content": "hi"}], provider="litellm", model="m")
     finally:
@@ -113,7 +115,7 @@ async def test_proxy_route_may_use_litellm_master_key():
 async def test_litellm_url_is_normalized(base_url, expected_url):
     seen = []
     transport = httpx.MockTransport(lambda request: (seen.append(str(request.url)) or httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})))
-    client = LiteLLMClient(base_url=base_url, master_key="proxy-key", transport=transport)
+    client = LiteLLMClient(base_url=base_url, master_key="proxy-key", transport=transport, allow_private_provider_urls=True)
     try:
         await client.chat_completion([{"role": "user", "content": "hi"}], provider="litellm", model="m")
     finally:

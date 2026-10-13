@@ -10,6 +10,11 @@ import httpx
 from packages.core.config import get_settings
 from packages.core.errors import ProviderConfigError, ProviderError
 from services.gateway.providers import PROVIDERS
+from services.gateway.safe_http import (
+    PinnedAsyncHTTPTransport,
+    ProviderURLNotAllowed,
+    validate_provider_url,
+)
 
 logger = logging.getLogger("meridian.gateway.client")
 
@@ -22,11 +27,18 @@ class LiteLLMClient:
         base_url: str | None = None,
         master_key: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        allow_private_provider_urls: bool | None = None,
     ):
         settings = get_settings()
         self.base_url = base_url or settings.litellm_base_url
         self.master_key = master_key or settings.litellm_master_key
         self._transport = transport
+        self.allow_private_provider_urls = (
+            settings.allow_private_provider_urls
+            if allow_private_provider_urls is None
+            else allow_private_provider_urls
+        )
+        self._safe_transport: PinnedAsyncHTTPTransport | None = None
         self._client: httpx.AsyncClient | None = None
         self._served_seq = 0
         self._last_served: dict[str, Any] | None = None
@@ -42,10 +54,17 @@ class LiteLLMClient:
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
+            transport = self._transport
+            if transport is None:
+                if self._safe_transport is None:
+                    self._safe_transport = PinnedAsyncHTTPTransport()
+                transport = self._safe_transport
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(connect=5.0, read=60.0, write=60.0, pool=5.0),
                 limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
-                transport=self._transport,
+                follow_redirects=False,
+                trust_env=False,
+                transport=transport,
             )
         return self._client
 
@@ -53,6 +72,8 @@ class LiteLLMClient:
         if self._client is not None and not self._client.is_closed:
             await self._client.aclose()
             self._client = None
+            if self._transport is None:
+                self._safe_transport = None
 
     @staticmethod
     def _endpoint(provider: str, base_url: str) -> str:
@@ -141,6 +162,21 @@ class LiteLLMClient:
         if not target_base:
             raise ProviderConfigError(target_provider, f"Base URL is required for provider {target_provider}")
         endpoint = self._endpoint(target_provider, target_base)
+        try:
+            _, host, port, addresses = validate_provider_url(
+                target_provider,
+                endpoint,
+                allow_private=self.allow_private_provider_urls,
+                resolve=self._transport is None,
+            )
+        except ProviderURLNotAllowed as error:
+            raise ProviderConfigError(target_provider, "Provider URL is not allowed") from error
+        if self._transport is None:
+            if self._safe_transport is None:
+                self._safe_transport = PinnedAsyncHTTPTransport()
+            assert self._safe_transport is not None
+            self._safe_transport.address_backend.pin(host, port, addresses)
+            self._get_client()
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if target_key and (spec is None or spec["auth_style"] != "none"):
             if spec is not None and spec["auth_style"] == "anthropic":
