@@ -1,3 +1,7 @@
-# 0008. Three-Cycle Reformulation Limit with Safe Refusal Fallback
+# 0008. Bounded Agent Attempts with Safe Refusal Fallback
 
-We capped the LangGraph self-healing cyclic loop to a maximum of 3 query reformulation iterations. If the Critic Agent continues to reject generated drafts after 3 cycles due to lack of ground truth in retrieved context, the system safely terminates with a standardized refusal message indicating the requested information is absent from the knowledge base.
+**Status:** Accepted · **Date:** 2026-08-17
+
+The agent has a finite attempt limit and returns a safe refusal when it cannot produce a supported answer. `max_cycles` names the total attempt limit, not a count of reformulations.
+
+**Current state (verified 2026-10-13):** The default is two total attempts and the configured range is one to four. The exact cap is in `packages/core/settings.py`; response generation and retry behavior are in `services/rag_engine/agent/graph.py`.
