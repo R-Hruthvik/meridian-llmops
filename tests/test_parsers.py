@@ -76,6 +76,8 @@ def test_docx_extracts_heading_and_table_rows():
 
 def test_pdf_does_not_drop_headers_seen_on_only_half_the_pages(monkeypatch):
     class Page:
+        mediabox = type("Box", (), {"width": 612, "height": 792})()
+
         def __init__(self, text):
             self.text = text
 
@@ -109,3 +111,32 @@ def test_encrypted_pdf_without_password_has_clear_parse_error():
 
     with pytest.raises(ParseError, match="encrypted"):
         parse_file("locked.pdf", output.getvalue())
+
+
+def test_pdf_ocr_recovers_scanned_page_with_page_provenance(monkeypatch):
+    class Page:
+        mediabox = type("Box", (), {"width": 612, "height": 792})()
+
+        def extract_text(self):
+            return ""
+
+    class Reader:
+        is_encrypted = False
+
+        def __init__(self):
+            self.pages = [Page()]
+
+    monkeypatch.setattr("pypdf.PdfReader", lambda *_args, **_kwargs: Reader())
+    monkeypatch.setattr(
+        "services.ingestion.parsers.pdf.ocr_page_text",
+        lambda _data, _number, *_args, **_kwargs: "Recovered scanned page contains enough readable text.",
+        raising=False,
+    )
+
+    parsed = parse_pdf(b"%PDF-fake", title="Scanned")
+
+    assert parsed.pages[0].text == "Recovered scanned page contains enough readable text."
+    assert [(block.page, block.text) for block in parsed.blocks] == [
+        (1, "Recovered scanned page contains enough readable text.")
+    ]
+    assert not any("page 1" in warning.lower() for warning in parsed.warnings)

@@ -5,6 +5,7 @@ import re
 from packages.core.errors import ParseError
 from packages.core.models import DocumentFormat
 from services.ingestion.parsers.base import Block, ParsedDocument, ParsedPage
+from services.ingestion.parsers.pdf_ocr import is_usable_ocr_text, ocr_page_text
 
 _HYPHEN_BREAK = re.compile(r"(\w)-\n(\w)")
 _WS = re.compile(r"[ \t]+")
@@ -32,18 +33,35 @@ def parse_pdf(data: bytes, title: str = "") -> ParsedDocument:
         except Exception as error:
             raise ParseError("PDF is encrypted and cannot be read without a password") from error
 
-    pages: list[ParsedPage] = []
-    blocks: list[Block] = []
-    line_counts: dict[str, int] = {}
     page_texts: list[str] = []
+    page_dimensions: list[tuple[float, float]] = []
     for number, page in enumerate(reader.pages, start=1):
         try:
             raw = page.extract_text() or ""
         except Exception as error:
             raise ParseError(f"Could not extract text from PDF page {number}: {error}") from error
-        text = _normalize_page_text(raw)
-        pages.append(ParsedPage(number=number, text=text))
-        page_texts.append(text)
+        page_texts.append(_normalize_page_text(raw))
+        page_dimensions.append((float(page.mediabox.width), float(page.mediabox.height)))
+
+    # OCR only pages that do not contain usable embedded text, with bounded work.
+    from time import monotonic
+
+    deadline = monotonic() + 45
+    ocr_pages = 0
+    for index, text in enumerate(page_texts):
+        if is_usable_ocr_text(text):
+            continue
+        if ocr_pages >= 3 or monotonic() >= deadline:
+            continue
+        ocr_pages += 1
+        width, height = page_dimensions[index]
+        recovered = ocr_page_text(data, index + 1, width, height, deadline=deadline)
+        if recovered and is_usable_ocr_text(recovered):
+            page_texts[index] = _normalize_page_text(recovered)
+
+    pages = [ParsedPage(number=number, text=text) for number, text in enumerate(page_texts, start=1)]
+    line_counts: dict[str, int] = {}
+    for text in page_texts:
         for line in {line.strip() for line in text.splitlines() if len(line.strip()) >= 3}:
             line_counts[line] = line_counts.get(line, 0) + 1
 
@@ -53,15 +71,19 @@ def parse_pdf(data: bytes, title: str = "") -> ParsedDocument:
 
     empty_pages = 0
     garbled_pages = 0
+    unresolved_pages: list[int] = []
+    blocks: list[Block] = []
     for number, text in enumerate(page_texts, start=1):
         content = "\n".join(line for line in text.splitlines() if line.strip() not in repeated).strip()
         non_space = len(re.sub(r"\s", "", content))
         if non_space < 20:
             empty_pages += 1
+            unresolved_pages.append(number)
             continue
         non_alnum = sum(1 for char in content if not char.isalnum() and not char.isspace())
         if (non_alnum / max(1, len(content))) > 0.35 or "\ufffd" in content:
             garbled_pages += 1
+            unresolved_pages.append(number)
             continue
         for paragraph in content.split("\n\n"):
             if paragraph.strip():
@@ -73,7 +95,8 @@ def parse_pdf(data: bytes, title: str = "") -> ParsedDocument:
     if garbled_pages:
         warnings.append(f"{garbled_pages} of {len(pages)} pages look garbled")
     if pages and (empty_pages + garbled_pages) >= 0.5 * len(pages):
-        warnings.append("File looks scanned; OCR is not supported, so no garbage was indexed")
+        warnings.append(f"File looks scanned; OCR could not recover usable text from {len(unresolved_pages)} pages")
+    warnings.extend(f"Page {number}: OCR could not recover usable text" for number in unresolved_pages)
 
     return ParsedDocument(
         title=title or "Untitled document", format=DocumentFormat.PDF, blocks=blocks, pages=pages, warnings=warnings

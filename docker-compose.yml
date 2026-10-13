@@ -115,6 +115,7 @@ services:
       API_KEY: ${API_KEY:-}
       BASE_URL: ${BASE_URL:-}
       MODEL: ${MODEL:-}
+      OCR_API_KEY: ${OCR_API_KEY:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
