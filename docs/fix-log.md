@@ -475,7 +475,9 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Change summary: added announced pending/empty states where the first request otherwise looked empty, plus a retry message for failed Settings loads. Ask now keeps a reserved answer area and preserves the previous answer during follow-up requests; citation buttons open their chunks from the keyboard. Metrics and Settings use one column below 640px, and long tables scroll within focusable, named wrappers. Added visible focus styling to the shared overlay close button.
 - Evidence after: `npm run test:run` -> **276 passed across 17 files**; `npm run build` -> TypeScript and Vite production build succeeded.
 - Deviations from plan: none.
-- Open risks / follow-ups: no browser device-width checklist was run; mobile behavior is covered by responsive class assertions and the production build.
+- Browser follow-up (2026-10-13): used browser-harness against the running Vite app at 390 × 844 and an effective 614 px viewport. Ask was visually inspected at 390 px; Corpus, Index & Storage, Guardrails, Review Queue, and Metrics were opened at both widths. `document.documentElement.scrollWidth` matched `innerWidth` on every checked screen. Corpus and Review Queue displayed their loading states while the local backend had no corresponding data. This confirms viewport fit and loading feedback; it does not verify populated data layouts.
+- Deviations from plan: none.
+- Open risks / follow-ups: populated Corpus/Review tables were not available for visual inspection; their horizontal scrolling behavior remains covered by UI tests.
 
 ### Task 6.6 review follow-up — stable loading geometry
 - Verified before change: “Refreshing answer…” was inserted into normal document flow above the current answer, and Metrics mounted its loading banner only while the request was pending, changing downstream positions when each state toggled.
