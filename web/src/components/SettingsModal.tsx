@@ -23,7 +23,7 @@ interface SettingsModalProps {
   onClose: () => void;
   platformApiKey: string;
   onSavePlatformApiKey: (key: string) => void;
-  onGenerationTestResult?: (success: boolean) => void;
+  onGenerationTestResult?: (success: boolean | null) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -360,6 +360,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         return next;
       });
 
+      onGenerationTestResult?.(null);
       setSaveSuccess(true);
       await loadAllSettings();
       setTimeout(() => {

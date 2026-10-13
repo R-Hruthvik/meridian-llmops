@@ -360,3 +360,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: `npm run test:run` -> **269 passed**; `npm run build` -> TypeScript and Vite build succeeded. Existing React `act()` and deliberate lazy-import failure logs remain.
 - Deviations from plan: none.
 - Open risks / follow-ups: the generation indicator reflects the latest saved-config test performed in the current app session; it does not imply continuous provider reachability.
+
+### Task 6.3 review follow-up — invalidate test status after save
+- Verified before change: the shell retained a successful generation-test indicator after Settings saved and applied the provider configuration.
+- Test added (failing first): extended the app-shell regression to pass the saved-config generation test, save settings, and assert the status returns to “Generation not tested”; it failed while the shell still showed “Generation test passed.”
+- Change summary: a successful Save & Apply now invalidates the shell's generation-test status, including when the saved values are unchanged.
+- Evidence after: focused tests -> **50 passed**; full `npm run test:run` -> **269 passed**; `npm run build` -> TypeScript and Vite build succeeded. Existing React `act()` and deliberate lazy-import failure logs remain.
+- Deviations from plan: none.
+- Open risks / follow-ups: none beyond the Task 6.3 session-scoped status limitation recorded above.

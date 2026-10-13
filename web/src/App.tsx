@@ -210,7 +210,9 @@ export const App: React.FC = () => {
           setTenantId={setTenantId}
           backendHealth={backendHealth}
           generationTestStatus={generationTestStatus}
-          onGenerationTestResult={(success) => setGenerationTestStatus(success ? 'passed' : 'failed')}
+          onGenerationTestResult={(success) =>
+            setGenerationTestStatus(success === null ? 'untested' : success ? 'passed' : 'failed')
+          }
           apiKey={apiKey}
           setApiKey={handleSetApiKey}
         />

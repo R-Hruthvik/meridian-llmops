@@ -40,7 +40,7 @@ interface TopBarProps {
   setTenantId: (tenant: string) => void;
   backendHealth: BackendHealth;
   generationTestStatus: 'untested' | 'passed' | 'failed';
-  onGenerationTestResult: (success: boolean) => void;
+  onGenerationTestResult: (success: boolean | null) => void;
   apiKey: string;
   setApiKey: (key: string) => void;
 }

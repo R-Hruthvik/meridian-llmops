@@ -175,6 +175,12 @@ describe('App shell service status', () => {
 
     await waitFor(() => expect(api.testLLMConnection).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('Generation test passed')).toBeInTheDocument();
+
+    (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    await user.click(screen.getByRole('button', { name: /save & apply/i }));
+    await waitFor(() => expect(api.updateLLMSettings).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Settings and active model saved successfully!')).toBeInTheDocument();
+    expect(screen.getByText('Generation not tested')).toBeInTheDocument();
   });
 });
 
