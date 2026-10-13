@@ -557,24 +557,24 @@ class GuardrailCheckRequest(BaseModel):
     text: str = Field(..., min_length=1)
 
 
-@app.get("/v1/guardrails/check", response_model=GuardrailResult)
+@app.get("/v1/guardrails/check", response_model=GuardrailResult, deprecated=True)
 async def check_guardrails_get(
     text: str,
     tenant_id: str = Depends(require_user),
 ):
-    """Evaluates text against the same input rails the gateway applies.
+    """Legacy query-string form; use POST to keep submitted text out of URLs.
 
     Served here too because the browser reaches the rag engine directly.
     """
     return input_guardrails.evaluate(text)
 
 
-@app.post("/v1/guardrails/check", response_model=GuardrailResult, include_in_schema=False)
+@app.post("/v1/guardrails/check", response_model=GuardrailResult)
 async def check_guardrails_post(
     payload: GuardrailCheckRequest,
     tenant_id: str = Depends(require_user),
 ):
-    """Deprecated alias for GET /v1/guardrails/check. Use query parameter instead."""
+    """Evaluate text against the shared input guardrails."""
     return input_guardrails.evaluate(payload.text)
 
 

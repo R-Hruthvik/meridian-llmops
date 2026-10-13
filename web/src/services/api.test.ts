@@ -212,8 +212,8 @@ describe('MeridianApiClient', () => {
     });
   });
 
-  describe('checkGuardrails() canonical GET contract', () => {
-    it('calls GET /v1/guardrails/check?text= (no POST body)', async () => {
+  describe('checkGuardrails() canonical POST contract', () => {
+    it('calls POST /v1/guardrails/check with text in the authenticated JSON body', async () => {
       const mock = mockResponse({ allowed: true, sanitized_text: 'hi', policy_violations: [], action_taken: 'pass' }, 200);
       const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce(mock as unknown as Response);
 
@@ -221,10 +221,11 @@ describe('MeridianApiClient', () => {
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-      expect(url).toContain('/v1/guardrails/check?text=');
-      expect(url).toContain(encodeURIComponent('hello <script>'));
-      expect(init.method).toBe('GET');
-      expect(init.body).toBeUndefined();
+      expect(url).toBe('http://localhost:8000/v1/guardrails/check');
+      expect(init.method).toBe('POST');
+      expect(init.body).toBe(JSON.stringify({ text: 'hello <script>' }));
+      expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+      expect((init.headers as Record<string, string>)['X-API-Key']).toBe('');
       expect((init.headers as Record<string, string>)['X-Tenant-Id']).toBe('acme');
     });
   });

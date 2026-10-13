@@ -183,12 +183,12 @@ class MeridianApiClient {
   }
 
   async checkGuardrails(text: string, tenantId: string = 'default'): Promise<GuardrailResult> {
-    // Canonical contract: GET /v1/guardrails/check?text= (POST is a deprecated alias).
     return this.requestJSON<GuardrailResult>(
-      `${this.baseUrl}/v1/guardrails/check?text=${encodeURIComponent(text)}`,
+      `${this.baseUrl}/v1/guardrails/check`,
       {
-        method: 'GET',
+        method: 'POST',
         headers: this.getHeaders(tenantId),
+        body: JSON.stringify({ text }),
       },
       'Guardrail check failed',
     );

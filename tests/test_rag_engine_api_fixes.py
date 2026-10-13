@@ -57,8 +57,24 @@ def test_guardrail_check_post_alias_is_reachable_on_rag_engine(client):
     assert resp.json()["allowed"] is True
 
 
+def test_guardrail_post_is_the_documented_main_app_contract(client):
+    route = next(
+        route for route in client.app.routes
+        if getattr(route, "path", None) == "/v1/guardrails/check"
+        and "POST" in getattr(route, "methods", set())
+    )
+
+    assert route.include_in_schema is True
+
+
 def test_guardrail_check_requires_api_key(client):
     resp = client.get("/v1/guardrails/check", params={"text": "hello"})
+
+    assert resp.status_code == 401
+
+
+def test_guardrail_post_requires_api_key(client):
+    resp = client.post("/v1/guardrails/check", json={"text": "hello"})
 
     assert resp.status_code == 401
 
