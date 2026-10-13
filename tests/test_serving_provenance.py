@@ -127,13 +127,13 @@ async def test_client_records_empty_upstream_content_as_unusable(monkeypatch):
 
 @pytest.fixture
 def seeded_client(monkeypatch, tmp_path):
+    from packages.core.settings import Settings
     from services.ingestion.graph_store import KnowledgeGraphStore
     from services.ingestion.pipeline import IngestionPipeline
     from services.rag_engine import app as app_module
     from services.rag_engine.agent.graph import build_rag_agent_graph
     from services.rag_engine.retrieval.bm25 import BM25Index
     from services.rag_engine.retrieval.hybrid import HybridRetriever
-    from packages.core.settings import Settings
     from tests.fakes import FakeEmbedder, make_vector_store
 
     settings = Settings(

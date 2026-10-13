@@ -17,7 +17,17 @@ from urllib.parse import urlsplit
 
 import httpcore
 import httpx
-from fastapi import APIRouter, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
