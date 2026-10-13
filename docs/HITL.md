@@ -19,7 +19,8 @@ Before connecting these components to user paths, define:
   and the threshold's scope and boundary behavior.
 - Which verified or unverified query outcomes qualify for review, and how
   queue entries link to query traces, claims, and source chunks.
-- Queue ownership, tenant isolation, deduplication, and review timing/SLA.
+- Queue ownership, tenant isolation as specified by Phase 5.5 (implement and
+  verify it for review routes), deduplication, and review timing/SLA.
 - What approval, rejection, and correction mean for source data and how a
   correction affects chunk storage, indexes, and later answers.
 - The audit and retention behavior for review actions and corrected values.
