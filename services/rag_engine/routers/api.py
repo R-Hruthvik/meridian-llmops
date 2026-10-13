@@ -1507,7 +1507,11 @@ async def bind_app_services(request: Request, call_next):
             "vector_store", "graph_store", "ingestion_pipeline", "tracer", "retriever",
             "llm_client", "input_guardrails", "output_guardrails", "agent_graph",
         )}
-        services["settings"] = request.app.state.settings
+        services["settings"] = (
+            _core_get_settings()
+            if getattr(request.app.state, "use_legacy_services", False)
+            else request.app.state.settings
+        )
         services["runtime_llm_settings"] = request.app.state.runtime_llm_settings
     token = _active_services.set(services or None)
     try:
