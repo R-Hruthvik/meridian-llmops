@@ -163,12 +163,13 @@ def test_failed_old_disk_delete_restores_old_vectors_on_update(tmp_path, monkeyp
 def test_failed_old_graph_delete_restores_all_old_state_on_update(tmp_path, monkeypatch):
     pipeline, store = build_pipeline(tmp_path)
     first = pipeline.ingest_file("handbook.md", DOC_TEXT.encode("utf-8"))
+    old_chunk_ids = pipeline.graph_store._tenant_doc_chunks[("default", first.document_id)].copy()
     old_entities = pipeline.graph_store._doc_entities[first.document_id].copy()
     old_relationships = list(pipeline.graph_store._doc_relationships[first.document_id])
     original_delete = pipeline.graph_store.delete_by_document
 
-    def fail_after_graph_delete(doc_id):
-        result = original_delete(doc_id)
+    def fail_after_graph_delete(doc_id, tenant_id="default"):
+        result = original_delete(doc_id, tenant_id=tenant_id)
         if doc_id == first.document_id:
             raise RuntimeError("simulated graph delete failure")
         return result
@@ -181,6 +182,16 @@ def test_failed_old_graph_delete_restores_all_old_state_on_update(tmp_path, monk
     assert store.count(tenant_id="default") == first.chunks
     assert pipeline.graph_store._doc_entities[first.document_id] == old_entities
     assert pipeline.graph_store._doc_relationships[first.document_id] == old_relationships
+    assert pipeline.graph_store._tenant_doc_chunks[("default", first.document_id)] == old_chunk_ids
+
+    monkeypatch.setattr(pipeline.graph_store, "delete_by_document", original_delete)
+    assert pipeline.delete_document(first.document_id) is True
+    assert ("default", first.document_id) not in pipeline.graph_store._tenant_doc_chunks
+    assert not old_chunk_ids & {
+        chunk_id
+        for entity in pipeline.graph_store.get_entities()
+        for chunk_id in entity.chunk_ids
+    }
 
 
 def test_manifest_failure_during_update_preserves_old_document(tmp_path, monkeypatch):

@@ -366,6 +366,7 @@ class IngestionPipeline:
                 "_tenant_relationships",
                 "_tenant_doc_entities",
                 "_tenant_doc_relationships",
+                "_tenant_doc_chunks",
             )
             if hasattr(self.graph_store, name)
         }
