@@ -176,9 +176,9 @@ export interface TenantMetrics {
   total_requests: number;
   error_count: number;
   latency_ms: {
-    p50: number;
-    p95: number;
-    p99: number;
+    p50: number | null;
+    p95: number | null;
+    p99: number | null;
   };
   retrieval_latency_ms: {
     p50: number | null;

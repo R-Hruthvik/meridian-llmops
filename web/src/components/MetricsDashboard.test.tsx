@@ -57,6 +57,74 @@ describe('MetricsDashboard', () => {
     expect(screen.getByTestId('metrics-loading-status')).toHaveClass('min-h-[3rem]');
   });
 
+  it('clears the old tenant immediately and ignores an older refresh response after switching tenants', async () => {
+    let resolveStale!: (value: {
+      tenant_id: string;
+      total_requests: number;
+      total_tokens: number;
+      total_cost_usd: number | null;
+      error_count: number;
+      retrieval_latency_ms: { p50: number | null; p95: number | null };
+      recent_requests: Array<{ query: string; duration_ms: number; timings_ms: Record<string, number> }>;
+    }) => void;
+    let resolveNewTenant!: (value: Parameters<typeof resolveStale>[0]) => void;
+    const staleRefresh = new Promise<Parameters<typeof resolveStale>[0]>((resolve) => {
+      resolveStale = resolve;
+    });
+    const newTenantFetch = new Promise<Parameters<typeof resolveStale>[0]>((resolve) => {
+      resolveNewTenant = resolve;
+    });
+    const oldMetrics = {
+      tenant_id: 'tenant-old', total_requests: 1, total_tokens: 4, total_cost_usd: 0,
+      error_count: 0, retrieval_latency_ms: { p50: 2, p95: 3 },
+      recent_requests: [{ query: 'Old tenant query', duration_ms: 4, timings_ms: { search: 2 } }],
+    };
+    (api.getMetrics as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(oldMetrics)
+      .mockReturnValueOnce(staleRefresh)
+      .mockReturnValueOnce(newTenantFetch);
+
+    const { rerender } = render(<MetricsDashboard tenantId="tenant-old" />);
+    expect(await screen.findByText('Old tenant query')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh telemetry metrics' }));
+
+    rerender(<MetricsDashboard tenantId="tenant-new" />);
+    expect(screen.queryByText('Old tenant query')).not.toBeInTheDocument();
+    expect(screen.getByText(/Loading recent tenant telemetry/)).toBeInTheDocument();
+    expect(api.getMetrics).toHaveBeenLastCalledWith('tenant-new');
+
+    await act(async () => {
+      resolveNewTenant({
+        tenant_id: 'tenant-new', total_requests: 1, total_tokens: 8, total_cost_usd: 0,
+        error_count: 0, retrieval_latency_ms: { p50: 5, p95: 6 },
+        recent_requests: [{ query: 'New tenant query', duration_ms: 7, timings_ms: { search: 5 } }],
+      });
+    });
+    expect(await screen.findByText('New tenant query')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveStale({
+        ...oldMetrics,
+        total_tokens: 40,
+        recent_requests: [{ query: 'Late old tenant query', duration_ms: 40, timings_ms: { search: 40 } }],
+      });
+    });
+    expect(screen.getByText('New tenant query')).toBeInTheDocument();
+    expect(screen.queryByText('Late old tenant query')).not.toBeInTheDocument();
+    expect(screen.getByTestId('kpi-total-tokens')).toHaveTextContent('8');
+  });
+
+  it('rejects metrics whose tenant id does not match the requested tenant', async () => {
+    (api.getMetrics as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      tenant_id: 'tenant-other', total_requests: 99, total_tokens: 99, total_cost_usd: null,
+      error_count: 0, retrieval_latency_ms: { p50: null, p95: null }, recent_requests: [],
+    });
+    render(<MetricsDashboard tenantId="tenant-requested" />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/did not match requested tenant/i);
+    expect(screen.queryByTestId('kpi-total-requests')).toHaveTextContent('—');
+  });
+
   it('uses the public readiness flag for the engine status', async () => {
     render(<MetricsDashboard tenantId="default" />);
 
@@ -114,6 +182,12 @@ describe('MetricsDashboard', () => {
   });
 
   it('runs retrieval in Diagnostics and displays ranked chunks with backend scores', async () => {
+    (api.getMetrics as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      tenant_id: 'tenant-a',
+      total_requests: 10,
+      total_tokens: 500,
+      total_cost_usd: 0.0123,
+    });
     (api.retrieve as ReturnType<typeof vi.fn>).mockResolvedValue({
       query: 'What is hybrid retrieval?',
       top_k: 5,
@@ -334,12 +408,15 @@ describe('MetricsDashboard', () => {
         total_tokens: 0,
         total_cost_usd: 0,
         error_count: 0,
+        latency_ms: { p50: null, p95: null, p99: null },
         retrieval_latency_ms: { p50: null, p95: null },
         recent_requests: [],
       });
       render(<MetricsDashboard tenantId="tenant-a" />);
 
       expect(await screen.findByText('No recent requests recorded for this tenant.')).toBeInTheDocument();
+      expect(screen.getByTestId('retrieval-p50')).toHaveTextContent('—');
+      expect(screen.getByTestId('retrieval-p95')).toHaveTextContent('—');
     });
 
     it('uses the metrics error state when recent request telemetry cannot load', async () => {

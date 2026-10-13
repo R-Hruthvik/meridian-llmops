@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   Coins,
@@ -94,6 +94,10 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
   const [metrics, setMetrics] = useState<TenantMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorTenantId, setErrorTenantId] = useState<string | null>(null);
+  const metricsRequestId = useRef(0);
+  const currentTenantId = useRef(tenantId);
+  currentTenantId.current = tenantId;
   // Public readiness is the only health signal available without credentials.
   const [healthReady, setHealthReady] = useState<boolean | null>(null);
   // Live /v1/index/status; null means the probe itself failed, so no card
@@ -104,25 +108,42 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
   const [retrievalLoading, setRetrievalLoading] = useState(false);
   const [retrievalError, setRetrievalError] = useState<string | null>(null);
 
-  const fetchMetrics = async () => {
+  const fetchMetrics = async (requestedTenantId: string = tenantId) => {
+    const requestId = ++metricsRequestId.current;
     setLoading(true);
     setError(null);
+    setErrorTenantId(null);
     try {
-      const res = await api.getMetrics(tenantId);
+      const res = await api.getMetrics(requestedTenantId);
+      if (requestId !== metricsRequestId.current || requestedTenantId !== currentTenantId.current) return;
+      if (res.tenant_id !== requestedTenantId) {
+        setMetrics(null);
+        setErrorTenantId(requestedTenantId);
+        setError('Metrics response tenant did not match requested tenant');
+        return;
+      }
       setMetrics(res);
     } catch (err: unknown) {
+      if (requestId !== metricsRequestId.current || requestedTenantId !== currentTenantId.current) return;
       const msg = err instanceof Error ? err.message : 'Failed to load telemetry metrics';
       setError(msg);
+      setErrorTenantId(requestedTenantId);
       // Clear stale metrics on error
       setMetrics(null);
     } finally {
-      setLoading(false);
+      if (requestId === metricsRequestId.current && requestedTenantId === currentTenantId.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     fetchMetrics();
   }, [tenantId]);
+
+  const currentMetrics = metrics?.tenant_id === tenantId ? metrics : null;
+  const currentError = errorTenantId === tenantId ? error : null;
+  const currentLoading = loading || (!currentMetrics && !currentError);
 
   useEffect(() => {
     const refreshIndexStatus = async () => {
@@ -168,15 +189,15 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
     }
   };
 
-  // Unmeasured telemetry is not a measurement of zero. `metrics` is null on
+  // Unmeasured telemetry is not a measurement of zero. `currentMetrics` is null on
   // first paint and after a failed fetch, and the strip used to render 0 req /
   // 0 tok / $0.0000 for both — asserting a number nobody measured. The em-dash
   // is this file's own convention for a count the backend could not observe.
   const kpiValue = (key: string): string => {
-    if (!metrics) return '—';
-    if (key === 'total-requests') return metrics.total_requests.toLocaleString();
-    if (key === 'total-tokens') return metrics.total_tokens.toLocaleString();
-    return formatCost(metrics.total_cost_usd);
+    if (!currentMetrics) return '—';
+    if (key === 'total-requests') return currentMetrics.total_requests.toLocaleString();
+    if (key === 'total-tokens') return currentMetrics.total_tokens.toLocaleString();
+    return formatCost(currentMetrics.total_cost_usd);
   };
 
   return (
@@ -193,7 +214,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
         </div>
 
         <button
-          onClick={fetchMetrics}
+          onClick={() => fetchMetrics()}
           disabled={loading}
           aria-label="Refresh telemetry metrics"
           className="flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label font-semibold text-muted transition-colors hover:border-accent hover:text-accent-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -203,14 +224,14 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
         </button>
       </div>
 
-      {error && (
+      {currentError && (
         <div role="alert" aria-live="polite" className="rounded-sm border border-fail/30 bg-fail-wash px-3 py-2 text-label font-semibold text-fail">
-          {error}
+          {currentError}
         </div>
       )}
 
-      <div data-testid="metrics-loading-status" role="status" aria-live="polite" aria-busy={loading} className="min-h-[3rem]">
-        {loading && !metrics ? (
+      <div data-testid="metrics-loading-status" role="status" aria-live="polite" aria-busy={currentLoading} className="min-h-[3rem]">
+        {currentLoading && !currentMetrics ? (
           <div className="rounded-sm border border-hairline bg-surface-raised px-3 py-3 text-label font-semibold text-muted">
             Loading telemetry metrics…
           </div>
@@ -250,26 +271,26 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
           <p className="mt-1 text-micro text-muted">Recent queries and retrieval timing recorded for this tenant.</p>
         </div>
 
-        {metrics ? (
+        {currentMetrics ? (
           <>
             <dl className="grid grid-cols-1 divide-y divide-hairline border-y border-hairline sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               <div className="px-3 py-2.5">
                 <dt className="text-micro uppercase tracking-[0.12em] text-muted">Errors</dt>
-                <dd data-testid="error-count" className="num mt-0.5 text-readout font-semibold text-ink">{metrics.error_count?.toLocaleString() ?? '—'}</dd>
+                <dd data-testid="error-count" className="num mt-0.5 text-readout font-semibold text-ink">{currentMetrics.error_count?.toLocaleString() ?? '—'}</dd>
               </div>
               <div className="px-3 py-2.5">
                 <dt className="text-micro uppercase tracking-[0.12em] text-muted">Retrieval p50</dt>
-                <dd data-testid="retrieval-p50" className="num mt-0.5 text-readout font-semibold text-ink">{formatLatency(metrics.retrieval_latency_ms?.p50)}</dd>
+                <dd data-testid="retrieval-p50" className="num mt-0.5 text-readout font-semibold text-ink">{formatLatency(currentMetrics.retrieval_latency_ms?.p50)}</dd>
               </div>
               <div className="px-3 py-2.5">
                 <dt className="text-micro uppercase tracking-[0.12em] text-muted">Retrieval p95</dt>
-                <dd data-testid="retrieval-p95" className="num mt-0.5 text-readout font-semibold text-ink">{formatLatency(metrics.retrieval_latency_ms?.p95)}</dd>
+                <dd data-testid="retrieval-p95" className="num mt-0.5 text-readout font-semibold text-ink">{formatLatency(currentMetrics.retrieval_latency_ms?.p95)}</dd>
               </div>
             </dl>
 
-            {metrics.recent_requests?.length ? (
+            {currentMetrics.recent_requests?.length ? (
               <ol aria-label="Recent tenant requests" className="flex flex-col divide-y divide-hairline border-y border-hairline">
-                {metrics.recent_requests.slice(0, 20).map((request, index) => (
+                {currentMetrics.recent_requests.slice(0, 20).map((request, index) => (
                   <li key={`${request.query}-${index}`} className="flex flex-col gap-1.5 py-2.5">
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                       <p className="min-w-0 break-words text-label font-semibold text-ink">{request.query}</p>
@@ -290,9 +311,9 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
               <p className="text-label text-muted">No recent requests recorded for this tenant.</p>
             )}
           </>
-        ) : loading ? (
+        ) : currentLoading ? (
           <p className="text-label text-muted">Loading recent tenant telemetry…</p>
-        ) : error ? (
+        ) : currentError ? (
           <p className="rounded-sm border border-fail/30 bg-fail-wash px-3 py-2 text-label font-semibold text-fail">Recent tenant telemetry is unavailable.</p>
         ) : null}
       </section>
