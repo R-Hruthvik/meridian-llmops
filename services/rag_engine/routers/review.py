@@ -6,10 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.core.db import get_db
 from packages.core.models import ExtractedField, ReviewItem
 from packages.core.schemas import ReviewItemAction, ReviewItemResponse
-from services.rag_engine.deps import require_admin
+from services.rag_engine.deps import get_db, require_admin
 
 router = APIRouter(prefix="/v1/review", tags=["Human Review Queue"])
 
