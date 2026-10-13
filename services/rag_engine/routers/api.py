@@ -159,10 +159,7 @@ class _ServiceProxy:
         if active is not None and self.name in active:
             return active[self.name]
         if self.name == "settings":
-            global _default_settings
-            if _default_settings is None:
-                _default_settings = _core_get_settings()
-            return _default_settings
+            return _core_get_settings()
         return _default_services()[self.name]
 
     def __getattr__(self, name):
@@ -564,9 +561,9 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
         return {"provider": provider, "model": configured_model or "", "api_key": None, "base_url": ""}
     default_models = {"openai": "gpt-4o-mini", "anthropic": "claude-3-5-sonnet-20241022", "openrouter": "meta-llama/llama-3.3-70b-instruct", "deepseek": "deepseek-chat", "groq": "llama-3.3-70b-versatile", "ollama": "llama3:latest", "custom": ""}
     model = configured_model or provider_models.get(provider) or default_models[provider]
-    api_key = _settings.__getattribute__(f"{provider}_api_key") or settings.get(f"{provider}_api_key")
+    api_key = getattr(_settings, f"{provider}_api_key") or settings.get(f"{provider}_api_key")
     api_key = api_key or _tested_api_keys.get(provider)
-    base_url = _settings.__getattribute__(f"{provider}_base_url") or settings.get(f"{provider}_base_url") or PROVIDERS[provider]["base_url_default"]
+    base_url = getattr(_settings, f"{provider}_base_url") or settings.get(f"{provider}_base_url") or PROVIDERS[provider]["base_url_default"]
     if provider == "custom":
         base_url = _settings.custom_base_url or settings.get("custom_base_url") or base_url
 
@@ -1497,6 +1494,9 @@ def create_app(settings=None, overrides=None) -> FastAPI:
     application.middleware("http")(limit_model_fetch_json_body)
     application.state.settings = settings
     application.state.service_overrides = service_overrides
+    application.state.service_status = {
+        name: dict(status) for name, status in _service_status.items()
+    }
     return application
 
 
@@ -1573,11 +1573,12 @@ async def _startup(application: FastAPI, settings) -> None:
     application.state.retriever.update_chunks(application.state.vector_store.get_all_chunks(None))
     disk_chunks = await asyncio.to_thread(lambda: len(application.state.ingestion_pipeline.storage.load_all_chunks()))
     qdrant_points = await asyncio.to_thread(application.state.vector_store.count)
-    if not hasattr(application.state, "index_consistency"):
+    service_overrides = application.state.service_overrides
+    if "index_consistency" not in service_overrides:
         application.state.index_consistency = await asyncio.to_thread(
             check_consistency, settings, qdrant_points, disk_chunks
         )
-    if not hasattr(application.state, "service_status"):
+    if "service_status" not in service_overrides:
         application.state.service_status = _check_docker_services(settings)
     if getattr(application.state, "use_legacy_services", False):
         global _index_consistency, _service_status
