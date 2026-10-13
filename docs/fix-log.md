@@ -122,6 +122,25 @@
 - Deviations: none.
 - Open risks: remote Langfuse export is optional and requires credentials plus `LANGFUSE_ENABLED=true`; in-memory metrics reset on process restart.
 
+## Gate 9 — final clean-checkout regression (2026-10-13)
+- Clean Python 3.11.15 checkout at source commit `f299bed`: `uv sync --frozen --extra dev --python 3.11` passed; backend/eval suite **475 passed, 1 skipped, 3 xfailed**; Ruff passed; mypy passed (**62 files**); route-auth enumeration **1 passed, 9 deselected**. The skipped test is the optional real Neo4j persistence test requiring `NEO4J_PASSWORD` and development mode.
+- Clean frontend checks: `npm ci --prefix web` completed; Vitest **294 passed across 18 files**; production build passed; CI bundle secret scan passed. The install reported 14 dependency audit findings (5 moderate, 7 high, 2 critical); the workflow's audit step is informational.
+- Golden retrieval evaluation passed on **50 cases**: hit@5 **1.000**, MRR **0.873**, unanswerable accuracy **1.000**. Golden-eval p95 was **19.264 ms** and is separate from the 5k-point benchmark. At source commit `83407ee`, the clean focused SSRF suite passed (**14 tests**); the current provider/security suite in the shared worktree passed **81 tests**, scoped Ruff, Compose validation, and diff checks. `384a561` after the clean run is documentation-only.
+- Five comparable 5k-point server runs used Qdrant **1.11.3**, 500 documents/5,000 chunks, 10 warmups, and 200 queries per 1/4/8-worker mode. Retrieval-only p50/p95/p99 in ms:
+
+| Run | 1 worker | 4 workers | 8 workers |
+|---|---:|---:|---:|
+| 1 | 12.966 / 14.453 / 15.219 | 26.931 / 36.711 / 39.715 | 65.511 / 105.334 / 140.364 |
+| 2 | 12.128 / 13.087 / 14.043 | 25.103 / 34.558 / 41.751 | 60.865 / 102.099 / 148.701 |
+| 3 | 12.031 / 13.002 / 13.849 | 21.470 / 30.734 / 33.490 | 54.616 / 88.220 / 135.275 |
+| 4 | 12.486 / 13.214 / 14.697 | 23.450 / 35.407 / 40.397 | 60.236 / 97.422 / 131.785 |
+| 5 | 12.151 / 12.869 / 13.409 | 27.849 / 37.649 / 43.716 | 62.973 / 96.032 / 175.204 |
+
+- Median retrieval-only p95 was **13.087 ms** at one worker, **35.407 ms** at four, and **97.422 ms** at eight. Two of five eight-worker runs exceeded the 100 ms target (maximum **105.334 ms**); the 8-worker median is below target, but performance near the threshold varies with shared-host load (12 CPUs; load average 3.93/4.40/3.89). Full request eight-worker p95 including query embedding was **125.993–138.746 ms**. This supports the retrieval-only median gate, not a guarantee that every repeated run stays below 100 ms.
+- The real-model DeepEval run was not invoked because it requires `EVAL_LLM_API_KEY`; no provider or judge API was called. The workflow and manual/scheduled path are implemented and documented. Langfuse remains optional and disabled unless configured.
+- Cleanup: the disposable Qdrant service and benchmark collections were removed after verification; the existing configured collection and pre-existing Gate 7 worktree were preserved.
+- Gate 9 offline regression: **PASS**. Remaining limitations are the recorded eight-worker latency spread, credential-gated real DeepEval result, and documented experimental/off-by-default graph and HITL paths.
+
 ## Task 0.1–0.3 Phase 0 baseline and verification (2026-10-10)
 - Verified before change: checkout `f2a32e6`; plan references older `e2bc6fc`. Phase 0 audit classified all F-01..F-30 in `docs/findings-verification.md`.
 - Test added (failing first): no tests added in this inventory task. Planned reproductions are being adapted to current findings; stale findings will not be encoded as expected bugs.

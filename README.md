@@ -83,7 +83,7 @@ Known limits: token counts are approximate; guardrails use lexical rules and do 
 
 ## Quality and development checks
 
-The committed retrieval golden set has **50 cases**. The latest clean-checkout run passed with hit@5 **1.000**, MRR **0.873**, and unanswerable accuracy **1.000**. The isolated 5,000-point Qdrant server benchmark measured retrieval-only p50/p95 of **8.8/10.1 ms** at one worker, **21.3/31.6 ms** at four workers, and **54.8/76.1 ms** at eight workers. Full request totals include query embedding; eight-worker total p95 was **113.0 ms**. See `docs/fix-log.md` for benchmark conditions and limitations.
+The committed retrieval golden set has **50 cases**. The latest clean-checkout run passed with hit@5 **1.000**, MRR **0.873**, and unanswerable accuracy **1.000**. Across five isolated 5,000-point Qdrant server runs, median retrieval-only p95 was **13.1 ms** at one worker, **35.4 ms** at four, and **97.4 ms** at eight. The eight-worker p95 ranged from **88.2 to 105.3 ms** (two of five runs exceeded 100 ms); full request totals include query embedding and had median eight-worker p95 **128.4 ms**. See `docs/fix-log.md` for the run results and limitations.
 
 Run the local checks with:
 
