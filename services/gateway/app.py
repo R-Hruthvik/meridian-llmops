@@ -14,7 +14,7 @@ from services.gateway.guardrails.input_rails import InputGuardrails
 app = FastAPI(
     title="Meridian AI Gateway",
     version="0.1.0",
-    description="Enterprise AI Gateway: Provider Routing, Rate Limiting, and NeMo Input Guardrails",
+    description="AI Gateway with provider routing, rate limiting, and rule-based input guardrails",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,

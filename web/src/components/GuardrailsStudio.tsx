@@ -79,10 +79,10 @@ export const GuardrailsStudio: React.FC<GuardrailsStudioProps> = ({ tenantId }) 
       <div className="flex items-center justify-between gap-3">
         <h3 className="label-section flex items-center gap-1.5 text-ink">
           <Shield className="size-3.5 text-accent" aria-hidden="true" />
-          <span>Input Guardrails &amp; Threat Evaluation</span>
+          <span>Rule-based input checks</span>
         </h3>
         <span className="rounded-sm border border-hairline bg-surface-sunken px-2 py-0.5 text-micro font-medium text-muted">
-          NeMo Policy Rails
+          Rule-based guardrails
         </span>
       </div>
 
@@ -186,7 +186,7 @@ export const GuardrailsStudio: React.FC<GuardrailsStudioProps> = ({ tenantId }) 
             {result.policy_violations.length > 0 && (
               <div>
                 <div className="label-section mb-1.5 text-muted">
-                  Matched policies · <span className="num">{result.policy_violations.length}</span>
+                  Matched rules · <span className="num">{result.policy_violations.length}</span>
                 </div>
                 <ul className="flex flex-col gap-px overflow-hidden rounded-sm border border-hairline">
                   {result.policy_violations.map((violation) => (
@@ -200,7 +200,7 @@ export const GuardrailsStudio: React.FC<GuardrailsStudioProps> = ({ tenantId }) 
 
             {result.sanitized_text && (
               <div>
-                <div className="label-section mb-1.5 text-muted">Sanitized text dispatched to LLM</div>
+                <div className="label-section mb-1.5 text-muted">Text after checks</div>
                 <div className="answer-prose rounded-sm border border-hairline bg-surface-sunken px-3 py-2.5 whitespace-pre-wrap">
                   {result.sanitized_text}
                 </div>

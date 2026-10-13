@@ -1,3 +1,5 @@
-# 0013. NeMo Colang and YAML for Guardrail Policies
+# 0013. Rule-Based Guardrails
 
-We selected NeMo Guardrails' Colang and YAML specification format for defining security, topical, and moderation guardrails. This separates security policy definitions from application business logic, allowing compliance rules to be updated without code modifications.
+The application uses a small set of rule-based regular expressions for known prompt-injection phrases, prohibited output phrases, and PII patterns. These checks provide limited pattern matching; they do not implement a general security or moderation policy engine.
+
+**Current state (verified 2026-10-13):** No NeMo Guardrails or Colang runtime is used. The unused `policy.yaml` has been removed so the repository has one source of truth: the rule-based implementation in `services/gateway/guardrails/` and shared injection patterns in `packages/core/guardrails.py`.

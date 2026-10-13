@@ -11,11 +11,11 @@ The central proxy layer handling LLM provider routing, load balancing, credentia
 _Avoid_: LLM router, API wrapper, model proxy
 
 **Input Guardrail**:
-Pre-execution security checks that intercept and block prompt injections, jailbreaks, and PII leakage before data reaches any LLM.
+Rule-based checks that detect known prompt-injection phrases and redact recognized PII patterns in input and output text.
 _Avoid_: Prompt sanitizer, pre-filter, input validator
 
 **Output Guardrail**:
-Post-generation verification validating response schemas, compliance policies, and tone before returning results to clients.
+Post-generation checks that block configured prohibited phrases and redact recognized PII patterns before returning results to clients.
 _Avoid_: Response cleaner, post-filter, output validator
 
 ### Memory & Ingestion

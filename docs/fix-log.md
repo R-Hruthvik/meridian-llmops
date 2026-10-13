@@ -305,3 +305,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 
 - Re-review found numeric comparison discarded leading signs, allowing a negative value to match a positive cited value. Normalization now retains `+`/`-` around numeric values and currency prefixes.
 - Added negative percentage and plain-number regressions. Both failed before the fix and pass afterward; `uv run pytest -q tests/test_rag_verification.py` -> **20 passed**; scoped Ruff and mypy checks passed.
+
+## Task 5.6 Guardrails and prompt-injection hygiene (2026-10-13)
+- Verified before change: a client `enforce_guardrails=false` skipped input checks; uploaded chunks had no injection flags or warning; output checks left email/SSN/card patterns intact; the UI and ADRs claimed NeMo/Colang while the runtime used regexes; `policy.yaml` was unused.
+- Test added (failing first): client-disable default, output PII redaction, ingestion chunk metadata, and upload warning regressions. Against the old behavior, the client-disable test returned 200 instead of 400; output returned the raw email; ingestion had status `indexed` without warning. These failed before their fixes.
+- Change summary: default `ALLOW_CLIENT_DISABLE_GUARDRAILS=false` now ignores a client opt-out, with an explicit server opt-in. Shared rule patterns flag chunk metadata and add upload warnings. Output guardrails redact PII. UI/API/docs describe rule-based guardrails; removed unused `policy.yaml`. Existing query prompts continue to wrap sources in `<source_text>` and label them data.
+- Evidence after: `.venv/bin/python -m pytest tests/test_api_seam.py tests/test_ingestion.py tests/test_generation_prompt.py tests/test_gateway.py -q` -> **31 passed**; scoped Ruff -> clean; scoped mypy -> **7 source files clean**; Guardrails UI tests -> **35 passed**; `npm --prefix web run build` -> succeeded. The test runs show existing missing `/run/secrets` and FastAPI `on_event` warnings.
+- Deviations from plan: chose the plan's unused-YAML deletion option; regex rules remain in code as the single runtime source.
+- Open risks / follow-ups: rules detect known phrases and patterns only; they do not provide general prompt-injection or PII detection.

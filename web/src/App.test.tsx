@@ -383,7 +383,7 @@ describe('App B5: only the active lens is mounted', () => {
 
     await user.click(lens('Operate'));
 
-    expect(await screen.findByText('Input Guardrails & Threat Evaluation')).toBeInTheDocument();
+    expect(await screen.findByText('Rule-based input checks')).toBeInTheDocument();
     expect(screen.queryByText('Ask Agentic RAG Pipeline')).toBeNull();
   });
 

@@ -2,16 +2,8 @@
 
 import re
 
+from packages.core.guardrails import INJECTION_PATTERNS
 from packages.core.models import GuardrailResult
-
-INJECTION_PATTERNS = [
-    r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+instructions",
-    r"(?i)reveal\s+(your\s+)?(system\s+prompt|hidden\s+instructions|secret)",
-    r"(?i)disregard\s+(all\s+)?rules",
-    r"(?i)you\s+are\s+now\s+in\s+developer\s+mode",
-    r"(?i)dan\s+mode\s+enabled",
-    r"(?i)bypass\s+safety\s+filters",
-]
 
 EMAIL_PATTERN = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
 SSN_PATTERN = r"\b\d{3}-\d{2}-\d{4}\b"

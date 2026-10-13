@@ -58,6 +58,20 @@ def test_pii_redaction(gateway_client):
     assert "[SSN_REDACTED]" in data["sanitized_text"]
 
 
+def test_output_guardrails_redact_pii_patterns():
+    from services.gateway.guardrails.output_rails import OutputGuardrails
+
+    result = OutputGuardrails().evaluate(
+        "Contact john.doe@example.com, SSN 123-45-6789, card 4111-1111-1111-1111."
+    )
+
+    assert result.allowed is True
+    assert result.action_taken == "redacted"
+    assert "[EMAIL_REDACTED]" in result.sanitized_text
+    assert "[SSN_REDACTED]" in result.sanitized_text
+    assert "[CREDIT_CARD_REDACTED]" in result.sanitized_text
+
+
 def test_rate_limiter_exceeded(gateway_client):
     # Burst 70 requests when limit is 60
     headers = {"X-API-Key": "meridian-test-secret-key-2026", "X-Tenant-Id": "test-tenant-burst"}

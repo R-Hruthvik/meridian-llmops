@@ -733,10 +733,13 @@ async def query_endpoint(
     start_time = time.perf_counter()
     request_id = str(uuid.uuid4())
     trace_ctx = tracer.trace(name="rag-query-pipeline", tenant_id=tenant_id)
+    guardrails_enabled = not (
+        req.enforce_guardrails is False and _settings.allow_client_disable_guardrails
+    )
 
     with trace_ctx as trace:
         # 1. Input Guardrails
-        if req.enforce_guardrails:
+        if guardrails_enabled:
             with trace.span("input-guardrails") as span:
                 guard_result = input_guardrails.evaluate(req.query)
                 span.set_attribute("allowed", guard_result.allowed)
@@ -783,7 +786,7 @@ async def query_endpoint(
 
         # 3. Output Guardrails
         raw_answer = final_state.get("draft_answer", "")
-        if req.enforce_guardrails and not final_state.get("is_refusal", False):
+        if guardrails_enabled and not final_state.get("is_refusal", False):
             with trace.span("output-guardrails") as span:
                 out_result = output_guardrails.evaluate(raw_answer)
                 span.set_attribute("allowed", out_result.allowed)

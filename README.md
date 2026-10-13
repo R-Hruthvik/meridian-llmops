@@ -15,9 +15,9 @@ Meridian unifies a multi-layer enterprise AI architecture into a single modular 
                                      | (X-API-Key)
                                      v
                  +---------------------------------------+
-                 |       AI Gateway (LiteLLM / NeMo)     |
+                 |    AI Gateway (LiteLLM + regex rules) |
                  |  • Rate Limiting & Auth               |
-                 |  • Input Guardrails (Injection & PII) |
+                 |  • Rule-Based Input Guardrails        |
                  +-------------------+-------------------+
                                      |
                                      v
@@ -69,7 +69,7 @@ Meridian unifies a multi-layer enterprise AI architecture into a single modular 
 ├── packages/
 │   └── core/                     # Shared Pydantic v2 schemas, protocols & settings
 ├── services/
-│   ├── gateway/                  # Standalone AI Gateway, auth, and NeMo input guardrails
+│   ├── gateway/                  # Standalone AI Gateway, auth, and rule-based guardrails
 │   ├── ingestion/                # Structural chunking, multi-format parsers, Qdrant & Neo4j stores
 │   └── rag_engine/               # Cyclic LangGraph agent, hybrid retrieval, reranker & Langfuse
 ├── evals/
@@ -156,6 +156,7 @@ mypy packages services evals --ignore-missing-imports --explicit-package-bases
   "enforce_guardrails": true
 }
 ```
+Guardrails use rule-based pattern checks. Client requests to disable them are ignored unless the server explicitly sets `ALLOW_CLIENT_DISABLE_GUARDRAILS=true`.
 
 ### Ingest Document
 `POST /v1/ingest`

@@ -3,6 +3,7 @@
 import re
 
 from packages.core.models import GuardrailResult
+from services.gateway.guardrails.input_rails import InputGuardrails
 
 PROHIBITED_PHRASES = [
     r"(?i)invest\s+all\s+your\s+money",
@@ -18,6 +19,7 @@ class OutputGuardrails:
 
     def __init__(self):
         self.prohibited_regexes = [re.compile(p) for p in PROHIBITED_PHRASES]
+        self.input_guardrails = InputGuardrails()
 
     def evaluate(self, text: str) -> GuardrailResult:
         violations: list[str] = []
@@ -36,9 +38,10 @@ class OutputGuardrails:
                 action_taken="blocked",
             )
 
+        sanitized, pii_violations = self.input_guardrails.mask_pii(sanitized)
         return GuardrailResult(
             allowed=True,
             sanitized_text=sanitized,
-            policy_violations=[],
-            action_taken="pass",
+            policy_violations=pii_violations,
+            action_taken="redacted" if pii_violations else "pass",
         )

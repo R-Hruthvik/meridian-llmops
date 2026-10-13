@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from packages.core.errors import IngestionError
+from packages.core.guardrails import has_possible_prompt_injection
 from packages.core.models import Chunk, Document, DocumentFormat
 from services.ingestion.chunker import CHUNKER_VERSION, TokenAwareChunker, embedded_text
 from services.ingestion.embedder import Embedder
@@ -118,6 +119,7 @@ class IngestionPipeline:
         chunks = self.chunker.chunk_document(
             parsed, doc_id=doc_id, source=filename, source_format=source_format, tenant_id=tenant_id
         )
+        injection_found = self._flag_possible_injection(chunks)
         try:
             entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id)
             self._index_chunks(chunks, tenant_id=tenant_id)
@@ -155,7 +157,10 @@ class IngestionPipeline:
                 except Exception as manifest_error:  # noqa: BLE001 - preserve the ingest error
                     logger.error("Could not restore manifest after failed update: %s", manifest_error)
             raise IngestionError(f"Failed to ingest {filename}: {error}") from error
-        status = "indexed_with_warnings" if parsed.warnings else "indexed"
+        warnings = [*parsed.warnings]
+        if injection_found:
+            warnings.append("Possible prompt injection detected in one or more chunks.")
+        status = "indexed_with_warnings" if warnings else "indexed"
         return IngestResult(
             filename=filename,
             status=status,
@@ -163,7 +168,7 @@ class IngestionPipeline:
             format=source_format,
             pages=len(parsed.pages),
             chunks=len(chunks),
-            warnings=list(parsed.warnings),
+            warnings=warnings,
             entities_extracted=len(entities),
             relationships_extracted=len(relations),
             created_at=meta_record.get("created_at", ""),
@@ -190,6 +195,7 @@ class IngestionPipeline:
             source_format=source_format,
             tenant_id=tenant_id,
         )
+        injection_found = self._flag_possible_injection(chunks)
         try:
             entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id)
             self._index_chunks(chunks, tenant_id=tenant_id)
@@ -214,17 +220,32 @@ class IngestionPipeline:
 
         return IngestResult(
             filename=source if source != "manual" else f"{title}.{source_format}",
-            status="indexed_with_warnings" if parsed.warnings else "indexed",
+            status="indexed_with_warnings" if parsed.warnings or injection_found else "indexed",
             document_id=doc_id,
             format=source_format,
             chunks=len(chunks),
-            warnings=list(parsed.warnings),
+            warnings=[
+                *parsed.warnings,
+                *(["Possible prompt injection detected in one or more chunks."] if injection_found else []),
+            ],
             entities_extracted=len(entities),
             relationships_extracted=len(relations),
             created_at=created_at,
         )
 
     # ------------------------------------------------------------------ index
+
+    @staticmethod
+    def _flag_possible_injection(chunks: list[Chunk]) -> bool:
+        found = False
+        for chunk in chunks:
+            if has_possible_prompt_injection(chunk.text):
+                flags = list(chunk.metadata.get("flags", []))
+                if "possible_injection" not in flags:
+                    flags.append("possible_injection")
+                chunk.metadata["flags"] = flags
+                found = True
+        return found
 
     def _index_chunks(self, chunks: list[Chunk], tenant_id: str = "default") -> int:
         if self.embedder is None:
