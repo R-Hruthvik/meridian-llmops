@@ -73,7 +73,7 @@ Meridian unifies a multi-layer enterprise AI architecture into a single modular 
 │   ├── ingestion/                # Structural chunking, multi-format parsers, Qdrant & Neo4j stores
 │   └── rag_engine/               # Cyclic LangGraph agent, hybrid retrieval, reranker & Langfuse
 ├── evals/
-│   ├── golden_dataset.json       # Golden query and adversarial cases
+│   ├── golden_dataset.json       # 50 validated answerable and unanswerable cases
 │   └── test_deepeval_ci.py       # Golden dataset API behavior checks
 ├── tests/                        # Full unit and integration test suite
 ├── docs/                         # ADRs (0001-0013), Spec, and Domain Glossary (CONTEXT.md)
