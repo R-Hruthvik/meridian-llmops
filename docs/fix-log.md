@@ -1,5 +1,11 @@
 # Meridian fix log
 
+## Task 8.2 — HITL review (experimental documentation, 2026-10-13)
+- Verified before change: `ExtractedField`/`ReviewItem` are ORM models and `/v1/review` is mounted, but ingestion has no writes to either model. `confidence_threshold` has no consumers. Query verification results have no integrated query-to-review route or trace link; review corrections update the database field only, not chunks or retrieval indexes.
+- Change summary: added `docs/HITL.md` to identify the mounted review routes and disconnected models as experimental, clarify that extraction confidence is distinct from answer verification, and state the definitions required before user-path activation.
+- Scoped check: searched ingestion, rag-engine, and core references for queue writes, confidence-threshold consumers, and query/review linkage; none were found. Documentation diff checked for whitespace errors.
+- Deviations: documentation only; no route wiring or runtime behavior changed.
+
 ## Task 7.3 Retrieval evaluation (2026-10-13)
 - Verified before change: retrieval evaluation only existed as a smoke-set reranker comparison; no golden-set evaluator or threshold file existed. The prior smoke check used a dense-score shortcut for unanswerable cases rather than the generation sufficiency check.
 - Tests added first: injected fake retrieval results covering phrase matching across expected-document chunks, hit@1/3/5, phrase recall@5, MRR, percentile latency, category splits, production sufficiency behavior, and threshold failure reporting. Initial collection failed because the evaluator module did not exist.
