@@ -1,5 +1,6 @@
 """TDD Tests for AI Gateway: Auth, Rate Limiting, Input Guardrails, and LiteLLM Proxy."""
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -91,7 +92,12 @@ def test_rate_limiter_exceeded(gateway_client):
 def test_successful_chat_completion(gateway_client, monkeypatch):
     from services.gateway.app import litellm_client
 
+    class _UnavailableProvider:
+        async def post(self, *args, **kwargs):
+            raise httpx.ConnectError("simulated connection failure")
+
     monkeypatch.setattr(litellm_client, "allow_private_provider_urls", True)
+    monkeypatch.setattr(litellm_client, "_get_client", lambda: _UnavailableProvider())
     response = gateway_client.post(
         "/v1/chat/completions",
         headers={"X-API-Key": "meridian-test-secret-key-2026"},
