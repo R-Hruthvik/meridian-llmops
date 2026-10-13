@@ -178,7 +178,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
         </div>
       )}
 
-      <div role="status" aria-live="polite" aria-busy={loading}>
+      <div data-testid="metrics-loading-status" role="status" aria-live="polite" aria-busy={loading} className="min-h-[3rem]">
         {loading && !metrics ? (
           <div className="rounded-sm border border-hairline bg-surface-raised px-3 py-3 text-label font-semibold text-muted">
             Loading telemetry metrics…

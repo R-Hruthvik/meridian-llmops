@@ -44,7 +44,15 @@ describe('MetricsDashboard', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Loading telemetry metrics');
     expect(screen.getByTestId('kpi-strip')).toHaveClass('grid-cols-1');
+    expect(screen.getByTestId('metrics-loading-status')).toHaveClass('min-h-[3rem]');
     await waitFor(() => expect(api.checkHealth).toHaveBeenCalled());
+  });
+
+  it('reserves the metrics status slot after loading completes', async () => {
+    render(<MetricsDashboard tenantId="default" />);
+
+    expect(await screen.findByTestId('kpi-total-requests')).toHaveTextContent('10');
+    expect(screen.getByTestId('metrics-loading-status')).toHaveClass('min-h-[3rem]');
   });
 
   it('uses the public readiness flag for the engine status', async () => {

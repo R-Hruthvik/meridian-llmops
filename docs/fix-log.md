@@ -392,3 +392,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: `npm run test:run` -> **276 passed across 17 files**; `npm run build` -> TypeScript and Vite production build succeeded.
 - Deviations from plan: none.
 - Open risks / follow-ups: no browser device-width checklist was run; mobile behavior is covered by responsive class assertions and the production build.
+
+### Task 6.6 review follow-up — stable loading geometry
+- Verified before change: “Refreshing answer…” was inserted into normal document flow above the current answer, and Metrics mounted its loading banner only while the request was pending, changing downstream positions when each state toggled.
+- Test added (failing first): Ask follow-up request status-slot geometry and Metrics loading-slot reservation regressions -> **4 expected failures** before implementation (missing stable test hooks/height reservations).
+- Change summary: the Ask answer card now keeps a one-line live status slot in its layout at all times, so the follow-up status does not move answer content. Metrics keeps a 3rem loading status slot after the banner clears.
+- Evidence after: focused `npm run test:run -- src/components/RagWorkspace.test.tsx src/components/MetricsDashboard.test.tsx` -> **67 passed**; `npm run build` -> TypeScript and Vite production build succeeded.
+- Deviations from plan: none.
+- Open risks / follow-ups: none.

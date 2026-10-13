@@ -390,8 +390,10 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
             </div>
           </div>
 
-          <div className="min-h-[12rem] rounded border border-hairline bg-surface-raised p-4">
-            {loading && <p role="status" className="mb-2 text-micro font-semibold text-muted">Refreshing answer…</p>}
+          <div data-testid="answer-card" className="min-h-[12rem] rounded border border-hairline bg-surface-raised p-4">
+            <p data-testid="answer-refresh-status" role="status" aria-live="polite" className="mb-2 min-h-4 text-micro font-semibold text-muted">
+              {loading ? 'Refreshing answer…' : null}
+            </p>
             {!response.answer || !response.answer.trim() ? (
               <p className="answer-prose text-muted">
                 The pipeline returned an empty answer on a degraded path

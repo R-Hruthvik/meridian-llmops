@@ -99,6 +99,34 @@ describe('RagWorkspace', () => {
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
+  it('keeps the answer card status line reserved during follow-up requests', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockQueryResponse)
+      .mockReturnValueOnce(new Promise(() => {}));
+    renderCanvas();
+
+    const queryInput = screen.getByPlaceholderText(/Type your question/i);
+    await user.type(queryInput, 'first query');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    expect(await screen.findByText('test answer')).toBeInTheDocument();
+
+    const answerCard = screen.getByTestId('answer-card');
+    const statusLine = screen.getByTestId('answer-refresh-status');
+    expect(answerCard).toHaveClass('min-h-[12rem]');
+    expect(statusLine).toHaveClass('min-h-4');
+    expect(statusLine).toBeEmptyDOMElement();
+
+    await user.clear(queryInput);
+    await user.type(queryInput, 'follow-up query');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+
+    expect(screen.getByText('Refreshing answer…')).toBeInTheDocument();
+    expect(screen.getByTestId('answer-card')).toHaveClass('min-h-[12rem]');
+    expect(screen.getByTestId('answer-refresh-status')).toHaveClass('min-h-4');
+    expect(screen.getByText('test answer')).toBeInTheDocument();
+  });
+
   it('submits query on button click', async () => {
     const user = userEvent.setup();
     (api.query as ReturnType<typeof vi.fn>).mockResolvedValue(mockQueryResponse);
