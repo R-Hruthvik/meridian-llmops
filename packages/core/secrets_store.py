@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 from pathlib import Path
 
 SECRET_SUFFIX = ("_api_key", "_secret", "_password")
@@ -23,13 +24,20 @@ def load_secrets(path: Path) -> dict:
 
 def save_secrets(path: Path, secrets: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
     try:
-        with temporary.open("w", encoding="utf-8") as stream:
+        os.fchmod(descriptor, 0o600)
+        stream_context = os.fdopen(descriptor, "w", encoding="utf-8")
+        descriptor = -1
+        with stream_context as stream:
             json.dump(secrets, stream, indent=2)
-        os.chmod(temporary, 0o600)
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
-        os.chmod(path, 0o600)
-    except OSError:
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
         temporary.unlink(missing_ok=True)
-        raise

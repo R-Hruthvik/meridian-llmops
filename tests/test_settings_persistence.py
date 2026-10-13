@@ -36,6 +36,24 @@ def secrets_path(settings_path):
     return settings_path.parent / "storage" / "secrets.json"
 
 
+def test_secret_save_ignores_predictable_tmp_symlink(tmp_path):
+    from packages.core.secrets_store import save_secrets
+
+    secret_path = tmp_path / "secrets.json"
+    predictable_tmp = tmp_path / "secrets.json.tmp"
+    target = tmp_path / "unrelated.json"
+    target.write_text("keep this file", encoding="utf-8")
+    predictable_tmp.symlink_to(target)
+
+    save_secrets(secret_path, {"test_api_key": "test-value"})
+
+    assert target.read_text(encoding="utf-8") == "keep this file"
+    assert predictable_tmp.is_symlink()
+    assert not secret_path.is_symlink()
+    assert json.loads(secret_path.read_text(encoding="utf-8"))["test_api_key"] == "test-value"
+    assert secret_path.stat().st_mode & 0o777 == 0o600
+
+
 @pytest.fixture()
 def runtime_state():
     """Snapshot/restore the module-level runtime settings around each test."""
