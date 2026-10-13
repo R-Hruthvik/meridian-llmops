@@ -313,3 +313,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: `.venv/bin/python -m pytest tests/test_api_seam.py tests/test_ingestion.py tests/test_generation_prompt.py tests/test_gateway.py -q` -> **31 passed**; scoped Ruff -> clean; scoped mypy -> **7 source files clean**; Guardrails UI tests -> **35 passed**; `npm --prefix web run build` -> succeeded. The test runs show existing missing `/run/secrets` and FastAPI `on_event` warnings.
 - Deviations from plan: chose the plan's unused-YAML deletion option; regex rules remain in code as the single runtime source.
 - Open risks / follow-ups: rules detect known phrases and patterns only; they do not provide general prompt-injection or PII detection.
+
+## Task 5.6 review R1 — honor configured input/output guardrail switches (2026-10-13)
+- Verified before change: query processing ignored `enable_input_guardrails` and `enable_output_guardrails`, even though both settings default to true.
+- Test added (failing first): disabling output guardrails still redacted the response email; disabling input guardrails still rejected a known injection query. Both regressions failed before the fix.
+- Change summary: input and output enforcement now each honor their server setting, in addition to the existing client opt-out rule and its default-deny setting.
+- Evidence after: `.venv/bin/python -m pytest tests/test_api_seam.py tests/test_gateway.py -q` -> **20 passed**; scoped Ruff -> clean; scoped mypy -> no issues in `services/rag_engine/app.py`.
+- Deviations from plan: none.
+- Open risks / follow-ups: rules detect known phrases and patterns only; disabling either server-side switch intentionally disables that class of check.
