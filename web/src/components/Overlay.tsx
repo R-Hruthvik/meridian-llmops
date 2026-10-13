@@ -135,7 +135,7 @@ export const Overlay: React.FC<OverlayProps> = ({
             type="button"
             onClick={onClose}
             aria-label={`Close ${title}`}
-            className="-mr-1 shrink-0 rounded-sm p-1 text-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+            className="-mr-1 shrink-0 rounded-sm p-1 text-muted transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <X className="size-4" aria-hidden="true" />
           </button>

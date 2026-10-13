@@ -384,3 +384,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: focused API and catalog UI tests -> **46 passed**; `npm run build` -> TypeScript and Vite build succeeded.
 - Deviations from plan: none.
 - Open risks / follow-ups: none for Task 6.5.
+
+## Task 6.6 View states, keyboard access and mobile layout (2026-10-13)
+- Verified before change: Corpus briefly rendered its empty state before the initial catalog request settled; Review Queue showed a blank table during its first request; Metrics had no initial loading announcement and kept three KPI columns at phone widths. Ask source rows handled clicks on a non-focusable table row, so keyboard activation did not open a citation. Follow-up Ask requests also removed the previous answer while pending. Settings opened with provider defaults while saved data loaded, without a visible load state or local retry message; the Settings provider picker also used multiple columns below 640px. Corpus and Ask tables could overflow their viewports.
+- Test added (failing first): initial catalog, review, metrics, Ask keyboard/pending, and Settings loading/error regressions. Before implementation, the UI tests observed no catalog/review/metrics/settings loading announcement and the Ask citation button had no activation handler; the Settings loading assertion failed on “Loading saved provider settings…” being absent.
+- Change summary: added announced pending/empty states where the first request otherwise looked empty, plus a retry message for failed Settings loads. Ask now keeps a reserved answer area and preserves the previous answer during follow-up requests; citation buttons open their chunks from the keyboard. Metrics and Settings use one column below 640px, and long tables scroll within focusable, named wrappers. Added visible focus styling to the shared overlay close button.
+- Evidence after: `npm run test:run` -> **276 passed across 17 files**; `npm run build` -> TypeScript and Vite production build succeeded.
+- Deviations from plan: none.
+- Open risks / follow-ups: no browser device-width checklist was run; mobile behavior is covered by responsive class assertions and the production build.

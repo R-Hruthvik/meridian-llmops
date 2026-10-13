@@ -146,14 +146,18 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
         ) : null}
       </div>
 
-      {items.length === 0 && !loading && !error ? (
+      {loading && items.length === 0 ? (
+        <div role="status" aria-live="polite" className="rounded-sm border border-hairline bg-surface-raised px-4 py-10 text-center text-label font-semibold text-muted">
+          Loading review queue…
+        </div>
+      ) : items.length === 0 && !error ? (
         <div className="rounded-sm border border-dashed border-hairline bg-surface-sunken px-4 py-10 text-center">
           <CheckCircle2 className="mx-auto mb-2 size-5 text-ok" aria-hidden="true" />
           <h4 className="text-label font-bold text-ink">Review queue is clear</h4>
           <p className="mt-1 text-micro text-muted">No pending low-confidence extractions need human review.</p>
         </div>
-      ) : (
-        <div className="overflow-x-auto rounded-sm border border-hairline">
+      ) : items.length > 0 ? (
+        <div className="overflow-x-auto rounded-sm border border-hairline" tabIndex={0} aria-label="Review queue table; scroll horizontally to see all columns">
           <table className="w-full border-collapse text-left">
             <caption className="sr-only">
               Pending low-confidence extractions awaiting human approval, rejection or correction
@@ -294,7 +298,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
             </tbody>
           </table>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

@@ -37,6 +37,28 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
     (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
   });
 
+  it('shows the saved-settings loading and failure states', async () => {
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
+    (api.getProviders as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
+    const { rerender } = render(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    expect(screen.getByText('Loading saved provider settings…')).toHaveAttribute('role', 'status');
+
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('settings unavailable'));
+    (api.getProviders as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('providers unavailable'));
+    rerender(
+      <SettingsModal isOpen={false} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+    rerender(
+      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Saved provider settings could not be loaded');
+    expect(screen.getByRole('button', { name: /Retry loading settings/i })).toBeInTheDocument();
+  });
+
   it('does not write provider API keys to localStorage on save', async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();

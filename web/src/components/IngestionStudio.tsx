@@ -493,7 +493,11 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
           )}
 
           {/* Document catalog — §8 table language, matching the chunk table */}
-          {filteredDocs.length === 0 ? (
+          {loadingDocs && docList.documents.length === 0 ? (
+            <div role="status" aria-live="polite" className="rounded border border-hairline bg-surface-raised px-3 py-10 text-center text-label font-semibold text-muted">
+              Loading document catalog…
+            </div>
+          ) : filteredDocs.length === 0 ? (
             <div className="rounded border border-dashed border-hairline px-3 py-10 text-center">
               <FileText className="mx-auto mb-2 size-6 text-faint" />
               <h3 className="text-body font-semibold text-ink">
@@ -523,8 +527,8 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
               )}
             </div>
           ) : (
-            <div className="rounded border border-hairline bg-surface-raised">
-              <table className="w-full border-collapse text-left">
+            <div className="overflow-x-auto rounded border border-hairline bg-surface-raised" tabIndex={0} aria-label="Document catalog table; scroll horizontally to see all columns">
+              <table className="w-full min-w-[760px] border-collapse text-left">
                 <caption className="sr-only">Indexed documents with chunk, entity and relationship counts</caption>
                 <thead>
                   <tr className="border-b border-hairline-strong">

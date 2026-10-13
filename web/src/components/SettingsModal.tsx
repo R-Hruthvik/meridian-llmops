@@ -56,6 +56,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     'deepseek-chat',
   ]);
   const [loading, setLoading] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsLoadError, setSettingsLoadError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -89,11 +91,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }, []);
 
   const loadAllSettings = async () => {
+    setSettingsLoading(true);
+    setSettingsLoadError(null);
     try {
       const [settings, provs] = await Promise.all([
         api.getLLMSettings().catch(() => null),
         api.getProviders().catch(() => null),
       ]);
+
+      if (!settings || !provs) {
+        setSettingsLoadError('Saved provider settings could not be loaded completely. Retry to refresh them.');
+      }
 
       if (provs) {
         setProvidersData(provs);
@@ -126,7 +134,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setModelList(list);
       }
     } catch {
-      // Handled
+      setSettingsLoadError('Saved provider settings could not be loaded. Retry to try again.');
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -409,6 +419,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-modal-title"
+        aria-busy={settingsLoading}
         className="relative z-50 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded border border-hairline bg-surface-raised shadow-overlay"
       >
         {/* Header */}
@@ -437,6 +448,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Body */}
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+          {settingsLoading && (
+            <div role="status" aria-live="polite" className="rounded-sm border border-hairline bg-surface px-3 py-2 text-label font-semibold text-muted">
+              Loading saved provider settings…
+            </div>
+          )}
+          {settingsLoadError && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-fail/30 bg-fail-wash px-3 py-2 text-label text-fail">
+              <span>{settingsLoadError}</span>
+              <button
+                type="button"
+                onClick={() => void loadAllSettings()}
+                className="rounded-sm border border-fail/30 px-2 py-1 font-semibold hover:bg-fail-wash focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                Retry loading settings
+              </button>
+            </div>
+          )}
           {/* Configured providers quick-selector */}
           {providersData && providersData.providers.length > 0 && (
             <div className="space-y-2.5 rounded-sm border border-hairline bg-surface-sunken p-3">
@@ -450,7 +478,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
                 {providersData.providers.map((p) => {
                   const isSelected = provider === p.id;
                   return (

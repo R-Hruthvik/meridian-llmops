@@ -10,6 +10,26 @@ describe('IngestionStudio Component', () => {
     vi.clearAllMocks();
   });
 
+  it('shows a loading state instead of the empty catalog during the first request', async () => {
+    let resolveCatalog!: (value: {
+      total_documents: number;
+      total_chunks: number;
+      total_entities: number;
+      documents: [];
+    }) => void;
+    vi.spyOn(api, 'getDocuments').mockReturnValueOnce(
+      new Promise((resolve) => { resolveCatalog = resolve; }),
+    );
+
+    render(<IngestionStudio tenantId="default" />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading document catalog');
+    expect(screen.queryByText('No documents in Knowledge Base')).not.toBeInTheDocument();
+
+    resolveCatalog({ total_documents: 0, total_chunks: 0, total_entities: 0, documents: [] });
+    expect(await screen.findByText('No documents in Knowledge Base')).toBeInTheDocument();
+  });
+
   it('renders Document Catalog tab with document rows and a readout strip', async () => {
     vi.spyOn(api, 'getDocuments').mockResolvedValueOnce({
       total_documents: 1,

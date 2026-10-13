@@ -38,6 +38,15 @@ describe('MetricsDashboard', () => {
     (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue(INDEX_LIVE);
   });
 
+  it('announces the initial metrics load and keeps the KPI strip single-column on phones', async () => {
+    (api.getMetrics as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
+    render(<MetricsDashboard tenantId="default" />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading telemetry metrics');
+    expect(screen.getByTestId('kpi-strip')).toHaveClass('grid-cols-1');
+    await waitFor(() => expect(api.checkHealth).toHaveBeenCalled());
+  });
+
   it('uses the public readiness flag for the engine status', async () => {
     render(<MetricsDashboard tenantId="default" />);
 

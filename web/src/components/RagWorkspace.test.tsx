@@ -70,6 +70,35 @@ describe('RagWorkspace', () => {
     expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
   });
 
+  it('opens a cited chunk with Enter from the keyboard', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockQueryResponse);
+    renderCanvas();
+
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'test query');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    const chunk = await screen.findByRole('button', { name: /Chunk 1/ });
+    chunk.focus();
+    await user.keyboard('{Enter}');
+
+    expect(openOverlay).toHaveBeenCalledWith('corpus', expect.objectContaining({
+      documentId: 'doc1',
+      chunkId: '1',
+    }));
+  });
+
+  it('reserves the answer area while a query is pending', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
+    renderCanvas();
+
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'test query');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+
+    expect(screen.getByTestId('query-result-region')).toHaveClass('min-h-[12rem]');
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
   it('submits query on button click', async () => {
     const user = userEvent.setup();
     (api.query as ReturnType<typeof vi.fn>).mockResolvedValue(mockQueryResponse);
@@ -91,7 +120,7 @@ describe('RagWorkspace', () => {
       );
     });
 
-    expect(screen.getByText('test answer')).toBeInTheDocument();
+    expect(await screen.findByText('test answer')).toBeInTheDocument();
   });
 
   it('names the guardrail toggle for what it does, and it governs the request', async () => {

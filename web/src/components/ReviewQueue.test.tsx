@@ -37,6 +37,15 @@ describe('ReviewQueue', () => {
     }));
   });
 
+  it('announces the initial wait instead of rendering an empty table', () => {
+    (api.listReviewItems as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
+    render(<ReviewQueue tenantId="default" />);
+
+    expect(screen.getByText('Loading review queue…')).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText('Review queue is clear')).not.toBeInTheDocument();
+  });
+
   it('G7: renders pending items with approve/reject buttons', async () => {
     render(<ReviewQueue tenantId="default" />);
 

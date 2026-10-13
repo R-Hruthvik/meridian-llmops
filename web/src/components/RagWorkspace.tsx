@@ -317,23 +317,25 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         </div>
       )}
 
-      {/* Pending Operation Skeleton Loader */}
-      {loading && (
-        <div className="animate-pulse rounded border border-hairline bg-surface-raised p-4">
-          <div className="mb-3 flex items-center gap-3">
-            <RefreshCw className="size-5 animate-spin text-muted" />
-            <div className="h-3 w-1/3 rounded-sm bg-surface-sunken" />
+      <div data-testid="query-result-region" aria-live="polite" aria-busy={loading} className="min-h-[12rem]">
+        {/* Keep the previous answer mounted during a follow-up request; first-query
+            loading uses the same reserved result area so the canvas does not jump. */}
+        {loading && !response && (
+          <div role="status" className="min-h-[12rem] animate-pulse rounded border border-hairline bg-surface-raised p-4">
+            <div className="mb-3 flex items-center gap-3">
+              <RefreshCw className="size-5 animate-spin text-muted" />
+              <div className="h-3 w-1/3 rounded-sm bg-surface-sunken" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-3 w-full rounded-sm bg-surface-sunken" />
+              <div className="h-3 w-5/6 rounded-sm bg-surface-sunken" />
+              <div className="h-3 w-2/3 rounded-sm bg-surface-sunken" />
+            </div>
           </div>
-          <div className="space-y-2">
-            <div className="h-3 w-full rounded-sm bg-surface-sunken" />
-            <div className="h-3 w-5/6 rounded-sm bg-surface-sunken" />
-            <div className="h-3 w-2/3 rounded-sm bg-surface-sunken" />
-          </div>
-        </div>
-      )}
+        )}
 
       {/* §7 verdict bar + answer body */}
-      {!loading && response && verdict && (
+      {response && verdict && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded border border-hairline bg-surface-raised px-3 py-2">
             <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -388,7 +390,8 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
             </div>
           </div>
 
-          <div className="rounded border border-hairline bg-surface-raised p-4">
+          <div className="min-h-[12rem] rounded border border-hairline bg-surface-raised p-4">
+            {loading && <p role="status" className="mb-2 text-micro font-semibold text-muted">Refreshing answer…</p>}
             {!response.answer || !response.answer.trim() ? (
               <p className="answer-prose text-muted">
                 The pipeline returned an empty answer on a degraded path
@@ -405,6 +408,14 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         </>
       )}
 
+      {!loading && !response && !error && (
+        <div className="min-h-[12rem] rounded border border-dashed border-hairline bg-surface-raised px-4 py-10 text-center">
+          <p className="text-body font-semibold text-ink">No answer yet</p>
+          <p className="mt-1 text-micro text-muted">Ask a question to see the answer and its evidence.</p>
+        </div>
+      )}
+      </div>
+
       {/* §8 ranked chunk table */}
       <div className="rounded border border-hairline bg-surface-raised">
         <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
@@ -420,7 +431,8 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
             </p>
           </div>
         ) : (
-          <table className="w-full border-collapse text-left">
+          <div className="overflow-x-auto" tabIndex={0} aria-label="Retrieved chunks table; scroll horizontally to see all columns">
+            <table className="w-full min-w-[640px] border-collapse text-left">
             <caption className="sr-only">Retrieved chunks, ranked by score</caption>
             <thead>
               <tr className="border-b border-hairline-strong">
@@ -451,8 +463,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                 return (
                   <tr
                     key={chunkKey}
-                    onClick={() => openChunk(idx)}
-                    className={`group h-8 cursor-pointer border-b border-hairline last:border-b-0 hover:bg-accent-wash ${
+                    className={`group h-8 border-b border-hairline last:border-b-0 hover:bg-accent-wash ${
                       openChunkId === chunkKey ? 'bg-accent-wash' : ''
                     }`}
                   >
@@ -465,6 +476,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                         type="button"
                         aria-label={`Chunk ${idx + 1} • ${chunk.retrieval_method} · ${percent} · ${chunk.document_id} · ${chunk.chunk_id}`}
                         title={chunk.text}
+                        onClick={() => openChunk(idx)}
                         className="num w-full text-left text-micro text-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
                       >
                         {idx + 1}
@@ -484,7 +496,8 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                 );
               })}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 

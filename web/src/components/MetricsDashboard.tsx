@@ -178,8 +178,16 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
         </div>
       )}
 
+      <div role="status" aria-live="polite" aria-busy={loading}>
+        {loading && !metrics ? (
+          <div className="rounded-sm border border-hairline bg-surface-raised px-3 py-3 text-label font-semibold text-muted">
+            Loading telemetry metrics…
+          </div>
+        ) : null}
+      </div>
+
       {/* One dense readout strip — label, value, unit — not three cards. */}
-      <dl data-testid="kpi-strip" className="grid grid-cols-3 divide-x divide-hairline border-y border-hairline">
+      <dl data-testid="kpi-strip" className="grid grid-cols-1 divide-y divide-hairline border-y border-hairline sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {KPIS.map(({ key, label, unit, hint, icon: Icon, accent }) => (
           <div key={key} data-slot="kpi" className="px-3 py-2.5">
             <dt className="flex items-center gap-1.5 text-micro uppercase tracking-[0.12em] text-muted">
