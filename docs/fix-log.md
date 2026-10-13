@@ -1,5 +1,13 @@
 # Meridian fix log
 
+## Task 7.3 Retrieval evaluation (2026-10-13)
+- Verified before change: retrieval evaluation only existed as a smoke-set reranker comparison; no golden-set evaluator or threshold file existed. The prior smoke check used a dense-score shortcut for unanswerable cases rather than the generation sufficiency check.
+- Tests added first: injected fake retrieval results covering phrase matching across expected-document chunks, hit@1/3/5, phrase recall@5, MRR, percentile latency, category splits, production sufficiency behavior, and threshold failure reporting. Initial collection failed because the evaluator module did not exist.
+- Change summary: added `evals/eval_retrieval.py` to evaluate the committed golden dataset, report answerable retrieval metrics and latency by category and overall, and calculate unanswerable accuracy using `has_sufficient_context`. Added `evals/thresholds.json` with hit@5 0.90, MRR 0.70, and unanswerable accuracy 0.85 gates. The CLI prints a JSON report and exits non-zero on undefined or below-threshold metrics.
+- Evidence after: `.venv/bin/python -m pytest tests/test_eval_retrieval.py -q` -> **2 passed**; scoped Ruff -> **passed**. No real-model retrieval benchmark was run.
+- Deviations from plan: none.
+- Open risks / follow-ups: the end-to-end CLI requires the configured embedding model and local vector dependencies; it remains intentionally unrun pending the planned benchmark.
+
 ## Task 7.1 Tracing and tenant metrics (2026-10-13)
 - Verified before change: tracing used an unbounded in-memory list, hard-coded one-model pricing, and request metrics omitted errors and latency. Retrieval stage timings existed but were not named spans.
 - Tests added first: bounded local trace storage, span attributes, disabled Langfuse behavior, provider usage/estimation, error accounting, and tenant metric shape. The focused tests initially failed because the planned `LocalTracer`, `LangfuseTracer`, and usage normalizer were absent.
