@@ -58,15 +58,17 @@ Requirements: Python 3.11+, `uv`, Node.js/npm for the web UI, and Docker for Qdr
 
    The smoke check builds its own in-memory Qdrant index from `sample_docs`; it does not query the server index created by `make ingest`.
 
-4. Start the API in another terminal and ask a question:
+4. Start the API in another terminal and verify the server index without invoking a model:
 
    ```sh
    ./start.sh --backend-only
-   curl -sS http://localhost:8000/v1/query \
+   curl -sS http://localhost:8000/v1/retrieve \
      -H 'Content-Type: application/json' \
      -H 'X-API-Key: local-user-key' \
      -d '{"query":"What vector database does Meridian use?","top_k":5}'
    ```
+
+   `/v1/retrieve` returns ranked chunks from the server index and needs no model provider. Once the provider settings in step 2 are valid, use `/v1/query` for a generated answer.
 
 The complete UI and API startup options are in `./start.sh --help`. For troubleshooting and recovery commands, see [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
@@ -79,7 +81,7 @@ The complete UI and API startup options are in `./start.sh --help`. For troubles
 | Experimental | Human-review routes and ORM models. They are not connected to ingestion/query confidence decisions or correction-driven reindexing. |
 | Not implemented | OCR for scanned PDFs, general semantic entailment verification, SSO, and streaming responses. |
 
-Known limits: token counts are approximate; guardrails use lexical rules and do not provide general prompt-injection detection; BM25 indexes are in-process and rebuilt from the local corpus; per-process metrics/traces reset on restart. Local or private provider endpoints require the explicit `ALLOW_PRIVATE_PROVIDER_URLS=true` setting, except the Compose app's validated private bridge address for its named `litellm` service. Graph context remains experimental and disabled because the current small multi-hop evaluation showed no retrieval gain.
+Known limits: token counts are approximate; guardrails use lexical rules and do not provide general prompt-injection detection; BM25 indexes are in-process and rebuilt from the local corpus; per-process metrics/traces reset on restart. Local or private provider endpoints, including the Compose app's `litellm` service, require `ALLOW_PRIVATE_PROVIDER_URLS=true`; link-local and other reserved destinations remain blocked. Remote provider endpoints must use HTTPS. Graph context remains experimental and disabled because the current small multi-hop evaluation showed no retrieval gain.
 
 ## Quality and development checks
 

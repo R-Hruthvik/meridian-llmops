@@ -14,5 +14,5 @@ A tenant header selected by the caller is not an identity boundary. Server-side 
 
 `API_KEYS` accepts a JSON mapping of keys to tenant/role records. Authentication and role dependencies are implemented in `services/gateway/auth.py` and `services/rag_engine/deps.py`. Rate limits are per-key and in-process.
 
-Outbound provider endpoints are validated at the shared client boundary: public HTTPS destinations are resolved and pinned; local/private endpoints require `ALLOW_PRIVATE_PROVIDER_URLS=true`, except the Compose app's named LiteLLM service, whose bridge address is constrained to private, non-loopback, non-link-local IPs.
+Outbound provider endpoints are validated at the shared client boundary: public HTTPS destinations are resolved and pinned; local/private endpoints, including the Compose app's named LiteLLM service, require `ALLOW_PRIVATE_PROVIDER_URLS=true`. Link-local, shared CGNAT, and other reserved destinations are rejected even when private endpoints are enabled.
 

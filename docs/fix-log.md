@@ -34,6 +34,10 @@
 ## Task 7.3 sufficiency gate follow-up (2026-10-13)
 - Change summary: added same-chunk evidence-slot checks for requests that need a specific credential, count, price, GPU requirement, uptime guarantee, customer-key owner, or paired UI credentials. A topical chunk without the requested kind of evidence no longer passes merely because its dense or lexical score is high. The detector is documented in code as heuristic and continues checking later eligible chunks.
 - Tests and review: added tests for all eight golden unanswerables, answerable vector dimensions and paired credentials, paraphrased slot queries/value formats, missing values, and evidence in a later chunk. Focused sufficiency suite **10 passed**; full backend/eval suite **449 passed, 1 skipped, 3 xfailed**; Qdrant service integration **1 passed**; Ruff and mypy passed. Independent Luna review approved after regressions for later-chunk evidence and phrasing/value variants were added.
+
+## Task 7.2 — Golden dataset validation (2026-10-13)
+- The committed golden dataset contains **50 cases** and is checked against the documented schema and source-document phrases.
+- Evidence: `uv run python scripts/validate_golden.py` -> **valid: 50 cases**; `uv run pytest tests/test_validate_golden.py -q` -> **3 passed**.
 - Full golden run: **50 cases**, hit@5 **1.000**, MRR **0.873**, unanswerable accuracy **1.000** (8/8; required 0.85); 40/42 answerable cases satisfy context, unchanged from baseline. q-002 and q-035 remain the two answerable sufficiency misses. CLI gate **PASS**.
 - Limitation: this is a small rule-based evidence-slot veto, not general semantic entailment; new domains and paraphrases may need additional calibration. The threshold remains 0.85.
 
@@ -140,6 +144,8 @@
 - The real-model DeepEval run was not invoked because it requires `EVAL_LLM_API_KEY`; no provider or judge API was called. The workflow and manual/scheduled path are implemented and documented. Langfuse remains optional and disabled unless configured.
 - Cleanup: the disposable Qdrant service and benchmark collections were removed after verification; the existing configured collection and pre-existing Gate 7 worktree were preserved.
 - Gate 9 offline regression: **PASS**. Remaining limitations are the recorded eight-worker latency spread, credential-gated real DeepEval result, and documented experimental/off-by-default graph and HITL paths.
+- Clean-checkout runtime at `82263dd`: Compose Qdrant health check passed; `make ingest DIR=sample_docs` indexed **4 files / 35 chunks / 0 failures**; `make retrieval-check` exited 0 (`GATE: PASS`, hit@5 **1.000** on 22 answerable questions, MRR **0.924**); authenticated `/v1/retrieve` returned three ranked chunks from the ingested server index with provider variables unset. No generation/provider call was made. The smoke command's two unanswerable diagnostics are not part of its answerable-case gate.
+- The README quickstart now demonstrates `/v1/retrieve` against the server index before `/v1/query`, clarifying that the latter needs a configured provider.
 
 ## Task 0.1–0.3 Phase 0 baseline and verification (2026-10-10)
 - Verified before change: checkout `f2a32e6`; plan references older `e2bc6fc`. Phase 0 audit classified all F-01..F-30 in `docs/findings-verification.md`.
@@ -452,6 +458,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Local loopback LiteLLM and the Compose app's exact `litellm` service name remain available without enabling private URLs; the latter is restricted to resolved private, non-loopback, non-link-local bridge addresses. Other local/private provider endpoints require the explicit setting. A reviewed bypass that implicitly trusted all LiteLLM proxy addresses was removed; private/link-local targets are rejected by default before any POST.
 - Evidence: `uv run pytest tests/test_provider_ssrf.py tests/test_provider_client.py tests/test_settings_security.py tests/test_serving_provenance.py -q` -> **80 passed**; scoped Ruff and `git diff --check` -> clean.
 - Limitation: enabling the private URL option is an operator trust decision for private endpoints; it is intended for controlled local/private model services.
+
+## Task 5.4 security review correction (2026-10-13)
+- Independent review found that the earlier named-Compose exception accepted any RFC1918 answer without proving it belonged to the Compose bridge. Removed the exception: every private endpoint, including `http://litellm:4000`, now requires `ALLOW_PRIVATE_PROVIDER_URLS=true`.
+- HTTP LiteLLM URLs are restricted to private or loopback destinations; public provider URLs must use HTTPS. Opt-in validation rejects link-local, shared CGNAT, unspecified, multicast, and reserved addresses.
+- Evidence: `uv run pytest tests/test_provider_ssrf.py tests/test_provider_client.py tests/test_settings_security.py tests/test_serving_provenance.py -q` -> **85 passed**; scoped Ruff passed. Regressions cover Compose private DNS with and without opt-in, public LiteLLM HTTP, link-local metadata, shared CGNAT, and loopback policy.
 
 ## Task 5.6 Guardrails and prompt-injection hygiene (2026-10-13)
 - Verified before change: a client `enforce_guardrails=false` skipped input checks; uploaded chunks had no injection flags or warning; output checks left email/SSN/card patterns intact; the UI and ADRs claimed NeMo/Colang while the runtime used regexes; `policy.yaml` was unused.
