@@ -24,15 +24,38 @@ describe('MeridianApiClient', () => {
   });
 
   describe('API key management', () => {
-    it('does not store API key in localStorage', () => {
-      api.setApiKey('my-secret-key');
-      // The key should NOT be in localStorage
-      expect(localStorage.getItem('meridian_api_key')).toBeNull();
+    it('keeps the API key in memory without reading or writing browser storage', () => {
+      const getItem = vi.spyOn(Storage.prototype, 'getItem');
+      const setItem = vi.spyOn(Storage.prototype, 'setItem');
+      const removeItem = vi.spyOn(Storage.prototype, 'removeItem');
+
+      const client = new (api.constructor as any)();
+      client.setApiKey('my-secret-key');
+
+      expect(client.getApiKey()).toBe('my-secret-key');
+      expect(getItem).not.toHaveBeenCalled();
+      expect(setItem).not.toHaveBeenCalled();
+      expect(removeItem).not.toHaveBeenCalled();
+      getItem.mockRestore();
+      setItem.mockRestore();
+      removeItem.mockRestore();
     });
 
-    it('stores API key in memory only', () => {
+    it('starts locked even if sessionStorage contains an old API key', () => {
+      sessionStorage.setItem('meridian_api_key', 'session-key');
+      const client = new (api.constructor as any)();
+      expect(client.getApiKey()).toBe('');
+      sessionStorage.removeItem('meridian_api_key');
+    });
+
+    it('sends the configured API key in the request header', async () => {
       api.setApiKey('my-secret-key');
-      expect(api.getApiKey()).toBe('my-secret-key');
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse({}) as unknown as Response);
+      await api.query({ query: 'test' });
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ headers: expect.objectContaining({ 'X-API-Key': 'my-secret-key' }) }),
+      );
     });
 
     it('returns empty string by default (no localStorage fallback)', () => {
@@ -56,6 +79,22 @@ describe('MeridianApiClient', () => {
       expect(err.status).toBe(400);
       expect(err.detail).toBe('Invalid input');
       expect(err.name).toBe('ApiError');
+    });
+  });
+
+  describe('checkHealth() readiness contract', () => {
+    it('calls public GET /health/ready and returns the readiness flag', async () => {
+      const response = mockResponse({ ready: true, checks: {} });
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce(response as unknown as Response);
+
+      await expect(api.checkHealth()).resolves.toEqual({ ready: true, checks: {} });
+      expect(fetchSpy).toHaveBeenCalledWith('http://localhost:8000/health/ready', {});
+    });
+
+    it('preserves readiness endpoint status failures', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse({ detail: 'Not ready' }, 503, 'Service Unavailable') as unknown as Response);
+
+      await expect(api.checkHealth()).rejects.toMatchObject({ status: 503 });
     });
   });
 

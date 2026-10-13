@@ -2,7 +2,7 @@ import type {
   DocumentDetail,
   DocumentListResponse,
   GuardrailResult,
-  HealthStatus,
+  HealthReadiness,
   IngestRequest,
   IngestResponse,
   IndexStatusResponse,
@@ -65,14 +65,12 @@ class MeridianApiClient {
   private baseUrl: string;
 
   constructor() {
-    // Secret must be provided via VITE_MERIDIAN_API_KEY env or setApiKey(); never bake a default secret.
-    // Empty string forces backend 401 until caller configures a valid key.
-    this.apiKey = (import.meta as any).env?.VITE_MERIDIAN_API_KEY || '';
+    // Keep the API key in memory so refreshes require a fresh unlock.
+    this.apiKey = '';
     this.baseUrl = '';
   }
 
   setApiKey(key: string) {
-    // Store in memory only — never persist to localStorage to avoid XSS exposure.
     this.apiKey = key;
   }
 
@@ -105,8 +103,8 @@ class MeridianApiClient {
     return res.json() as Promise<T>;
   }
 
-  async checkHealth(): Promise<HealthStatus> {
-    return this.requestJSON<HealthStatus>(`${this.baseUrl}/health`, {}, 'Health check failed');
+  async checkHealth(): Promise<HealthReadiness> {
+    return this.requestJSON<HealthReadiness>(`${this.baseUrl}/health/ready`, {}, 'Health check failed');
   }
 
   async query(req: QueryRequest): Promise<QueryResponse> {
