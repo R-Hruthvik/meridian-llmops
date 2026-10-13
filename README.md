@@ -1,257 +1,111 @@
-# Meridian LLMOps: Enterprise Agentic RAG Platform
+# Meridian
 
-> **Production-grade Enterprise LLMOps Platform: Self-Healing Agentic RAG, AI Gateway Guardrails, & Continuous CI/CD Evaluation**
+Meridian is a document question-answering service. It parses supported files, indexes them in Qdrant, combines dense retrieval with local BM25 using reciprocal-rank fusion, checks whether the retrieved context is sufficient, and sends supported questions to a configured language model. The FastAPI app also exposes document, retrieval, health, settings, and review endpoints.
 
----
+## Architecture
 
-## 🌟 System Architecture
-
-Meridian unifies a multi-layer enterprise AI architecture into a single modular platform:
-
-```
-                      +-----------------------------+
-                      |       Client Request        |
-                      +--------------+--------------+
-                                     | (X-API-Key)
-                                     v
-                 +---------------------------------------+
-                 |    AI Gateway (LiteLLM + regex rules) |
-                 |  • Rate Limiting & Auth               |
-                 |  • Rule-Based Input Guardrails        |
-                 +-------------------+-------------------+
-                                     |
-                                     v
-                 +---------------------------------------+
-                 |       LangGraph Cyclic RAG Engine     |
-                 |  • Agentic Router                     |
-                 +---------+-------------------+---------+
-                           |                   |
-            +--------------v----+         +----v--------------+
-            | Qdrant Vector DB  |         | Neo4j Graph DB    |
-            | (Dense Embeddings)|         | (Entity Relations)|
-            +--------------+----+         +----+--------------+
-                           \                  /
-                            \   BM25 Lexical /
-                             v              v
-                 +---------------------------------------+
-                 |   Reciprocal Rank Fusion + Reranker   |
-                 |   (optional; RERANKER=none by default)|
-                 +-------------------+-------------------+
-                                     |
-                                     v
-                 +---------------------------------------+
-                 |       Generator & Verification        |
-                 | (Citations checks or optional LLM judge)|
-                 +-------------------+-------------------+
-                                     |
-                       [Verification status?]
-                       /                     \
-                   (Yes)                     (No, Cycle < 3)
-                     |                              |
-                     v                              v
-        +--------------------------+    +-----------------------+
-        |     Output Guardrails    |    |  Query Reformulator   |
-        |  (JSON Schema & Safety)  |    |  (Step-back & Entity) |
-        +-------------+------------+    +-----------+-----------+
-                      |                             | (Loop back)
-                      v                             +---> [Rerank]
-         +------------------------+
-         |     Final Response     |
-         +------------------------+
+```mermaid
+flowchart LR
+  U[Upload or folder] --> P[Parse and chunk]
+  P --> E[FastEmbed embeddings]
+  E --> Q[(Qdrant vectors and payloads)]
+  P --> D[(Disk text and metadata)]
+  D --> B[In-process BM25]
+  Q --> R[Dense plus BM25 retrieval]
+  B --> R
+  R --> F[RRF fusion]
+  F --> X[Optional reranker]
+  X --> S[Sufficiency check]
+  S -->|sufficient| L[Configured LLM]
+  S -->|insufficient| O[Insufficient-context response]
+  L --> V[Configured verification]
+  V --> O
+  O --> G[Output guardrails and API response]
 ```
 
----
+Dense vectors are stored in Qdrant; disk records retain chunk text and metadata for ingestion state and BM25. Neo4j graph storage/context is optional and disabled by default. LiteLLM is an optional provider gateway; direct provider configuration is also supported.
 
-## 📦 Monorepo Structure
+## Five-minute local start
 
-```
-.
-├── packages/
-│   └── core/                     # Shared Pydantic v2 schemas, protocols & settings
-├── services/
-│   ├── gateway/                  # Standalone AI Gateway, auth, and rule-based guardrails
-│   ├── ingestion/                # Structural chunking, multi-format parsers, Qdrant & Neo4j stores
-│   └── rag_engine/               # Cyclic LangGraph agent, hybrid retrieval, reranker & Langfuse
-├── evals/
-│   ├── golden_dataset.json       # 50 validated answerable and unanswerable cases
-│   ├── eval_retrieval.py         # Golden-set retrieval metrics and thresholds
-│   ├── eval_generation.py        # Optional real-model DeepEval quality run
-│   └── test_generation_ci.py    # Offline FakeLLM generation contract tests
-├── tests/                        # Full unit and integration test suite
-├── docs/                         # ADRs (0001-0013), Spec, and Domain Glossary (CONTEXT.md)
-├── docker-compose.yml            # Multi-container orchestration (Qdrant, Neo4j, LiteLLM, Langfuse)
-└── pyproject.toml                # Project dependencies & build configuration
-```
+Requirements: Python 3.11+, `uv`, Node.js/npm for the web UI, and Docker for Qdrant. The first start downloads the configured embedding model if it is not cached.
 
----
+1. Install dependencies and start the default Qdrant service:
 
-## 🚀 Quickstart
+   ```sh
+   make setup
+   make up
+   ```
 
-### 1. Prerequisites
-- Python 3.11+
-- Docker & Docker Compose
-- `uv` (recommended) or `pip`
+2. Configure `.env` with a local API key and an OpenAI-compatible provider. Replace the placeholders with your own values; do not commit this file.
 
-### 2. Installation
+   ```dotenv
+   APP_ENV=development
+   API_KEYS={"local-user-key":{"tenant":"default","role":"user"},"local-admin-key":{"tenant":"default","role":"admin"}}
+   PROVIDER=custom
+   BASE_URL=https://api.example.com/v1
+   API_KEY=your-provider-key
+   MODEL=your-model-name
+   ```
 
-```bash
-# Clone the repository
-git clone https://github.com/R-Hruthvik/meridian-llmops.git
-cd meridian-llmops
+   `PROVIDER`, `BASE_URL`, `API_KEY`, and `MODEL` are the generic provider settings. Alternatively, set provider-specific variables such as `OPENAI_API_KEY` and `OPENAI_BASE_URL` as supported by the configured provider.
 
-# Create virtual environment and install dependencies
-uv venv
-source .venv/bin/activate
-uv pip install -e ".[dev]"
-```
+3. Index the sample documents and run the isolated retrieval smoke check:
 
-### 3. Launch Infrastructure (Optional)
+   ```sh
+   make ingest DIR=sample_docs
+   make retrieval-check
+   ```
 
-```bash
-docker-compose up -d
-```
+   The smoke check builds its own in-memory Qdrant index from `sample_docs`; it does not query the server index created by `make ingest`.
 
-Services started:
-- **LiteLLM Gateway Proxy**: `http://localhost:4000`
-- **Qdrant Vector DB**: `http://localhost:6333`
-- **Neo4j Graph Browser**: `http://localhost:7474`
-- **Langfuse Observability**: `http://localhost:3000`
+4. Start the API in another terminal and ask a question:
 
-The RAG API keeps the latest 1,000 local traces and rolling per-tenant request,
-error, latency, token, and cost metrics in memory. Query `/v1/metrics` with an
-admin API key to inspect the authenticated tenant's metrics. These counters and
-traces reset when the API process restarts. Langfuse export is optional; set
-`LANGFUSE_ENABLED=true`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY` to
-enable best-effort export. Provider token usage is preferred; missing usage is
-estimated with Meridian's approximate word/punctuation counter. Per-model USD
-rates are configured in `config/pricing.json`; models without a price have
-unknown (`null`) cost.
+   ```sh
+   ./start.sh --backend-only
+   curl -sS http://localhost:8000/v1/query \
+     -H 'Content-Type: application/json' \
+     -H 'X-API-Key: local-user-key' \
+     -d '{"query":"What vector database does Meridian use?","top_k":5}'
+   ```
 
-### 4. Start Application
+The complete UI and API startup options are in `./start.sh --help`. For troubleshooting and recovery commands, see [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
-```bash
-# Start in Development Mode (FastAPI + Vite dev server with hot reload)
-./start.sh
+## Current capabilities
 
-# Or start in Unified Production Mode (Builds web UI and serves on port 8000)
-./start.sh --prod
+| Status | Capability |
+|---|---|
+| Implemented | PDF, Markdown, text, DOCX, and HTML parsing; chunking; Qdrant indexing; local BM25; dense/BM25 fusion; retrieval endpoint; API-key tenant/role authentication; citations and verification modes. |
+| Optional | Lexical or cross-encoder reranking (off by default); Langfuse export (disabled unless configured); Neo4j graph storage and graph context (both disabled by default); real-model DeepEval quality run (manual/scheduled). |
+| Experimental | Human-review routes and ORM models. They are not connected to ingestion/query confidence decisions or correction-driven reindexing. |
+| Not implemented | OCR for scanned PDFs, general semantic entailment verification, SSO, and streaming responses. |
+
+Known limits: token counts are approximate; guardrails use lexical rules and do not provide general prompt-injection detection; BM25 indexes are in-process and rebuilt from the local corpus; per-process metrics/traces reset on restart. Graph context remains experimental and disabled because the current small multi-hop evaluation showed no retrieval gain.
+
+## Quality and development checks
+
+The committed retrieval golden set has **50 cases**. The latest recorded run passed with hit@5 **1.000**, MRR **0.873**, and unanswerable accuracy **1.000**. The isolated 5,000-point Qdrant server benchmark measured retrieval-only p50/p95 of **9.2/10.3 ms** at one worker, **23.2/32.3 ms** at four workers, and **61.6/89.4 ms** at eight workers. Full request totals include query embedding; eight-worker total p95 was **119.8 ms**. See `docs/fix-log.md` for the benchmark conditions and limitations.
+
+Run the local checks with:
+
+```sh
+make test
+make eval
+uv run ruff check .
+uv run mypy --explicit-package-bases packages services evals --ignore-missing-imports
+npm --prefix web run test:run
+npm --prefix web run build
 ```
 
----
+`make eval` evaluates the 50-case retrieval set. `uv run python evals/eval_generation.py` runs the optional real-model generation/judge evaluation when its separate provider and judge settings are configured; it is not part of the default offline test suite.
 
-## 🧪 Testing & CI/CD Quality Gates
+## API examples
 
-Run the offline unit, integration, and FakeLLM generation checks:
+`POST /v1/retrieve` returns ranked chunks and retrieval timings without generation. `POST /v1/query` runs retrieval, sufficiency, generation, and verification. Both require `X-API-Key`.
 
-```bash
-pytest tests/ evals/ -v
+```sh
+curl -sS http://localhost:8000/v1/retrieve \
+  -H 'Content-Type: application/json' -H 'X-API-Key: local-user-key' \
+  -d '{"query":"What vector database does Meridian use?","top_k":5}'
 ```
 
-Run the optional real-model quality evaluation manually with `EVAL_LLM_API_KEY`. Generation uses `EVAL_LLM_PROVIDER`, `EVAL_LLM_MODEL`, and `EVAL_LLM_BASE_URL`; the DeepEval judge uses an OpenAI-compatible endpoint configured by `EVAL_JUDGE_MODEL` and `EVAL_JUDGE_BASE_URL`. The run writes a dated report under `evals/reports/` and does not run in CI by default.
-
-```bash
-EVAL_LLM_API_KEY=<provider-key> uv run python evals/eval_generation.py
-```
-
-Run linter and strict typechecking:
-
-```bash
-ruff check .
-mypy packages services evals --ignore-missing-imports --explicit-package-bases
-```
-
----
-
-## 📡 Primary API Endpoints
-
-### Query Agentic RAG Pipeline
-`POST /v1/query`
-```json
-{
-  "query": "What storage does Meridian use for dense vectors?",
-  "top_k": 3,
-  "max_cycles": 3,
-  "enforce_guardrails": true
-}
-```
-Guardrails use rule-based pattern checks. Client requests to disable them are ignored unless the server explicitly sets `ALLOW_CLIENT_DISABLE_GUARDRAILS=true`.
-
-### Ingest Document
-`POST /v1/ingest`
-```json
-{
-  "title": "Architecture Overview",
-  "text": "Meridian platform uses Qdrant for vectors and Neo4j for graphs."
-}
-```
-
-### Evaluate Guardrails Directly
-`POST /v1/guardrails/check`
-```json
-{
-  "text": "User email is test@company.com with SSN 000-11-2222"
-}
-```
-
----
-
-## Delivery history
-
-### Backend and workbench fixes — 2026-09-28
-
-The following were complete, tested, and verified live in a browser:
-
-- Backend suite **135 passing**, web suite **116 passing**, `ruff` clean.
-- Six disconnected studio tabs collapsed into three areas (Ask / Corpus /
-  Operate) with cross-studio citation drill-through.
-- Five live bugs fixed: guardrails unreachable from the browser, stale
-  `/health` document count, answer header contradicting a refusal body, inert
-  Top-K control, and all studios mounted simultaneously.
-- Index & Storage inspector reading live backend state, replacing hardcoded
-  infra cards.
-- Issue #35 fixed: the app reports the model that actually served a request
-  instead of echoing configuration.
-
-### Known design gaps
-
-- The visual design still reads as a generic purple-gradient SaaS template.
-  Impeccable's deterministic detector found only one anti-pattern, which is
-  precisely the problem: the tool checks craft, not whether the product is
-  pleasant or coherent.
-- No visual pass has been run over the restructured shell.
-- The workbench has no distinct identity, typography, or layout language of its
-  own.
-- Several abilities are still plain form fields rather than tools.
-
-**Next step is design, not more features.**
-
-### Web fixes — 2026-10-01 (PR #37)
-
-Eleven ticks landed on correctness, performance and accessibility. What shipped:
-
-- First paint **382.61 kB → 246.88 kB** (gzip 109.75 → 77.18 kB): the studios,
-  the settings dialog and the markdown parser are now fetched on demand rather
-  than shipped to everyone.
-- Four truthfulness fixes, each a case where the interface asserted something the
-  backend had not said: a refusal labelled `DEGRADED`, a health chip reading
-  `Online` with no evidence, telemetry zeros for unmeasured KPIs, and a blank
-  tenant field that silently read the default tenant's data.
-- Six accessibility defects from a read-only audit, including a failed dynamic
-  import that unmounted the whole app, a second `banner` landmark on every
-  overlay, focus lost after every review action, and three status messages that
-  screen readers were never told about.
-- Web suite **116 → 257 passing**, 26 new cases, each failing before its fix.
-
-**What this block did not do:** it did not touch the visual design. The gaps
-listed above — no identity or typography of its own, no visual pass over the
-shell, plain form fields where tools belong — are all still open. Two
-of the remaining items are deliberately untouched because they are visible
-changes and the owner's call: the lens rail is still three unlabelled glyphs
-(spec §6 mandates "icon + tooltip"), and `--text-faint` measures 2.86:1 against
-white, below the 4.5:1 that 11–13px text needs.
-
----
-
-## 📄 License & Standards
-
-Architectural Decision Records (ADRs) and Domain Modeling references are versioned under `docs/adr/` and `CONTEXT.md`.
+`GET /health` is a minimal public liveness endpoint. `GET /health/ready` reports basic service readiness; authenticated index details are available from the index-status endpoint. See the OpenAPI page at `http://localhost:8000/docs` while the API is running.
