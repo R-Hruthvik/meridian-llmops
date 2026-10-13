@@ -231,7 +231,8 @@ describe('MeridianApiClient', () => {
   });
 
   describe('catalog calls pass tenantId through', () => {
-    it('sends X-Tenant-Id on getDocuments/getDocument/delete', async () => {
+    it('sends the session API key and the explicit tenant on getDocuments/getDocument/delete', async () => {
+      api.setApiKey('session-api-key');
       const docs = { total_documents: 0, total_chunks: 0, total_entities: 0, documents: [] };
       const fetchSpy = vi.spyOn(global, 'fetch')
         .mockResolvedValueOnce(mockResponse(docs, 200) as unknown as Response)
@@ -243,8 +244,16 @@ describe('MeridianApiClient', () => {
       await api.deleteDocument('d1', 'acme');
 
       for (const [, init] of fetchSpy.mock.calls as [string, RequestInit][]) {
+        expect((init.headers as Record<string, string>)['X-API-Key']).toBe('session-api-key');
         expect((init.headers as Record<string, string>)['X-Tenant-Id']).toBe('acme');
       }
+    });
+
+    it('rejects catalog requests without an explicit tenant instead of assuming default', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch');
+
+      await expect(api.getDocuments(undefined as unknown as string)).rejects.toThrow('Tenant ID is required');
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -272,7 +281,7 @@ describe('MeridianApiClient', () => {
       const mock = mockResponse(mockDocs, 200);
       vi.spyOn(global, 'fetch').mockResolvedValueOnce(mock as unknown as Response);
 
-      const result = await api.getDocuments();
+      const result = await api.getDocuments('default');
       expect(result.total_documents).toBe(2);
       expect(result.documents[0].title).toBe('Doc 1');
     });
@@ -282,7 +291,7 @@ describe('MeridianApiClient', () => {
       const mock = mockResponse(mockDel, 200);
       vi.spyOn(global, 'fetch').mockResolvedValueOnce(mock as unknown as Response);
 
-      const result = await api.deleteDocument('doc-1');
+      const result = await api.deleteDocument('doc-1', 'default');
       expect(result.status).toBe('deleted');
       expect(result.document_id).toBe('doc-1');
     });

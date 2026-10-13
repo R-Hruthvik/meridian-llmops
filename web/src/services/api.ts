@@ -95,6 +95,11 @@ class MeridianApiClient {
     };
   }
 
+  private requireTenantId(tenantId: string): string {
+    if (!tenantId?.trim()) throw new ApiError('Tenant ID is required', 400);
+    return tenantId.trim();
+  }
+
   private async requestJSON<T>(url: string, init: RequestInit, errorFallback: string, notifyFailure = true): Promise<T> {
     // NOTE: empty baseUrl is intentional — relative fetch is same-origin in prod
     // (FastAPI serves web/dist) and vite-proxied to :8000 in dev. setBaseUrl()
@@ -265,29 +270,29 @@ class MeridianApiClient {
     );
   }
 
-  async getDocuments(tenantId: string = 'default'): Promise<DocumentListResponse> {
+  async getDocuments(tenantId: string): Promise<DocumentListResponse> {
     return this.requestJSON<DocumentListResponse>(
       `${this.baseUrl}/v1/documents`,
-      { method: 'GET', headers: this.getHeaders(tenantId) },
+      { method: 'GET', headers: this.getHeaders(this.requireTenantId(tenantId)) },
       'Documents list fetch failed',
     );
   }
 
-  async getDocument(docId: string, tenantId: string = 'default'): Promise<DocumentDetail> {
+  async getDocument(docId: string, tenantId: string): Promise<DocumentDetail> {
     return this.requestJSON<DocumentDetail>(
       `${this.baseUrl}/v1/documents/${encodeURIComponent(docId)}`,
-      { method: 'GET', headers: this.getHeaders(tenantId) },
+      { method: 'GET', headers: this.getHeaders(this.requireTenantId(tenantId)) },
       'Document details fetch failed',
     );
   }
 
   async deleteDocument(
     docId: string,
-    tenantId: string = 'default',
+    tenantId: string,
   ): Promise<{ status: string; document_id: string; message: string }> {
     return this.requestJSON<{ status: string; document_id: string; message: string }>(
       `${this.baseUrl}/v1/documents/${encodeURIComponent(docId)}`,
-      { method: 'DELETE', headers: this.getHeaders(tenantId) },
+      { method: 'DELETE', headers: this.getHeaders(this.requireTenantId(tenantId)) },
       'Document delete failed',
     );
   }

@@ -376,3 +376,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: `.venv/bin/python -m pytest tests/test_rag_engine_api_fixes.py -q` -> **10 passed**; frontend API and GuardrailsStudio tests -> **36 passed**; `npm run build` -> TypeScript and Vite build succeeded; scoped Ruff -> clean.
 - Deviations from plan: none.
 - Open risks / follow-ups: none for Task 6.4.
+
+## Task 6.5 Catalog authentication and tenant context (2026-10-13)
+- Verified before change: the document list/detail/delete UI already passed its active tenant ID and the shared API client supplied its current API key. The catalog client methods still defaulted an omitted tenant to `default`, allowing a caller to silently query or mutate another tenant's catalog. Backend routes authenticate through `require_user` and scope records by the authenticated tenant.
+- Test added (failing first): catalog API key/tenant header regression and missing-tenant regression. The latter failed before implementation because the request proceeded with the default tenant and surfaced a network `fetch failed` instead of rejecting the missing tenant.
+- Change summary: made the tenant argument required for catalog list, detail, and delete calls; the client rejects missing or blank tenant IDs before issuing a request. Existing callers pass their active tenant explicitly, while the shared API client supplies the current session API key.
+- Evidence after: focused API and catalog UI tests -> **46 passed**; `npm run build` -> TypeScript and Vite build succeeded.
+- Deviations from plan: none.
+- Open risks / follow-ups: none for Task 6.5.
