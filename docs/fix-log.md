@@ -52,6 +52,10 @@
 - Deviations: the harness constructs production-shaped `Chunk` records directly and indexes them through the production embedder, Qdrant store, BM25 index, and retriever; this isolates retrieval latency from file parsing and disk ingestion overhead. Synthetic chunk bodies are compact (about 35 words), so full-payload dense latency may be lower than for production chunks near the 350-token target.
 - Open risks / follow-ups: retrieval p95 misses the 100 ms target at 5k chunks, especially with eight concurrent requests. BM25 corpus filtering and concurrent CPU/backend capacity need evidence-backed follow-up work before optimization.
 
+## Gate 7 final verification (2026-10-13)
+- Status: **PASS**. The 50-case retrieval gate passes at hit@5 **1.000**, MRR **0.873**, and unanswerable accuracy **1.000**. The backend/eval suite passes with the Qdrant 1.11.3 service (**450 passed, 3 xfailed**); frontend tests/build pass (**294 passed**), bundle secret scan passes, route-auth enumeration passes, and Ruff/mypy/lock checks pass. The workflow was linted earlier in Task 7.5; its YAML did not change afterward. The real-LLM DeepEval job remains scheduled/manual and was not invoked without credentials.
+- Remaining Definition-of-Done item: the Task 7.6 benchmark reports single-thread total p95 **221.225 ms** and eight-concurrent total p95 **1,765.076 ms**, above the 100 ms performance target. The measured stages and likely BM25 rebuild cost are recorded in Task 7.6; this does not change the explicit Gate 7 result but must be addressed or reported as unmet in the final checklist.
+
 ## Task 7.1 Tracing and tenant metrics (2026-10-13)
 - Verified before change: tracing used an unbounded in-memory list, hard-coded one-model pricing, and request metrics omitted errors and latency. Retrieval stage timings existed but were not named spans.
 - Tests added first: bounded local trace storage, span attributes, disabled Langfuse behavior, provider usage/estimation, error accounting, and tenant metric shape. The focused tests initially failed because the planned `LocalTracer`, `LangfuseTracer`, and usage normalizer were absent.
