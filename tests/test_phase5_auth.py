@@ -159,7 +159,7 @@ def test_every_rag_and_gateway_route_is_authenticated_except_health():
     from services.rag_engine.app import app as rag_app
 
     apps_and_public_health = (
-        (rag_app, {"/health/live", "/health/ready"}),
+        (rag_app, {"/health", "/health/live", "/health/ready"}),
         (gateway_app, {"/health"}),
     )
     for app, public_health in apps_and_public_health:
