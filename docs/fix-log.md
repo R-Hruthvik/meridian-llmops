@@ -16,6 +16,12 @@
 - Deviations: no test-mode critic patch existed in the current checkout to remove.
 - Open risks / follow-ups: the manual DeepEval run remains unexecuted until a compatible judge API key is configured; Phase 7 CI remains dependent on the retrieval sufficiency gate being resolved.
 
+## Task 7.5 CI quality gates (2026-10-13)
+- Change summary: CI now has locked Ruff/mypy, backend/offline eval tests with a Qdrant 1.11.3 service round-trip, cached FastEmbed retrieval evaluation, frontend Vitest/build/secret scan, route-auth enumeration, and informational pip/npm audits. The real-model DeepEval job only runs on schedule or opted-in workflow dispatch and skips without `EVAL_LLM_API_KEY`.
+- Evidence after: actionlint and `uv lock --check` passed; Ruff/mypy passed; backend **439 passed, 1 skipped, 3 xfailed** with the live Qdrant service round-trip passing; route-auth enumeration passed; frontend **294 passed** and build/secret scan passed. Informational audits reported 12 Python and 14 npm findings.
+- Gate status: the retrieval job correctly remains red because the golden run reports unanswerable accuracy **0.500 < 0.850**; hit@5 **1.000** and MRR **0.873** pass. Real DeepEval was not invoked without credentials. Independent Luna review approved the workflow and found no CI configuration blocker.
+- Open risks / follow-ups: improve the sufficiency behavior without hiding the unanswerable threshold failure, then rerun Gate 7.
+
 ## Task 7.1 Tracing and tenant metrics (2026-10-13)
 - Verified before change: tracing used an unbounded in-memory list, hard-coded one-model pricing, and request metrics omitted errors and latency. Retrieval stage timings existed but were not named spans.
 - Tests added first: bounded local trace storage, span attributes, disabled Langfuse behavior, provider usage/estimation, error accounting, and tenant metric shape. The focused tests initially failed because the planned `LocalTracer`, `LangfuseTracer`, and usage normalizer were absent.
