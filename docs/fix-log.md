@@ -352,3 +352,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: focused component suite -> **18 passed**; full `npm run test:run` -> **266 passed**; `npm run build` -> TypeScript and Vite build succeeded.
 - Deviations from plan: none.
 - Open risks / follow-ups: none.
+
+## Task 6.3 Honest readiness and generation status (2026-10-13)
+- Verified before change: `/health/ready` already existed and drove the shell health chip, but the app shell polled every 10 seconds, Diagnostics refreshed readiness only on manual refresh, and the provider/model header fabricated OpenAI defaults before settings loaded. The actual saved-config generation test existed only inside the Settings modal.
+- Test added (failing first): shell and Diagnostics regressions for a 15-second readiness poll, and an app-shell regression for status from the saved-config generation check. Before implementation the poll test observed a second request by 10 seconds, and the shell lacked generation status.
+- Change summary: the shell and mounted Diagnostics view now poll `/health/ready` every 15 seconds and clear their intervals on unmount. The shell reports the last saved-config generation check result; provider/model details render only when returned by settings instead of using hard-coded defaults.
+- Evidence after: `npm run test:run` -> **269 passed**; `npm run build` -> TypeScript and Vite build succeeded. Existing React `act()` and deliberate lazy-import failure logs remain.
+- Deviations from plan: none.
+- Open risks / follow-ups: the generation indicator reflects the latest saved-config test performed in the current app session; it does not imply continuous provider reachability.

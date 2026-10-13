@@ -39,19 +39,23 @@ interface TopBarProps {
   tenantId: string;
   setTenantId: (tenant: string) => void;
   backendHealth: BackendHealth;
+  generationTestStatus: 'untested' | 'passed' | 'failed';
+  onGenerationTestResult: (success: boolean) => void;
   apiKey: string;
   setApiKey: (key: string) => void;
 }
 
 /**
  * The 56px top bar (§6): one line, hairline bottom, never wrapping. It carries
- * the whole global context — brand, tenant, serving provider and model, backend
- * health and the settings opener — so nothing else has to.
+ * the whole global context — brand, tenant, configured provider and model,
+ * backend health, generation test status and the settings opener.
  */
 export const TopBar: React.FC<TopBarProps> = ({
   tenantId,
   setTenantId,
   backendHealth,
+  generationTestStatus,
+  onGenerationTestResult,
   apiKey,
   setApiKey,
 }) => {
@@ -134,29 +138,26 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       <div className="shrink-0 self-stretch w-px bg-hairline" aria-hidden="true" />
 
-      {/* Active provider + model — a readout, not a second settings opener */}
-      <div
-        className="flex shrink-0 items-center gap-1.5"
-        title="Active provider and model configuration"
-      >
-        <Zap className="size-3.5 shrink-0 text-accent" aria-hidden="true" />
-        <span className="text-label font-semibold capitalize text-ink">
-          {llmSettings?.active_provider || 'OpenAI'}
-        </span>
-        <span className="text-faint" aria-hidden="true">
-          ·
-        </span>
-        <span className="num text-label font-semibold text-accent-ink">
-          {llmSettings?.default_model || 'gpt-4o-mini'}
-        </span>
-      </div>
+      {llmSettings && (llmSettings.active_provider || llmSettings.default_model) ? (
+        <div className="flex shrink-0 items-center gap-1.5" title="Configured provider and model">
+          <Zap className="size-3.5 shrink-0 text-accent" aria-hidden="true" />
+          {llmSettings.active_provider && (
+            <span className="text-label font-semibold capitalize text-ink">{llmSettings.active_provider}</span>
+          )}
+          {llmSettings.active_provider && llmSettings.default_model && <span className="text-faint" aria-hidden="true">·</span>}
+          {llmSettings.default_model && (
+            <span className="num text-label font-semibold text-accent-ink">{llmSettings.default_model}</span>
+          )}
+        </div>
+      ) : null}
 
       <div className="shrink-0 grow" aria-hidden="true" />
 
-      {/* Backend health (driven by the /health services map) */}
-      <div role="status" aria-live="polite" className="shrink-0">
-        <StatusChip variant={HEALTH_VARIANT[backendHealth]}>
-          {HEALTH_LABEL[backendHealth]}
+      {/* Backend readiness comes from /health/ready; generation status comes from Settings. */}
+      <div role="status" aria-live="polite" className="flex shrink-0 items-center gap-2">
+        <StatusChip variant={HEALTH_VARIANT[backendHealth]}>{HEALTH_LABEL[backendHealth]}</StatusChip>
+        <StatusChip variant={generationTestStatus === 'passed' ? 'ok' : generationTestStatus === 'failed' ? 'fail' : 'faint'}>
+          {generationTestStatus === 'passed' ? 'Generation test passed' : generationTestStatus === 'failed' ? 'Generation test failed' : 'Generation not tested'}
         </StatusChip>
       </div>
 
@@ -183,6 +184,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             }}
             platformApiKey={apiKey}
             onSavePlatformApiKey={setApiKey}
+            onGenerationTestResult={onGenerationTestResult}
           />
         </LazySurface>
       ) : null}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MetricsDashboard } from './MetricsDashboard';
 import { api } from '../services/api';
 
@@ -47,6 +47,24 @@ describe('MetricsDashboard', () => {
     const card = (await screen.findByText('Meridian RAG Engine (FastAPI)')).closest('[data-testid="infra-card"]');
     expect(card).toHaveTextContent('Online');
     expect(screen.queryByText(/\d+ docs/)).toBeNull();
+  });
+
+  it('refreshes public readiness every 15 seconds while Diagnostics is mounted', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<MetricsDashboard tenantId="default" />);
+      expect(api.checkHealth).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(14_999);
+      });
+      expect(api.checkHealth).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(api.checkHealth).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reports Degraded when the public readiness flag is false', async () => {

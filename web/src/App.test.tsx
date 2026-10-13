@@ -10,6 +10,7 @@ vi.mock('./services/api', () => ({
     checkHealth: vi.fn(),
     getLLMSettings: vi.fn(),
     updateLLMSettings: vi.fn(),
+    testLLMConnection: vi.fn(),
     query: vi.fn(),
     getDocuments: vi.fn(),
     getDocument: vi.fn(),
@@ -113,6 +114,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue(HEALTHY);
   (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
+    status: 'success',
+    message: 'Successfully connected to test-model via custom',
+    latency_ms: 12,
+  });
   (api.getDocuments as ReturnType<typeof vi.fn>).mockResolvedValue(emptyDocs);
   (api.getDocument as ReturnType<typeof vi.fn>).mockResolvedValue(DOC_DETAIL);
   (api.listReviewItems as ReturnType<typeof vi.fn>).mockResolvedValue([]);
@@ -138,6 +144,39 @@ const capabilityStrip = () => screen.getByRole('navigation', { name: 'Capability
 const topBar = () => screen.getByRole('banner');
 
 const chipVariant = (name: RegExp) => screen.getByText(name).closest('[data-variant]');
+
+describe('App shell service status', () => {
+  it('polls public readiness every 15 seconds', async () => {
+    vi.useFakeTimers();
+    render(<App />);
+    expect(api.checkHealth).toHaveBeenCalledTimes(1);
+
+    await React.act(async () => {
+      await vi.advanceTimersByTimeAsync(14_999);
+    });
+    expect(api.checkHealth).toHaveBeenCalledTimes(1);
+
+    await React.act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(api.checkHealth).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('shows generation status only after the saved-config generation check succeeds', async () => {
+    render(<App />);
+    expect(screen.getByText('Generation not tested')).toBeInTheDocument();
+    expect(screen.queryByText('OpenAI')).toBeNull();
+    expect(screen.queryByText('gpt-4o-mini')).toBeNull();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Open LLM engine settings' }));
+    await user.click(await screen.findByRole('button', { name: /check saved config/i }));
+
+    await waitFor(() => expect(api.testLLMConnection).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Generation test passed')).toBeInTheDocument();
+  });
+});
 
 describe('App shell: three lenses on the icon rail', () => {
   it('exposes exactly three lenses and no capability surfaces', () => {
@@ -196,8 +235,8 @@ describe('App shell: the top bar is one line', () => {
 
     expect(within(bar).getByText('Meridian')).toBeInTheDocument();
     expect(within(bar).getByLabelText('Tenant Identifier')).toBeInTheDocument();
-    expect(within(bar).getByText(/openai/i)).toBeInTheDocument();
-    expect(within(bar).getByText('gpt-4o-mini')).toBeInTheDocument();
+    expect(within(bar).queryByText(/openai/i)).toBeNull();
+    expect(within(bar).queryByText('gpt-4o-mini')).toBeNull();
     expect(within(bar).getByRole('button', { name: /open llm engine settings/i })).toBeInTheDocument();
   });
 

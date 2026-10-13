@@ -62,6 +62,7 @@ export const App: React.FC = () => {
   const [tenantId, setTenantId] = useState('default');
   const [apiKey, setApiKey] = useState(api.getApiKey());
   const [backendHealth, setBackendHealth] = useState<BackendHealth>('offline');
+  const [generationTestStatus, setGenerationTestStatus] = useState<'untested' | 'passed' | 'failed'>('untested');
 
   // Readiness is public, so the shell can report it before API-key unlock.
   useEffect(() => {
@@ -79,7 +80,7 @@ export const App: React.FC = () => {
     };
 
     check();
-    const interval = setInterval(check, 10000);
+    const interval = setInterval(check, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -208,6 +209,8 @@ export const App: React.FC = () => {
           tenantId={tenantId}
           setTenantId={setTenantId}
           backendHealth={backendHealth}
+          generationTestStatus={generationTestStatus}
+          onGenerationTestResult={(success) => setGenerationTestStatus(success ? 'passed' : 'failed')}
           apiKey={apiKey}
           setApiKey={handleSetApiKey}
         />

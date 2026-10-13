@@ -23,6 +23,7 @@ interface SettingsModalProps {
   onClose: () => void;
   platformApiKey: string;
   onSavePlatformApiKey: (key: string) => void;
+  onGenerationTestResult?: (success: boolean) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -30,6 +31,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   platformApiKey,
   onSavePlatformApiKey,
+  onGenerationTestResult,
 }) => {
   const [mounted, setMounted] = useState(false);
   const [platformKey, setPlatformKey] = useState(platformApiKey);
@@ -251,11 +253,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     try {
       const res = await api.testLLMConnection();
       const success = res.status === 'success';
+      onGenerationTestResult?.(success);
       setPingResult({
         success,
         message: withLatency(success, res.message, res.latency_ms),
       });
     } catch (err: unknown) {
+      onGenerationTestResult?.(false);
       setPingResult({
         success: false,
         message: err instanceof Error ? err.message : 'Ping failed.',

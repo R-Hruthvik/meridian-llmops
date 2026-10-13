@@ -113,12 +113,6 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
       setLoading(false);
     }
     try {
-      const h = await api.checkHealth();
-      setHealthReady(h.ready);
-    } catch {
-      setHealthReady(null);
-    }
-    try {
       setIndexStatus(await api.getIndexStatus(tenantId));
     } catch {
       setIndexStatus(null);
@@ -128,6 +122,20 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
   useEffect(() => {
     fetchMetrics();
   }, [tenantId]);
+
+  useEffect(() => {
+    const refreshHealth = async () => {
+      try {
+        const health = await api.checkHealth();
+        setHealthReady(health.ready);
+      } catch {
+        setHealthReady(null);
+      }
+    };
+    refreshHealth();
+    const interval = setInterval(refreshHealth, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Unmeasured telemetry is not a measurement of zero. `metrics` is null on
   // first paint and after a failed fetch, and the strip used to render 0 req /
