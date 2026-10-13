@@ -148,6 +148,7 @@ export const IndexStorageStudio: React.FC<IndexStorageStudioProps> = ({ tenantId
               icon={Waypoints}
               title="Vector Index"
               isFallback={status.vector.is_fallback}
+              reachable={status.backends.vector?.reachable}
               endpoint={status.backends.vector?.endpoint}
             />
             {status.vector.collections.length === 0 ? (
@@ -188,6 +189,7 @@ export const IndexStorageStudio: React.FC<IndexStorageStudioProps> = ({ tenantId
               icon={Network}
               title="Knowledge Graph"
               isFallback={status.graph.is_fallback}
+              reachable={status.backends.graph?.reachable}
               endpoint={status.backends.graph?.endpoint}
             />
             <dl className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -207,6 +209,7 @@ export const IndexStorageStudio: React.FC<IndexStorageStudioProps> = ({ tenantId
               icon={Search}
               title="Lexical Index (BM25)"
               isFallback={status.lexical.is_fallback}
+              reachable={status.backends.lexical?.reachable}
               endpoint={status.backends.lexical?.endpoint}
             />
             <dl className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -225,6 +228,7 @@ export const IndexStorageStudio: React.FC<IndexStorageStudioProps> = ({ tenantId
               icon={Database}
               title="Relational Storage"
               isFallback={status.relational.is_fallback}
+              reachable={status.backends.relational?.reachable}
               endpoint={status.backends.relational?.endpoint}
             />
             <dl className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -277,19 +281,23 @@ const SectionHeader: React.FC<{
   icon: typeof Network;
   title: string;
   isFallback: boolean;
+  reachable?: boolean;
   endpoint?: string;
-}> = ({ icon: Icon, title, isFallback, endpoint }) => (
-  <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-hairline pb-2">
-    <h3 className="label-section flex items-center gap-1.5 text-muted">
-      <Icon className="size-3.5" />
-      <span>{title}</span>
-    </h3>
-    <StatusChip variant={isFallback ? 'warn' : 'ok'}>
-      {isFallback ? 'In-process fallback' : 'Live'}
-    </StatusChip>
-    {endpoint && <span className="id-mono w-full break-all text-faint">{endpoint}</span>}
-  </div>
-);
+}> = ({ icon: Icon, title, isFallback, reachable, endpoint }) => {
+  const label = isFallback ? 'In-process fallback' : reachable === false ? 'Offline' : 'Live';
+  const variant = isFallback ? 'warn' : reachable === false ? 'fail' : 'ok';
+
+  return (
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-hairline pb-2">
+      <h3 className="label-section flex items-center gap-1.5 text-muted">
+        <Icon className="size-3.5" />
+        <span>{title}</span>
+      </h3>
+      <StatusChip variant={variant}>{label}</StatusChip>
+      {endpoint && <span className="id-mono w-full break-all text-faint">{endpoint}</span>}
+    </div>
+  );
+};
 
 const Stat: React.FC<{ label: string; value: string | null }> = ({ label, value }) => (
   <div data-slot="readout" className="border-l border-hairline pl-3 first:border-l-0 first:pl-0">

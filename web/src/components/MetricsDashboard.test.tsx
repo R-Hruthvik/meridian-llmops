@@ -85,6 +85,25 @@ describe('MetricsDashboard', () => {
     }
   });
 
+  it('refreshes index status every 15 seconds while Diagnostics is mounted', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<MetricsDashboard tenantId="default" />);
+      await act(async () => {});
+      expect(api.getIndexStatus).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(14_999);
+      });
+      expect(api.getIndexStatus).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(api.getIndexStatus).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('reports Degraded when the public readiness flag is false', async () => {
     (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue({ ready: false });
     render(<MetricsDashboard tenantId="default" />);

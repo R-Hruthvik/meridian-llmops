@@ -149,6 +149,30 @@ describe('IndexStorageStudio', () => {
     expect(banner).toHaveTextContent('Relational store unreachable, so no tables are reported: connection refused');
   });
 
+  it('marks an unreachable non-fallback vector backend red and Offline', async () => {
+    (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...LIVE,
+      backends: {
+        ...LIVE.backends,
+        vector: { ...LIVE.backends.vector, reachable: false, detail: 'Qdrant is unreachable.' },
+      },
+    });
+    render(<IndexStorageStudio tenantId="default" />);
+
+    const vector = await screen.findByRole('region', { name: /vector index/i });
+    expect(within(vector).getByText('Offline')).toHaveAttribute('data-slot', 'label');
+    expect(within(vector).getByText('Offline').closest('[data-variant="fail"]')).not.toBeNull();
+  });
+
+  it('keeps the fallback label and warning color when Qdrant falls back', async () => {
+    (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue(FALLBACKING);
+    render(<IndexStorageStudio tenantId="default" />);
+
+    const vector = await screen.findByRole('region', { name: /vector index/i });
+    expect(within(vector).getByText('In-process fallback')).toHaveAttribute('data-slot', 'label');
+    expect(within(vector).getByText('In-process fallback').closest('[data-variant="warn"]')).not.toBeNull();
+  });
+
   it('names each falling-back subsystem in the banner', async () => {
     (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue(FALLBACKING);
     render(<IndexStorageStudio tenantId="default" />);

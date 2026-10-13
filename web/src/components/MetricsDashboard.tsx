@@ -116,15 +116,23 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
     } finally {
       setLoading(false);
     }
-    try {
-      setIndexStatus(await api.getIndexStatus(tenantId));
-    } catch {
-      setIndexStatus(null);
-    }
   };
 
   useEffect(() => {
     fetchMetrics();
+  }, [tenantId]);
+
+  useEffect(() => {
+    const refreshIndexStatus = async () => {
+      try {
+        setIndexStatus(await api.getIndexStatus(tenantId));
+      } catch {
+        setIndexStatus(null);
+      }
+    };
+    refreshIndexStatus();
+    const interval = setInterval(refreshIndexStatus, 15000);
+    return () => clearInterval(interval);
   }, [tenantId]);
 
   useEffect(() => {

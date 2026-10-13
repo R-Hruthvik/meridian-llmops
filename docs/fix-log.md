@@ -432,3 +432,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: focused `npm run test:run -- src/components/MetricsDashboard.test.tsx` -> **21 passed**; `npm run build` -> TypeScript and Vite production build succeeded; full `npm run test:run` -> **285 passed**, with one teardown-time `ReferenceError: window is not defined` from the existing SettingsModal test's delayed callback after its test environment closed.
 - Deviations from plan: no live Gate 6 browser checklist was run in this follow-up; the playground component contract and production build were verified.
 - Open risks / follow-ups: full frontend suite still reports the SettingsModal delayed-callback teardown error described above. The remainder of Gate 6's manual checklist remains to be recorded.
+
+### Task 6.3 follow-up — live index status in Diagnostics (2026-10-13)
+- Verified before change: `MetricsDashboard` fetched `/v1/index/status` only during its initial/explicit metrics refresh, while only `/health/ready` had a 15-second poll. `IndexStorageStudio` derived its chip from `is_fallback` alone and rendered an unreachable non-fallback backend as Live.
+- Test added (failing first): index polling regression failed after advancing 15 seconds because the status endpoint had only been called once; unreachable-vector regression failed because the Studio displayed Live.
+- Change summary: Diagnostics now polls index status immediately and every 15 seconds, scoped to the active tenant. Index & Storage reads each backend's `reachable` value and renders an unreachable non-fallback as red Offline while retaining the existing fallback label and warning state.
+- Evidence after: focused tests -> **46 passed**; full `npm run test:run` -> **288 passed across 18 files**; `npm run build` -> TypeScript and Vite production build succeeded.
+- Deviations from plan: no live Gate 6 browser checklist was run for this code-level follow-up.
+- Open risks / follow-ups: manual Gate 6 checklist remains to be recorded.
