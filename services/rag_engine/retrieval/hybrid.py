@@ -119,7 +119,7 @@ class HybridRetriever:
         timings["dense"] = _ms(stage)
 
         stage = time.perf_counter()
-        sparse_results = self.bm25_index.search(query, top_k=pool)
+        sparse_results = self.bm25_index.search(query, top_k=pool, tenant_id=tenant_id)
         timings["bm25"] = _ms(stage)
 
         stage = time.perf_counter()

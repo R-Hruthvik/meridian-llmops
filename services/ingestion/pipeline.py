@@ -119,7 +119,7 @@ class IngestionPipeline:
             parsed, doc_id=doc_id, source=filename, source_format=source_format, tenant_id=tenant_id
         )
         try:
-            entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text)
+            entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id)
             self._index_chunks(chunks, tenant_id=tenant_id)
             document = Document(
                 id=doc_id,
@@ -191,7 +191,7 @@ class IngestionPipeline:
             tenant_id=tenant_id,
         )
         try:
-            entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text)
+            entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id)
             self._index_chunks(chunks, tenant_id=tenant_id)
             created_at = ""
             if persist:
@@ -252,7 +252,7 @@ class IngestionPipeline:
             logger.error("Rollback could not remove disk files for %s: %s", doc_id, error)
         if hasattr(self.graph_store, "delete_by_document"):
             try:
-                self.graph_store.delete_by_document(doc_id)
+                self.graph_store.delete_by_document(doc_id, tenant_id=tenant_id)
             except Exception as error:  # noqa: BLE001 - preserve the original ingestion failure
                 logger.error("Rollback could not remove graph data for %s: %s", doc_id, error)
 
@@ -298,20 +298,22 @@ class IngestionPipeline:
 
     # ------------------------------------------------------------------ manage
 
-    def get_documents(self) -> list[dict[str, Any]]:
+    def get_documents(self, tenant_id: str | None = None) -> list[dict[str, Any]]:
         """Returns document summaries from dedicated storage for UI display."""
-        return self.storage.list_documents()
+        return self.storage.list_documents(tenant_id=tenant_id)
 
-    def get_document(self, doc_id: str) -> dict[str, Any] | None:
+    def get_document(self, doc_id: str, tenant_id: str | None = None) -> dict[str, Any] | None:
         """Retrieves full document record with chunks from storage."""
-        return self.storage.get_document(doc_id)
+        return self.storage.get_document(doc_id, tenant_id=tenant_id)
 
-    def delete_document(self, doc_id: str) -> bool:
+    def delete_document(self, doc_id: str, tenant_id: str | None = None) -> bool:
         """Permanently removes a document from disk, Qdrant, and the graph."""
-        return self._delete_document(doc_id, publish_manifest=True)
+        return self._delete_document(doc_id, publish_manifest=True, tenant_id=tenant_id)
 
-    def _delete_document(self, doc_id: str, *, publish_manifest: bool) -> bool:
-        doc = self.storage.get_document(doc_id)
+    def _delete_document(
+        self, doc_id: str, *, publish_manifest: bool, tenant_id: str | None = None
+    ) -> bool:
+        doc = self.storage.get_document(doc_id, tenant_id=tenant_id)
         if doc is None:
             return False
         tenant_id = str(doc.get("tenant_id", "default"))
@@ -339,6 +341,10 @@ class IngestionPipeline:
                 "_doc_entities",
                 "_doc_relationships",
                 "_entity_names_lower",
+                "_tenant_entities",
+                "_tenant_relationships",
+                "_tenant_doc_entities",
+                "_tenant_doc_relationships",
             )
             if hasattr(self.graph_store, name)
         }
@@ -348,10 +354,10 @@ class IngestionPipeline:
                 self._publish_manifest(chunk_count=remaining_count)
             # Keep the catalog and original available if Qdrant rejects deletion.
             self.vector_store.delete_document(doc_id, tenant_id=tenant_id)
-            if not self.storage.delete_document(doc_id):
+            if not self.storage.delete_document(doc_id, tenant_id=tenant_id):
                 raise OSError(f"Disk records for {doc_id} disappeared during deletion")
             if hasattr(self.graph_store, "delete_by_document"):
-                self.graph_store.delete_by_document(doc_id)
+                self.graph_store.delete_by_document(doc_id, tenant_id=tenant_id or str(doc.get("tenant_id", "default")))
         except Exception as error:
             for path, contents in disk_snapshot:
                 try:
@@ -376,7 +382,7 @@ class IngestionPipeline:
     def clear_all(self) -> int:
         """Removes all documents, chunks, and metadata files from dedicated storage."""
         count = self.storage.clear_all()
-        self.vector_store.clear()
+        self.vector_store.clear(tenant_id=None)
         if hasattr(self.graph_store, "clear_all_graph"):
             self.graph_store.clear_all_graph()
         else:

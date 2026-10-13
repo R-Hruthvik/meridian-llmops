@@ -194,8 +194,8 @@ class QdrantChunkStore:
         except Exception as error:
             raise IndexReadError(f'Qdrant chunk read failed: {error}') from error
 
-    def clear(self, tenant_id: str = 'default') -> None:
-        """Clear the current tenant without dropping the shared collection."""
+    def clear(self, tenant_id: str | None = 'default') -> None:
+        """Clear the selected tenant, or the shared collection when tenant is None."""
         try:
             result = self.client.delete(self.collection_name, points_selector=self._filter(tenant_id), wait=True)
             self._require_completed(result)

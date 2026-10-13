@@ -138,7 +138,7 @@ class DocumentStorageManager:
                 return str(data["id"])
         return None
 
-    def list_documents(self) -> list[dict[str, Any]]:
+    def list_documents(self, tenant_id: str | None = None) -> list[dict[str, Any]]:
         """Scans storage/metadata/ and returns all stored documents sorted by creation date."""
         documents: list[dict[str, Any]] = []
 
@@ -146,14 +146,15 @@ class DocumentStorageManager:
             try:
                 with open(meta_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    documents.append(data)
+                    if tenant_id is None or data.get("tenant_id", "default") == tenant_id:
+                        documents.append(data)
             except (OSError, ValueError, KeyError) as e:
                 logger.warning("Could not read document metadata %s: %s", meta_file, e)
 
         documents.sort(key=lambda d: d.get("created_at", ""), reverse=True)
         return documents
 
-    def get_document(self, doc_id: str) -> dict[str, Any] | None:
+    def get_document(self, doc_id: str, tenant_id: str | None = None) -> dict[str, Any] | None:
         """Retrieves full document metadata, raw text, and all constituent chunks."""
         meta_file = self.meta_dir / f"{doc_id}.json"
         if not meta_file.exists():
@@ -162,6 +163,8 @@ class DocumentStorageManager:
         try:
             with open(meta_file, "r", encoding="utf-8") as f:
                 meta = json.load(f)
+            if tenant_id is not None and meta.get("tenant_id", "default") != tenant_id:
+                return None
 
             # Load chunks
             chunks_file = self.chunks_dir / f"{doc_id}.json"
@@ -276,11 +279,18 @@ class DocumentStorageManager:
         meta_file.unlink(missing_ok=True)
         chunks_file.unlink(missing_ok=True)
 
-    def delete_document(self, doc_id: str) -> bool:
+    def delete_document(self, doc_id: str, tenant_id: str | None = None) -> bool:
         """Permanently deletes a document, its raw file, chunks, and metadata from disk."""
         meta_file = self.meta_dir / f"{doc_id}.json"
         if not meta_file.exists():
             return False
+        if tenant_id is not None:
+            try:
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return False
+            if meta.get("tenant_id", "default") != tenant_id:
+                return False
         self.remove_document_files(doc_id)
         return True
 

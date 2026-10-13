@@ -130,6 +130,9 @@ def build_rag_agent_graph(
         entities: list[Entity] = []
 
         if graph_enabled:
+            tenant_id = state.get("tenant_id", "default")
+            tenant_entities = graph_store.get_entities(tenant_id=tenant_id)
+            tenant_entities_by_name = {entity.name: entity for entity in tenant_entities}
             query_words = [re.sub(r"[^\w-]", "", word).strip() for word in query.split()]
             stopwords = {
                 "the", "and", "for", "what", "which", "who", "does", "did", "is", "are", "was", "were",
@@ -143,12 +146,12 @@ def build_rag_agent_graph(
                 lowered = word.lower()
                 if len(lowered) < 3 or lowered in stopwords:
                     continue
-                entity = graph_store.get_entity_by_lowercase_name(lowered)
+                entity = graph_store.get_entity_by_lowercase_name(lowered, tenant_id=tenant_id)
                 if entity and entity.name not in seen:
                     exact_hits.append(entity)
                     seen.add(entity.name)
                 else:
-                    for entity_name, candidate in graph_store.entities.items():
+                    for entity_name, candidate in tenant_entities_by_name.items():
                         if entity_name in seen:
                             continue
                         name = entity_name.lower()
@@ -159,15 +162,15 @@ def build_rag_agent_graph(
             entities.extend(fuzzy_hits[: max(0, 12 - len(entities))])
             matched_names = {entity.name for entity in entities}
             for entity in list(entities):
-                for relation in graph_store.query_neighborhood(entity.name):
+                for relation in graph_store.query_neighborhood(entity.name, tenant_id=tenant_id):
                     for target in (relation.source_entity, relation.target_entity):
                         if target and target not in matched_names:
                             matched_names.add(target)
-                            graph_entity = graph_store.entities.get(target)
+                            graph_entity = tenant_entities_by_name.get(target)
                             if graph_entity:
                                 entities.append(graph_entity)
-            if not entities and graph_store.entities:
-                entities = list(graph_store.entities.values())[:10]
+            if not entities and tenant_entities:
+                entities = tenant_entities[:10]
 
         timings = dict(state.get("timings_ms") or {})
         timings["retrieve"] = timings.get("retrieve", 0.0) + result.timings_ms.get(

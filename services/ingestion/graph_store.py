@@ -20,6 +20,10 @@ class KnowledgeGraphStore:
         # doc_id -> set(entity names) and doc_id -> relationships for targeted cleanup
         self._doc_entities: dict[str, set[str]] = {}
         self._doc_relationships: dict[str, list[Relationship]] = {}
+        self._tenant_entities: dict[str, dict[str, Entity]] = {}
+        self._tenant_relationships: dict[str, list[Relationship]] = {}
+        self._tenant_doc_entities: dict[tuple[str, str], set[str]] = {}
+        self._tenant_doc_relationships: dict[tuple[str, str], list[Relationship]] = {}
         self.driver: object | None = None
         self._neo4j_available: bool = False
         self._neo4j_fallback: bool = False
@@ -119,12 +123,24 @@ class KnowledgeGraphStore:
 
         return list(found_entities.values()), relationships
 
-    def extract_and_store(self, doc_id: str, text: str) -> tuple[list[Entity], list[Relationship]]:
+    def extract_and_store(
+        self, doc_id: str, text: str, tenant_id: str = "default"
+    ) -> tuple[list[Entity], list[Relationship]]:
         entities, relations = self.extract_entities_and_relations(text)
+        tenant_entities = self._tenant_entities.setdefault(tenant_id, {})
+        tenant_relationships = self._tenant_relationships.setdefault(tenant_id, [])
         for e in entities:
+            tenant_entities[e.name] = e
             self.entities[e.name] = e
-        self.relationships.extend(relations)
+        tenant_relationships.extend(relations)
+        self.relationships = [
+            relation
+            for tenant_relations in self._tenant_relationships.values()
+            for relation in tenant_relations
+        ]
         # Track per-document lineage for precise deletion (hint: doc_id→chunk_ids index)
+        self._tenant_doc_entities[(tenant_id, doc_id)] = {e.name for e in entities}
+        self._tenant_doc_relationships[(tenant_id, doc_id)] = list(relations)
         self._doc_entities[doc_id] = {e.name for e in entities}
         self._doc_relationships[doc_id] = list(relations)
 
@@ -136,11 +152,14 @@ class KnowledgeGraphStore:
                         session.run(  # type: ignore[attr-defined]
                             """
                             UNWIND $entities AS ent
-                            MERGE (e:Entity {name: ent.name})
-                            ON CREATE SET e.type = ent.entity_type, e.created_at = datetime(), e.doc_id = ent.doc_id
+                            MERGE (e:Entity {name: ent.name, tenant_id: ent.tenant_id})
+                            ON CREATE SET e.type = ent.entity_type, e.created_at = datetime(), e.doc_ids = []
+                            SET e.doc_ids = CASE WHEN ent.doc_id IN e.doc_ids THEN e.doc_ids
+                                ELSE e.doc_ids + ent.doc_id END
                             """,
                             entities=[
-                                {"name": e.name, "entity_type": e.entity_type, "doc_id": doc_id}
+                                {"name": e.name, "entity_type": e.entity_type, "doc_id": doc_id,
+                                 "tenant_id": tenant_id}
                                 for e in entities
                             ],
                         )
@@ -148,10 +167,11 @@ class KnowledgeGraphStore:
                         session.run(  # type: ignore[attr-defined]
                             """
                             UNWIND $relations AS rel
-                            MATCH (s:Entity {name: rel.source})
-                            MATCH (t:Entity {name: rel.target})
-                            MERGE (s)-[r:RELATION {type: rel.rel_type}]->(t)
-                            ON CREATE SET r.created_at = datetime(), r.doc_id = rel.doc_id
+                            MATCH (s:Entity {name: rel.source, tenant_id: rel.tenant_id})
+                            MATCH (t:Entity {name: rel.target, tenant_id: rel.tenant_id})
+                            MERGE (s)-[r:RELATION {type: rel.rel_type, doc_id: rel.doc_id,
+                                                   tenant_id: rel.tenant_id}]->(t)
+                            ON CREATE SET r.created_at = datetime()
                             """,
                             relations=[
                                 {
@@ -159,6 +179,7 @@ class KnowledgeGraphStore:
                                     "target": r.target_entity,
                                     "rel_type": r.relation_type,
                                     "doc_id": doc_id,
+                                    "tenant_id": tenant_id,
                                 }
                                 for r in relations
                             ],
@@ -169,34 +190,59 @@ class KnowledgeGraphStore:
         self._build_entity_index()
         return entities, relations
 
-    def delete_by_document(self, doc_id: str) -> int:
+    def delete_by_document(self, doc_id: str, tenant_id: str = "default") -> int:
         """Removes entities and relationships tied to doc_id; handles Neo4j persistence if present."""
         removed = 0
-        doc_ents = self._doc_entities.pop(doc_id, set())
-        doc_rels = self._doc_relationships.pop(doc_id, [])
+        key = (tenant_id, doc_id)
+        doc_ents = self._tenant_doc_entities.pop(key, set())
+        doc_rels = self._tenant_doc_relationships.pop(key, [])
+        tenant_rels = self._tenant_relationships.get(tenant_id, [])
         # Remove relationships first
         for rel in doc_rels:
-            if rel in self.relationships:
-                self.relationships.remove(rel)
+            if rel in tenant_rels:
+                tenant_rels.remove(rel)
                 removed += 1
         # Remove entities only if no other doc references them
         remaining_ents = set()
-        for ents in self._doc_entities.values():
-            remaining_ents.update(ents)
+        for (owner_tenant, _), ents in self._tenant_doc_entities.items():
+            if owner_tenant == tenant_id:
+                remaining_ents.update(ents)
+        tenant_entities = self._tenant_entities.get(tenant_id, {})
         for name in list(doc_ents):
-            if name not in remaining_ents and name in self.entities:
-                del self.entities[name]
-                self._entity_names_lower.pop(name.lower(), None)
+            if name not in remaining_ents and name in tenant_entities:
+                del tenant_entities[name]
                 removed += 1
+        self._doc_entities.pop(doc_id, None)
+        self._doc_relationships.pop(doc_id, None)
+        self.entities = {
+            name: entity
+            for tenant_entities in self._tenant_entities.values()
+            for name, entity in tenant_entities.items()
+        }
+        self.relationships = [
+            relation
+            for tenant_relations in self._tenant_relationships.values()
+            for relation in tenant_relations
+        ]
         self._build_entity_index()
         # If Neo4j client exists (non in_memory), delete via Cypher
         if self._neo4j_available and self.driver is not None:
             try:
                 with self.driver.session() as session:  # type: ignore[attr-defined]
-                    session.run("MATCH (n {doc_id: $doc_id}) DETACH DELETE n", doc_id=doc_id)  # type: ignore[attr-defined]
                     session.run(  # type: ignore[attr-defined]
-                        "MATCH ()-[r {doc_id: $doc_id}]-() DELETE r",
-                        doc_id=doc_id,
+                        "MATCH ()-[r {doc_id: $doc_id, tenant_id: $tenant_id}]-() DELETE r",
+                        doc_id=doc_id, tenant_id=tenant_id,
+                    )
+                    session.run(  # type: ignore[attr-defined]
+                        "MATCH (e:Entity {tenant_id: $tenant_id}) "
+                        "WHERE $doc_id IN coalesce(e.doc_ids, []) "
+                        "SET e.doc_ids = [id IN e.doc_ids WHERE id <> $doc_id]",
+                        doc_id=doc_id, tenant_id=tenant_id,
+                    )
+                    session.run(  # type: ignore[attr-defined]
+                        "MATCH (e:Entity {tenant_id: $tenant_id}) "
+                        "WHERE size(coalesce(e.doc_ids, [])) = 0 DETACH DELETE e",
+                        tenant_id=tenant_id,
                     )
             except Exception as e:  # noqa: BLE001 - Neo4j driver may raise varied exceptions
                 logger.warning("Neo4j delete_by_document failed for %s: %s", doc_id, e)
@@ -208,6 +254,10 @@ class KnowledgeGraphStore:
         self.relationships.clear()
         self._doc_entities.clear()
         self._doc_relationships.clear()
+        self._tenant_entities.clear()
+        self._tenant_relationships.clear()
+        self._tenant_doc_entities.clear()
+        self._tenant_doc_relationships.clear()
         if self._neo4j_available and self.driver is not None:
             try:
                 with self.driver.session() as session:  # type: ignore[attr-defined]
@@ -215,13 +265,16 @@ class KnowledgeGraphStore:
             except Exception as e:  # noqa: BLE001 - Neo4j driver may raise varied exceptions
                 logger.warning("Neo4j clear_all failed: %s", e)
 
-    def query_entity_neighborhood(self, entity_name: str) -> list[Relationship]:
+    def query_entity_neighborhood(
+        self, entity_name: str, tenant_id: str = "default"
+    ) -> list[Relationship]:
         if self._neo4j_available and self.driver is not None:
             try:
                 with self.driver.session() as session:  # type: ignore[attr-defined]
                     result = session.run(  # type: ignore[attr-defined]
-                        "MATCH (e:Entity {name: $entity_name})-[r]-(neighbor:Entity) RETURN e.name AS source_entity, type(r) AS relation_type, neighbor.name AS target_entity LIMIT 50",
-                        entity_name=entity_name,
+                        "MATCH (e:Entity {name: $entity_name, tenant_id: $tenant_id})-[r]-(neighbor:Entity {tenant_id: $tenant_id}) "
+                        "RETURN e.name AS source_entity, type(r) AS relation_type, neighbor.name AS target_entity LIMIT 50",
+                        entity_name=entity_name, tenant_id=tenant_id,
                     )
                     records = list(result)  # type: ignore[arg-type]
                     if records:
@@ -241,23 +294,30 @@ class KnowledgeGraphStore:
                 logger.warning("Neo4j query_neighborhood failed for %s: %s", entity_name, e)
 
         return [
-            r for r in self.relationships
+            r for r in self._tenant_relationships.get(tenant_id, [])
             if r.source_entity.lower() == entity_name.lower() or r.target_entity.lower() == entity_name.lower()
         ]
 
-    def query_neighborhood(self, entity_name: str) -> list[Relationship]:
-        return self.query_entity_neighborhood(entity_name)
+    def query_neighborhood(self, entity_name: str, tenant_id: str = "default") -> list[Relationship]:
+        return self.query_entity_neighborhood(entity_name, tenant_id=tenant_id)
 
     def _build_entity_index(self) -> None:
         self._entity_names_lower.clear()
         for name in self.entities:
             self._entity_names_lower[name.lower()] = name
 
-    def get_entity_by_lowercase_name(self, name_lower: str) -> Entity | None:
-        original_name = self._entity_names_lower.get(name_lower)
+    def get_entity_by_lowercase_name(
+        self, name_lower: str, tenant_id: str = "default"
+    ) -> Entity | None:
+        entities = self._tenant_entities.get(tenant_id, {})
+        original_name = next((name for name in entities if name.lower() == name_lower), None)
         if original_name:
-            return self.entities.get(original_name)
+            return entities.get(original_name)
         return None
+
+    def get_entities(self, tenant_id: str = "default") -> list[Entity]:
+        """Returns only entities owned by the requested tenant."""
+        return list(self._tenant_entities.get(tenant_id, {}).values())
 
     @property
     def is_fallback(self) -> bool:

@@ -687,8 +687,8 @@ async def health_check(tenant_id: str = Depends(require_user)):
         "status": "healthy",
         "service": "meridian-rag-engine",
         # Live count, same source as /v1/documents - a boot-time snapshot went stale on ingest.
-        "storage_documents": len(ingestion_pipeline.get_documents()),
-        "vector_chunks": len(vector_store.get_all_chunks()),
+        "storage_documents": len(ingestion_pipeline.get_documents(tenant_id=tenant_id)),
+        "vector_chunks": vector_store.count(tenant_id=tenant_id),
         "services": _service_status,
     }
 
@@ -859,7 +859,7 @@ async def get_metrics(tenant_id: str = Depends(require_admin)):
 
 
 @app.get("/v1/index/status", response_model=IndexStatusResponse)
-async def get_index_status(tenant_id: str = Depends(require_user)):
+async def get_index_status(tenant_id: str = Depends(require_admin)):
     """Inspects the live index and storage state behind every subsystem.
 
     Always answers 200 (given valid auth) - a down backend is reported as a
@@ -1111,9 +1111,9 @@ async def seed_sample_documents_endpoint(tenant_id: str = Depends(require_admin)
     return {"status": "seeded", "documents_seeded": count}
 
 
-def _get_document_list_response() -> dict[str, Any]:
+def _get_document_list_response(tenant_id: str) -> dict[str, Any]:
     """Builds the shared document catalog response dict."""
-    docs = ingestion_pipeline.get_documents()
+    docs = ingestion_pipeline.get_documents(tenant_id=tenant_id)
     total_chunks = sum(d.get("chunk_count", 0) for d in docs)
     total_entities = sum(d.get("entities_count", 0) for d in docs)
     return {
@@ -1127,7 +1127,7 @@ def _get_document_list_response() -> dict[str, Any]:
 @app.get("/v1/documents")
 async def list_documents_endpoint(tenant_id: str = Depends(require_user)):
     """Lists all stored documents in the permanent knowledge base catalog."""
-    return _get_document_list_response()
+    return _get_document_list_response(tenant_id)
 
 
 @app.get("/v1/documents/catalog")
@@ -1137,7 +1137,7 @@ async def catalog_alias_endpoint(tenant_id: str = Depends(require_user)):
     .. deprecated::
         Use :get:`/v1/documents` instead.
     """
-    response = _get_document_list_response()
+    response = _get_document_list_response(tenant_id)
     response["Deprecation"] = "true"
     response["Sunset"] = "2027-01-01"
     return response
@@ -1151,7 +1151,7 @@ async def get_document_chunks_endpoint(
     tenant_id: str = Depends(require_user),
 ):
     """Returns a page of structural chunks for a document with headings and pages."""
-    doc = ingestion_pipeline.get_document(doc_id)
+    doc = ingestion_pipeline.get_document(doc_id, tenant_id=tenant_id)
     if not doc:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
     chunks = doc.get("chunks", [])
@@ -1168,7 +1168,7 @@ async def get_document_chunks_endpoint(
 @app.get("/v1/documents/{doc_id}")
 async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(require_user)):
     """Retrieves full document metadata and its constituent chunks."""
-    doc = ingestion_pipeline.get_document(doc_id)
+    doc = ingestion_pipeline.get_document(doc_id, tenant_id=tenant_id)
     if not doc:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
     return doc
@@ -1177,7 +1177,7 @@ async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(re
 @app.delete("/v1/documents/{doc_id}")
 async def delete_document_endpoint(doc_id: str, tenant_id: str = Depends(require_user)):
     """Deletes a document and its chunks from vector and graph stores."""
-    deleted = ingestion_pipeline.delete_document(doc_id)
+    deleted = ingestion_pipeline.delete_document(doc_id, tenant_id=tenant_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
     retriever.update_chunks(vector_store.get_all_chunks(None))

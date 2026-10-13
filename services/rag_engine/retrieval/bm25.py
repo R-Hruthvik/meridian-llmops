@@ -76,7 +76,9 @@ class BM25Index:
         # Rebuild BM25Okapi with updated corpus
         self.bm25 = BM25Okapi(self._corpus) if self._corpus else None
 
-    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+    def search(
+        self, query: str, top_k: int = 5, tenant_id: str | None = None
+    ) -> list[SearchResult]:
         if not self.bm25 or not self.chunks:
             return []
 
@@ -84,8 +86,25 @@ class BM25Index:
         if not query_tokens:
             return []
 
-        doc_scores = self.bm25.get_scores(query_tokens)
-        scored_indices = sorted(enumerate(doc_scores), key=lambda x: x[1], reverse=True)
+        if tenant_id is None:
+            candidates = list(enumerate(self._corpus))
+            index = self.bm25
+        else:
+            candidates = [
+                (position, tokens)
+                for position, (chunk, tokens) in enumerate(zip(self.chunks, self._corpus, strict=True))
+                if str(chunk.metadata.get("tenant_id", "default")) == tenant_id
+            ]
+            if not candidates:
+                return []
+            index = BM25Okapi([tokens for _, tokens in candidates])
+
+        doc_scores = index.get_scores(query_tokens)
+        scored_indices = sorted(
+            ((candidates[position][0], score) for position, score in enumerate(doc_scores)),
+            key=lambda x: x[1],
+            reverse=True,
+        )
 
         results: list[SearchResult] = []
         for idx, score in scored_indices[:top_k]:
