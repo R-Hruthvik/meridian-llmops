@@ -5,7 +5,7 @@ import pytest
 from packages.core.errors import ProviderError
 from packages.core.models import Chunk
 from services.ingestion.graph_store import KnowledgeGraphStore
-from services.rag_engine.agent.graph import build_rag_agent_graph
+from services.rag_engine.agent.graph import _format_graph_facts, build_rag_agent_graph
 from services.rag_engine.retrieval.hybrid import HybridRetriever, RankedChunk, RetrievalResult
 from services.rag_engine.verification import VerificationResult
 from tests.fakes import FakeEmbedder, FakeLLM, make_vector_store
@@ -375,6 +375,26 @@ async def test_graph_context_is_opt_in_and_carries_retrieved_chunk_ids(graph_ena
 
     user_prompt = client.calls[0]["messages"][1]["content"]
     expected = graph_enabled and context_enabled
-    assert ("Experimental graph context" in user_prompt) is expected
+    assert ("Graph facts:" in user_prompt) is expected
     if expected:
         assert "c-graph" in user_prompt
+
+
+def test_graph_fact_prompt_is_limited_to_five_grounded_edges():
+    graph_context = [
+        {
+            "source_entity": f"Source {index}",
+            "relation_type": "RELATES_TO",
+            "target_entity": f"Target {index}",
+            "chunk_ids": ["c-1"],
+        }
+        for index in range(8)
+    ]
+
+    prompt_section = _format_graph_facts(graph_context, [{"chunk_id": "c-1"}])
+
+    assert prompt_section.startswith("\n\nGraph facts:")
+    assert prompt_section.count("\n- ") == 5
+    assert "Source 4" in prompt_section
+    assert "Source 5" not in prompt_section
+    assert "source chunk IDs: c-1" in prompt_section

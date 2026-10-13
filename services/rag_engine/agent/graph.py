@@ -33,6 +33,7 @@ logger = logging.getLogger("meridian.rag_engine.agent")
 DEFAULT_TOP_K = 5
 MIN_TOP_K = 1
 MAX_TOP_K = 20
+MAX_GRAPH_FACTS = 5
 _REFORMULATE_PROMPT = (
     "Rewrite the source question as one standalone, keyword-rich search query. Preserve proper nouns, "
     "numbers, product names, and error codes exactly. Add 2–4 likely topic keywords without changing "
@@ -74,6 +75,36 @@ def _to_search_result(ranked: RankedChunk) -> SearchResult:
 
 def _result_dict(source: SearchResult | Mapping[str, Any]) -> dict[str, Any]:
     return source.model_dump() if isinstance(source, SearchResult) else dict(source)
+
+
+def _format_graph_facts(
+    graph_context: list[dict[str, Any]], selected_chunks: list[dict[str, Any]]
+) -> str:
+    selected_ids = {str(chunk.get("chunk_id", "")) for chunk in selected_chunks}
+    citations_by_chunk = {
+        str(chunk.get("chunk_id", "")): index
+        for index, chunk in enumerate(selected_chunks, start=1)
+    }
+    lines = []
+    for edge in graph_context:
+        chunk_ids = [chunk_id for chunk_id in edge["chunk_ids"] if chunk_id in selected_ids]
+        if not chunk_ids:
+            continue
+        citations = sorted({citations_by_chunk[chunk_id] for chunk_id in chunk_ids})
+        citation_markers = "".join(f"[{index}]" for index in citations)
+        lines.append(
+            f"- {edge['source_entity']} -[{edge['relation_type']}]-> {edge['target_entity']} "
+            f"(source chunk IDs: {', '.join(chunk_ids)}; cite: {citation_markers})"
+        )
+        if len(lines) == MAX_GRAPH_FACTS:
+            break
+    if not lines:
+        return ""
+    return (
+        "\n\nGraph facts:\n"
+        "Use each relation only when supported by its listed source chunks; cite the matching numbered source.\n"
+        + "\n".join(lines)
+    )
 
 
 def _active_llm_config(getter: Callable[[], Mapping[str, Any]] | None) -> dict[str, Any]:
@@ -240,27 +271,9 @@ def build_rag_agent_graph(
             }
 
         if graph_context_enabled and state.get("graph_context"):
-            selected_ids = {str(chunk.get("chunk_id", "")) for chunk in selected_chunks}
-            citations_by_chunk = {
-                str(chunk.get("chunk_id", "")): index
-                for index, chunk in enumerate(selected_chunks, start=1)
-            }
-            lines = []
-            for edge in state["graph_context"]:
-                chunk_ids = [chunk_id for chunk_id in edge["chunk_ids"] if chunk_id in selected_ids]
-                if not chunk_ids:
-                    continue
-                citations = sorted({citations_by_chunk[chunk_id] for chunk_id in chunk_ids})
-                citation_markers = "".join(f"[{index}]" for index in citations)
-                lines.append(
-                    f"- {edge['source_entity']} -[{edge['relation_type']}]-> {edge['target_entity']} "
-                    f"(source chunk IDs: {', '.join(chunk_ids)}; cite: {citation_markers})"
-                )
-            if lines:
-                prompt.messages[1]["content"] += (
-                    "\n\nExperimental graph context. Treat each link as supported only by its listed source chunks; "
-                    "cite the matching numbered source for every factual claim.\n" + "\n".join(lines)
-                )
+            prompt.messages[1]["content"] += _format_graph_facts(
+                state["graph_context"], selected_chunks
+            )
 
         cfg = _active_llm_config(llm_config_getter)
         provider = cfg.get("provider", "openai")
