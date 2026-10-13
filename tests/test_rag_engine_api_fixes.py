@@ -83,7 +83,7 @@ def test_health_storage_documents_matches_document_catalog_after_ingest(client):
     health_count = client.get("/health", headers=HEADERS).json()["storage_documents"]
     catalog_count = client.get("/v1/documents", headers=HEADERS).json()["total_documents"]
 
-    assert health_count == catalog_count == len(ingestion_pipeline.get_documents())
+    assert health_count == catalog_count == len(ingestion_pipeline.get_documents(tenant_id="default"))
     assert health_count == before + 1
 
 

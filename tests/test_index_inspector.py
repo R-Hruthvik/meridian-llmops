@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from packages.core.models import Base, ORMDocument
 from services.rag_engine.index_inspector import build_index_status
 
-HEADERS = {"X-API-Key": "meridian-test-secret-key-2026"}
+HEADERS = {"X-API-Key": "meridian-test-admin-key-2026"}
 
 
 class _DeadStore:
