@@ -12,7 +12,7 @@ from collections import defaultdict, deque
 from contextlib import AbstractContextManager
 from contextvars import ContextVar, Token
 from pathlib import Path
-from typing import Any, Protocol, Self
+from typing import Any, Literal, Protocol, Self, cast
 
 from services.ingestion.chunker import count_tokens
 
@@ -42,7 +42,7 @@ class Span:
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> bool:
+    def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
         self.duration_ms = (time.perf_counter() - self.start_time) * 1000
         if exc is not None:
             self.error = type(exc).__name__
@@ -70,18 +70,23 @@ def normalize_usage(
     response: dict[str, Any], prompt: str, completion: str, model: str | None
 ) -> dict[str, Any]:
     """Normalize provider usage and estimate absent counts with the chunk token counter."""
-    usage = response.get("usage") if isinstance(response.get("usage"), dict) else {}
-    prompt_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
-    completion_tokens = usage.get("completion_tokens", usage.get("output_tokens"))
-    estimated = not (
-        isinstance(prompt_tokens, int)
-        and not isinstance(prompt_tokens, bool)
-        and isinstance(completion_tokens, int)
-        and not isinstance(completion_tokens, bool)
+    raw_usage = response.get("usage")
+    usage = raw_usage if isinstance(raw_usage, dict) else {}
+    raw_prompt_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
+    raw_completion_tokens = usage.get("completion_tokens", usage.get("output_tokens"))
+    has_provider_usage = (
+        isinstance(raw_prompt_tokens, int)
+        and not isinstance(raw_prompt_tokens, bool)
+        and isinstance(raw_completion_tokens, int)
+        and not isinstance(raw_completion_tokens, bool)
     )
-    if estimated:
+    if has_provider_usage:
+        prompt_tokens = cast(int, raw_prompt_tokens)
+        completion_tokens = cast(int, raw_completion_tokens)
+    else:
         prompt_tokens = count_tokens(prompt)
         completion_tokens = count_tokens(completion)
+    estimated = not has_provider_usage
     price = _pricing().get(str(model)) if model else None
     cost = None
     if isinstance(price, dict):
@@ -169,7 +174,7 @@ class _TraceContext:
         self._context_token = _active_trace.set(self)
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> bool:
+    def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
         latency = (time.perf_counter() - self.start_time) * 1000
         generations = [generation.to_dict() for generation in self.generations]
         data = {
@@ -232,9 +237,14 @@ class LocalTracer:
         return self._standalone_span(name, attrs, generation=False)
 
     def generation(self, name: str, **attrs: Any) -> AbstractContextManager[GenerationSpan]:
-        return self._standalone_span(name, attrs, generation=True)
+        return cast(
+            AbstractContextManager[GenerationSpan],
+            self._standalone_span(name, attrs, generation=True),
+        )
 
-    def _standalone_span(self, name: str, attrs: dict[str, Any], generation: bool):
+    def _standalone_span(
+        self, name: str, attrs: dict[str, Any], generation: bool
+    ) -> AbstractContextManager[Span]:
         span = GenerationSpan(name, attrs) if generation else Span(name, attrs)
         trace = _active_trace.get()
         if trace is not None and trace.tracer is self:
@@ -316,31 +326,31 @@ class LocalTracer:
         }
 
 
-class _RecordingContext(AbstractContextManager):
+class _RecordingContext(AbstractContextManager[Span]):
     def __init__(self, tracer: LocalTracer, span: Span, tenant_id: str):
         self.tracer = tracer
         self.span = span
         self.tenant_id = tenant_id
 
-    def __enter__(self):
+    def __enter__(self) -> Span:
         return self.span.__enter__()
 
-    def __exit__(self, exc_type, exc, traceback):
+    def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
         result = self.span.__exit__(exc_type, exc, traceback)
         self.tracer._record_standalone(self.span, self.tenant_id)
         return result
 
 
-class _AttachedContext(AbstractContextManager):
+class _AttachedContext(AbstractContextManager[Span]):
     def __init__(self, trace: _TraceContext, span: Span, generation: bool):
         self.trace = trace
         self.span = span
         self.generation = generation
 
-    def __enter__(self):
+    def __enter__(self) -> Span:
         return self.span.__enter__()
 
-    def __exit__(self, exc_type, exc, traceback):
+    def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
         result = self.span.__exit__(exc_type, exc, traceback)
         target = self.trace.generations if self.generation else self.trace.spans
         target.append(self.span)  # type: ignore[arg-type]
