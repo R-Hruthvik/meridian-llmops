@@ -74,7 +74,9 @@ Meridian unifies a multi-layer enterprise AI architecture into a single modular 
 │   └── rag_engine/               # Cyclic LangGraph agent, hybrid retrieval, reranker & Langfuse
 ├── evals/
 │   ├── golden_dataset.json       # 50 validated answerable and unanswerable cases
-│   └── test_deepeval_ci.py       # Golden dataset API behavior checks
+│   ├── eval_retrieval.py         # Golden-set retrieval metrics and thresholds
+│   ├── eval_generation.py        # Optional real-model DeepEval quality run
+│   └── test_generation_ci.py    # Offline FakeLLM generation contract tests
 ├── tests/                        # Full unit and integration test suite
 ├── docs/                         # ADRs (0001-0013), Spec, and Domain Glossary (CONTEXT.md)
 ├── docker-compose.yml            # Multi-container orchestration (Qdrant, Neo4j, LiteLLM, Langfuse)
@@ -139,10 +141,16 @@ unknown (`null`) cost.
 
 ## 🧪 Testing & CI/CD Quality Gates
 
-Run all unit tests, integration tests, and DeepEval Golden Dataset regression gates:
+Run the offline unit, integration, and FakeLLM generation checks:
 
 ```bash
 pytest tests/ evals/ -v
+```
+
+Run the optional real-model quality evaluation manually with `EVAL_LLM_API_KEY`. Generation uses `EVAL_LLM_PROVIDER`, `EVAL_LLM_MODEL`, and `EVAL_LLM_BASE_URL`; the DeepEval judge uses an OpenAI-compatible endpoint configured by `EVAL_JUDGE_MODEL` and `EVAL_JUDGE_BASE_URL`. The run writes a dated report under `evals/reports/` and does not run in CI by default.
+
+```bash
+EVAL_LLM_API_KEY=<provider-key> uv run python evals/eval_generation.py
 ```
 
 Run linter and strict typechecking:

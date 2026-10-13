@@ -9,6 +9,13 @@
 - Deviations from plan: none.
 - Open risks / follow-ups: the end-to-end CLI requires the configured embedding model and local vector dependencies; it remains intentionally unrun pending the planned benchmark.
 
+## Task 7.4 Generation evaluation (2026-10-13)
+- Verified before change: the prior evaluation test expected obsolete `type`/`query` fields and failed during setup with HTTP 401; there was no current FakeLLM CI contract test or real DeepEval runner.
+- Change summary: replaced the stale test with offline FakeLLM checks for schema, citations, answered/insufficient statuses, and the evaluator's own row/context path, including zero provider calls on insufficient context. The optional runner imports and uses FaithfulnessMetric, AnswerRelevancyMetric, and ContextualRecallMetric, gates average faithfulness at 0.85, and writes dated JSON reports. Generator and OpenAI-compatible judge have separate model/base-URL settings; the same `EVAL_LLM_API_KEY` is used for both. Scoring context matches the prompt-selected chunks.
+- Evidence after: `uv run pytest evals/ tests/test_eval_retrieval.py tests/test_validate_golden.py -q` -> **13 passed**; scoped Ruff -> **passed**; evaluator `--help` -> passed. Independent Luna review approved the configuration and offline path. No external generation or judge requests were made.
+- Deviations: no test-mode critic patch existed in the current checkout to remove.
+- Open risks / follow-ups: the manual DeepEval run remains unexecuted until a compatible judge API key is configured; Phase 7 CI remains dependent on the retrieval sufficiency gate being resolved.
+
 ## Task 7.1 Tracing and tenant metrics (2026-10-13)
 - Verified before change: tracing used an unbounded in-memory list, hard-coded one-model pricing, and request metrics omitted errors and latency. Retrieval stage timings existed but were not named spans.
 - Tests added first: bounded local trace storage, span attributes, disabled Langfuse behavior, provider usage/estimation, error accounting, and tenant metric shape. The focused tests initially failed because the planned `LocalTracer`, `LangfuseTracer`, and usage normalizer were absent.
