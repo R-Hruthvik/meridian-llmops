@@ -31,6 +31,8 @@ def app_test_embedder(monkeypatch):
     """API unit tests inject a cheap embedder rather than downloading model weights."""
     auth._rate_limits.clear()
     app_module = sys.modules.get('services.rag_engine.app')
+    if app_module is None:
+        from services.rag_engine import app as app_module
     if app_module is not None:
         embedder = FakeEmbedder(app_module.vector_store.dim)
         llm = FakeLLM()
