@@ -363,7 +363,6 @@ class LangfuseTracer(LocalTracer):
         public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
         secret_key = os.getenv("LANGFUSE_SECRET_KEY")
         self.enabled = (setting_enabled if enabled is None else enabled) and bool(public_key and secret_key)
-        self.exported: list[dict[str, Any]] = []
         self._client = None
         if self.enabled:
             try:
@@ -382,7 +381,6 @@ class LangfuseTracer(LocalTracer):
         super()._record_trace(data)
         if not self.enabled or self._client is None:
             return
-        self.exported.append(data)
         try:
             with self._client.start_as_current_observation(
                 as_type="span", name=data["name"], metadata={"tenant_id": data["tenant_id"]}

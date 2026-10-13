@@ -1,5 +1,7 @@
 """TDD Tests for Observability, OpenTelemetry Tracing, and Cost Economics."""
 
+from contextlib import contextmanager
+
 from services.rag_engine.observability.langfuse_client import (
     LangfuseTracer,
     LocalTracer,
@@ -7,6 +9,40 @@ from services.rag_engine.observability.langfuse_client import (
     Span,
     normalize_usage,
 )
+
+
+class _FakeObservation:
+    def update(self, **_kwargs):
+        pass
+
+    def end(self):
+        pass
+
+
+class _FakeLangfuseClient:
+    def __init__(self):
+        self.observations = []
+        self._parents = []
+
+    @contextmanager
+    def start_as_current_observation(self, *, as_type, name, **_kwargs):
+        parent = self._parents[-1] if self._parents else None
+        self.observations.append((name, parent, as_type))
+        self._parents.append(name)
+        try:
+            yield _FakeObservation()
+        finally:
+            self._parents.pop()
+
+    def start_observation(self, *, as_type, name, **_kwargs):
+        parent = self._parents[-1] if self._parents else None
+        self.observations.append((name, parent, as_type))
+        return _FakeObservation()
+
+
+class _FailingLangfuseClient:
+    def start_as_current_observation(self, **_kwargs):
+        raise RuntimeError("export unavailable")
 
 
 def test_tracer_span_creation_and_latency():
@@ -81,7 +117,7 @@ def test_tracer_span_accepts_attributes_as_context_manager():
 def test_standalone_spans_and_generations_join_active_request_trace():
     tracer = LangfuseTracer(enabled=False)
     tracer.enabled = True
-    tracer._client = object()
+    tracer._client = _FakeLangfuseClient()
     with tracer.trace("rag-query-pipeline", tenant_id="tenant-a", query="Where is the office?"):
         with tracer.span("dense_search", tenant_id="tenant-a") as span:
             span.set_attribute("result_count", 2)
@@ -94,7 +130,24 @@ def test_standalone_spans_and_generations_join_active_request_trace():
     assert [item["name"] for item in trace["spans"]] == ["dense_search"]
     assert [item["name"] for item in trace["generations"]] == ["generate"]
     assert trace["total_tokens"] == 6
-    assert tracer.exported == [trace]
+    assert tracer._client.observations == [
+        ("rag-query-pipeline", None, "span"),
+        ("dense_search", "rag-query-pipeline", "span"),
+        ("generate", "rag-query-pipeline", "generation"),
+    ]
+    assert all("Where is the office?" not in repr(item) for item in tracer._client.observations)
+
+
+def test_langfuse_export_failure_keeps_local_metrics():
+    tracer = LangfuseTracer(enabled=False)
+    tracer.enabled = True
+    tracer._client = _FailingLangfuseClient()
+    with tracer.trace("rag-query-pipeline", tenant_id="tenant-a", query="private query"):
+        pass
+
+    metrics = tracer.get_tenant_metrics("tenant-a")
+    assert metrics["request_count"] == 1
+    assert metrics["recent_requests"][0]["query"] == "private query"
 
 
 def test_metrics_include_bounded_recent_queries_and_retrieval_span_percentiles(monkeypatch):
@@ -125,7 +178,7 @@ def test_langfuse_tracer_disabled_is_noop(monkeypatch):
     tracer = LangfuseTracer(enabled=False)
     with tracer.span("generate") as span:
         span.set_attribute("model", "local-model")
-    assert tracer.exported == []
+    assert len(tracer.traces) == 1
 
 
 def test_provider_usage_is_used_and_missing_usage_is_estimated():
