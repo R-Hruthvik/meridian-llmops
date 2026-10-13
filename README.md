@@ -108,4 +108,4 @@ curl -sS http://localhost:8000/v1/retrieve \
   -d '{"query":"What vector database does Meridian use?","top_k":5}'
 ```
 
-`GET /health` is a minimal public liveness endpoint. `GET /health/ready` reports basic service readiness; authenticated index details are available from the index-status endpoint. See the OpenAPI page at `http://localhost:8000/docs` while the API is running.
+`GET /health/live` is the process liveness endpoint. `GET /health/ready` reports basic service readiness; authenticated index details are available from the index-status endpoint. `GET /health` returns a minimal public service response.
