@@ -3,7 +3,7 @@
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class DocumentFormat(str, Enum):
@@ -43,8 +43,19 @@ class Chunk(BaseModel):
 class Entity(BaseModel):
     """An entity node extracted for the Knowledge Graph."""
     name: str = Field(..., description="Normalized entity name / identifier")
+    normalized_name: str = Field("", description="Case and punctuation normalized lookup key")
     entity_type: str = Field(..., description="Category (e.g. Concept, System, Component, Person)")
     properties: dict[str, Any] = Field(default_factory=dict, description="Entity attributes")
+    document_ids: list[str] = Field(default_factory=list)
+    chunk_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def set_normalized_name(self) -> "Entity":
+        if not self.normalized_name:
+            import re
+
+            object.__setattr__(self, "normalized_name", " ".join(re.findall(r"\w+", self.name.casefold())))
+        return self
 
 
 class Relationship(BaseModel):
@@ -53,6 +64,8 @@ class Relationship(BaseModel):
     target_entity: str = Field(..., description="Target entity name")
     relation_type: str = Field(..., description="Relationship type (e.g. DEPENDS_ON, CONFIGURES)")
     properties: dict[str, Any] = Field(default_factory=dict, description="Edge attributes")
+    document_ids: list[str] = Field(default_factory=list)
+    chunk_ids: list[str] = Field(default_factory=list)
 
 
 class SearchResult(BaseModel):
