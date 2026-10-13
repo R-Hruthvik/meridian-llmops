@@ -272,7 +272,7 @@ describe('IngestionStudio Component', () => {
     vi.spyOn(api, 'uploadDocuments').mockResolvedValueOnce({
       results: [
         { filename: 'manual.pdf', status: 'indexed_with_warnings', document_id: 'doc-pdf', format: 'pdf', pages: 4, chunks: 2, warnings: ['1 page has no extractable text'], duplicate_of: null },
-        { filename: 'copy.md', status: 'indexed', document_id: 'doc-copy', format: 'md', pages: 0, chunks: 3, warnings: [], duplicate_of: 'doc-original' },
+        { filename: 'copy.md', status: 'duplicate', document_id: 'doc-original', format: null, pages: 0, chunks: 0, warnings: [], duplicate_of: 'doc-original' },
         { filename: 'broken.docx', status: 'rejected', document_id: null, format: null, pages: 0, chunks: 0, warnings: [], duplicate_of: null, error: 'Unsupported file type' },
       ],
     });
@@ -286,6 +286,7 @@ describe('IngestionStudio Component', () => {
     expect(screen.getByText('1 page has no extractable text')).toBeInTheDocument();
     expect(screen.getByText(/Duplicate of doc-original/)).toBeInTheDocument();
     expect(screen.getByText('Unsupported file type')).toBeInTheDocument();
+    expect(await screen.findByText('Processed 3 files; 1 indexed.')).toBeInTheDocument();
     expect(api.uploadDocuments).toHaveBeenCalledWith([indexedFile, duplicateFile, rejectedFile], 'default');
   });
 

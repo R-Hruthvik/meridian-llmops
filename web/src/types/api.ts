@@ -118,7 +118,7 @@ export interface IngestResponse {
 
 export interface DocumentUploadResult {
   filename: string;
-  status: 'indexed' | 'indexed_with_warnings' | 'rejected';
+  status: 'indexed' | 'indexed_with_warnings' | 'duplicate' | 'rejected';
   document_id: string | null;
   format: string | null;
   pages: number;

@@ -195,7 +195,9 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
       try {
         const response = await api.uploadDocuments(selectedFiles, tenantId);
         setUploadResult(response);
-        const indexedCount = response.results.filter((item) => item.status !== 'rejected').length;
+        const indexedCount = response.results.filter(
+          (item) => item.status === 'indexed' || item.status === 'indexed_with_warnings',
+        ).length;
         showToast(`Processed ${response.results.length} files; ${indexedCount} indexed.`);
         setSelectedFiles([]);
         await fetchDocuments();

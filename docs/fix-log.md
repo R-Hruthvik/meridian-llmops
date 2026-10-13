@@ -344,3 +344,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: focused upload tests -> **45 passed**; `npm run test:run` -> **266 passed**; `npm run build` -> TypeScript and Vite build succeeded.
 - Deviations from plan: none.
 - Open risks / follow-ups: none for this task; file parsing and duplicate decisions remain backend responsibilities.
+
+## Task 6.2 review follow-up — duplicate upload status (2026-10-13)
+- Verified before change: backend `IngestResult` returns `status: "duplicate"` with `duplicate_of`; the frontend upload union omitted that status and counted every non-rejected result as newly indexed.
+- Test added (failing first): updated the upload-results regression with the actual duplicate response and asserted the toast reports only one newly indexed file; it failed because the old toast reported two.
+- Change summary: added `duplicate` to `DocumentUploadResult.status` and limited the success count to `indexed` and `indexed_with_warnings` results.
+- Evidence after: focused component suite -> **18 passed**; full `npm run test:run` -> **266 passed**; `npm run build` -> TypeScript and Vite build succeeded.
+- Deviations from plan: none.
+- Open risks / follow-ups: none.
