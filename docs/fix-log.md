@@ -430,7 +430,7 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 
 ## Task 5.4 Provider settings and outbound URL boundary (2026-10-13)
 - Added `ALLOW_PRIVATE_PROVIDER_URLS` (default false) to server settings and Compose app configuration. Public HTTPS provider targets are resolved and pinned at the shared generation client; model-list requests use the same policy. Redirects and ambient proxy configuration are disabled for generation requests.
-- Local loopback LiteLLM remains available without enabling private URLs. Other local/private provider endpoints require the explicit setting. A reviewed bypass that implicitly trusted all LiteLLM proxy addresses was removed; private/link-local targets are rejected by default before any POST.
+- Local loopback LiteLLM and the Compose app's exact `litellm` service name remain available without enabling private URLs; the latter is restricted to resolved private, non-loopback, non-link-local bridge addresses. Other local/private provider endpoints require the explicit setting. A reviewed bypass that implicitly trusted all LiteLLM proxy addresses was removed; private/link-local targets are rejected by default before any POST.
 - Evidence: `uv run pytest tests/test_provider_ssrf.py tests/test_provider_client.py tests/test_settings_security.py tests/test_serving_provenance.py -q` -> **80 passed**; scoped Ruff and `git diff --check` -> clean.
 - Limitation: enabling the private URL option is an operator trust decision for private endpoints; it is intended for controlled local/private model services.
 
