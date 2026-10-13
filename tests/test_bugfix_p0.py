@@ -337,6 +337,7 @@ class TestRegressionEndpoints:
         client = TestClient(app)
         res = client.get("/health")
         assert res.status_code == 200
+        assert res.json() == {"status": "healthy", "service": "meridian-rag-engine"}
 
     def test_query_endpoint_still_works(self):
         from services.rag_engine.app import app
@@ -356,9 +357,14 @@ class TestRegressionEndpoints:
         from services.rag_engine.app import app
 
         client = TestClient(app)
-        res = client.get(
+        user_res = client.get(
             "/v1/settings/llm",
             headers={"X-API-Key": "meridian-test-secret-key-2026"},
+        )
+        assert user_res.status_code == 403
+        res = client.get(
+            "/v1/settings/llm",
+            headers={"X-API-Key": "meridian-test-admin-key-2026"},
         )
         assert res.status_code == 200
 
@@ -366,9 +372,14 @@ class TestRegressionEndpoints:
         from services.rag_engine.app import app
 
         client = TestClient(app)
-        res = client.get(
+        user_res = client.get(
             "/v1/settings/providers",
             headers={"X-API-Key": "meridian-test-secret-key-2026"},
+        )
+        assert user_res.status_code == 403
+        res = client.get(
+            "/v1/settings/providers",
+            headers={"X-API-Key": "meridian-test-admin-key-2026"},
         )
         assert res.status_code == 200
         data = res.json()

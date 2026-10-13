@@ -133,7 +133,17 @@ def seeded_client(monkeypatch, tmp_path):
     from services.rag_engine.agent.graph import build_rag_agent_graph
     from services.rag_engine.retrieval.bm25 import BM25Index
     from services.rag_engine.retrieval.hybrid import HybridRetriever
+    from packages.core.settings import Settings
     from tests.fakes import FakeEmbedder, make_vector_store
+
+    settings = Settings(
+        _env_file=None,
+        provider="custom",
+        api_key="test-provider-key",
+        base_url="http://localhost:20128/v1",
+        model="test-model",
+    )
+    monkeypatch.setattr(app_module, "_core_get_settings", lambda: settings)
 
     # Provenance tests own their corpus; earlier API tests persist unrelated documents.
     embedder = FakeEmbedder(384)
