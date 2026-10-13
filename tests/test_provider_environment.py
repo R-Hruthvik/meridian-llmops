@@ -16,7 +16,7 @@ def test_generic_dotenv_values_override_saved_runtime_provider(monkeypatch, tmp_
     try:
         rag_app._runtime_llm_settings.update({"active_provider": "openai", "openai_api_key": "saved-ui-key", "default_model": "saved-ui-model", "openai_base_url": "https://saved.example/v1"})
         config = rag_app._resolve_active_llm_config_with_secrets()
-        listing = TestClient(rag_app.app).get("/v1/settings/providers", headers={"X-API-Key": "meridian-test-secret-key-2026"}).json()
+        listing = TestClient(rag_app.app).get("/v1/settings/providers", headers={"X-API-Key": "meridian-test-admin-key-2026"}).json()
     finally:
         rag_app._runtime_llm_settings.clear()
         rag_app._runtime_llm_settings.update(before)
@@ -61,7 +61,7 @@ def test_settings_test_runs_one_token_generation(monkeypatch):
             return {"choices": [{"message": {"content": "OK"}}]}
 
     monkeypatch.setattr(rag_app, "llm_client", FakeClient())
-    response = TestClient(rag_app.app).post("/v1/settings/llm/test", headers={"X-API-Key": "meridian-test-secret-key-2026"})
+    response = TestClient(rag_app.app).post("/v1/settings/llm/test", headers={"X-API-Key": "meridian-test-admin-key-2026"})
 
     assert response.status_code == 200
     assert response.json()["status"] == "success"
@@ -112,6 +112,6 @@ def test_canonical_settings_test_route_runs_generation(monkeypatch):
             return {"choices": [{"message": {"content": "OK"}}]}
 
     monkeypatch.setattr(rag_app, "llm_client", FakeClient())
-    response = TestClient(rag_app.app).post("/v1/settings/test", headers={"X-API-Key": "meridian-test-secret-key-2026"})
+    response = TestClient(rag_app.app).post("/v1/settings/test", headers={"X-API-Key": "meridian-test-admin-key-2026"})
     assert response.status_code == 200
     assert response.json()["status"] == "success"
