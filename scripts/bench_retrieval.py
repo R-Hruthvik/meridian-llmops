@@ -1,9 +1,10 @@
 """Benchmark hybrid retrieval on an isolated synthetic corpus.
 
 The benchmark creates 500 synthetic documents with 10 concrete chunk records
-each, stores vectors in a temporary local Qdrant index, and measures the
-production ``HybridRetriever`` stage timings. Its only persistent input is the
-FastEmbed model download/cache under the temporary benchmark directory.
+each, stores vectors in a temporary Qdrant collection, and measures the
+production ``HybridRetriever`` stage timings. By default it uses a temporary
+local Qdrant index; ``--qdrant-url`` uses a UUID-named temporary server
+collection and removes it after the run. The FastEmbed cache is temporary.
 
     python scripts/bench_retrieval.py
 """
@@ -16,6 +17,7 @@ import math
 import sys
 import tempfile
 import time
+import uuid
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -130,42 +132,57 @@ def run(args: argparse.Namespace) -> dict:
         root = Path(temporary)
         model_cache = root / "fastembed-cache"
         embedder = FastEmbedEmbedder(args.model, cache_path=model_cache)
-        store = QdrantChunkStore(QdrantClient(path=str(root / "qdrant")), "bench_chunks", embedder.dim)
-        store.ensure_collection()
+        client = (
+            QdrantClient(url=args.qdrant_url)
+            if args.qdrant_url
+            else QdrantClient(path=str(root / "qdrant"))
+        )
+        collection_name = f"bench_{uuid.uuid4().hex}" if args.qdrant_url else "bench_chunks"
+        if args.qdrant_url:
+            print(f"Using temporary Qdrant collection {collection_name}", file=sys.stderr, flush=True)
+        store = QdrantChunkStore(client, collection_name, embedder.dim)
+        try:
+            store.ensure_collection()
 
-        chunks = make_corpus(args.docs, args.chunks_per_doc, tenant)
-        # Keep full documents in each upsert: the store verifies counts per
-        # tenant/document after every call. Ten chunks per document divides 200.
-        index_batch_size = 200
-        for offset in range(0, len(chunks), index_batch_size):
-            batch = chunks[offset : offset + index_batch_size]
-            vectors = embedder.embed_passages([f"{chunk.metadata['title']} > {chunk.section_heading}\n{chunk.text}" for chunk in batch])
-            store.upsert_chunks(batch, vectors)
-            indexed = min(offset + len(batch), len(chunks))
-            print(f"Indexed {indexed:,}/{len(chunks):,} synthetic chunks", file=sys.stderr, flush=True)
+            chunks = make_corpus(args.docs, args.chunks_per_doc, tenant)
+            # Keep full documents in each upsert: the store verifies counts per
+            # tenant/document after every call. Ten chunks per document divides 200.
+            index_batch_size = 200
+            for offset in range(0, len(chunks), index_batch_size):
+                batch = chunks[offset : offset + index_batch_size]
+                vectors = embedder.embed_passages([f"{chunk.metadata['title']} > {chunk.section_heading}\n{chunk.text}" for chunk in batch])
+                store.upsert_chunks(batch, vectors)
+                indexed = min(offset + len(batch), len(chunks))
+                print(f"Indexed {indexed:,}/{len(chunks):,} synthetic chunks", file=sys.stderr, flush=True)
 
-        retriever = HybridRetriever(embedder, store, BM25Index(chunks))
-        queries = make_queries(QUERY_COUNT, args.docs, args.chunks_per_doc)
-        reports = {}
-        for label, workers in (("single_thread", 1), ("8_concurrent", CONCURRENCY)):
-            # Warm each execution mode independently so concurrent measurements
-            # do not include the first concurrent embedder/Qdrant calls.
-            measure(retriever, queries[:WARMUP_COUNT], tenant, workers)
-            samples = measure(retriever, queries, tenant, workers)
-            reports[label] = summarize(samples)
-        point_count = store.count(tenant_id=tenant)
-        if point_count != len(chunks):
-            raise RuntimeError(f"temporary Qdrant count mismatch: expected {len(chunks)}, got {point_count}")
-        store.client.close()
-        return {
-            "model": args.model,
-            "documents": args.docs,
-            "chunks": len(chunks),
-            "queries_per_mode": QUERY_COUNT,
-            "warmup_queries": WARMUP_COUNT,
-            "concurrency": CONCURRENCY,
-            "timings_ms": reports,
-        }
+            retriever = HybridRetriever(embedder, store, BM25Index(chunks))
+            queries = make_queries(QUERY_COUNT, args.docs, args.chunks_per_doc)
+            reports = {}
+            for label, workers in (("single_thread", 1), ("8_concurrent", CONCURRENCY)):
+                # Warm each execution mode independently so concurrent measurements
+                # do not include the first concurrent embedder/Qdrant calls.
+                measure(retriever, queries[:WARMUP_COUNT], tenant, workers)
+                samples = measure(retriever, queries, tenant, workers)
+                reports[label] = summarize(samples)
+            point_count = store.count(tenant_id=tenant)
+            if point_count != len(chunks):
+                raise RuntimeError(f"temporary Qdrant count mismatch: expected {len(chunks)}, got {point_count}")
+            return {
+                "model": args.model,
+                "qdrant_url": args.qdrant_url or "local",
+                "documents": args.docs,
+                "chunks": len(chunks),
+                "queries_per_mode": QUERY_COUNT,
+                "warmup_queries": WARMUP_COUNT,
+                "concurrency": CONCURRENCY,
+                "timings_ms": reports,
+            }
+        finally:
+            try:
+                if args.qdrant_url and client.collection_exists(collection_name):
+                    client.delete_collection(collection_name)
+            finally:
+                client.close()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -173,6 +190,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--docs", type=int, default=DOCS)
     parser.add_argument("--chunks-per-doc", type=int, default=CHUNKS_PER_DOC)
     parser.add_argument("--model", default="BAAI/bge-small-en-v1.5")
+    parser.add_argument("--qdrant-url", help="Benchmark against this Qdrant server using a temporary collection")
     args = parser.parse_args(argv)
     try:
         result = run(args)

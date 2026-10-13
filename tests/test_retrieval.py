@@ -4,6 +4,7 @@ import pytest
 
 from packages.core.models import Chunk
 from services.rag_engine.observability.langfuse_client import LocalTracer
+from services.rag_engine.retrieval import bm25 as bm25_module
 from services.rag_engine.retrieval.bm25 import BM25Index
 from services.rag_engine.retrieval.fusion import reciprocal_rank_fusion
 from services.rag_engine.retrieval.hybrid import HybridRetriever
@@ -80,6 +81,50 @@ def test_bm25_identifier_hit(sample_chunks):
     retriever = build_retriever(sample_chunks)
     result = retriever.retrieve("ERR-4049", top_k=3)
     assert any(c.chunk_id == "c3" for c in result.chunks)
+
+
+def test_bm25_reuses_tenant_index_without_changing_scores(sample_chunks, monkeypatch):
+    tenant_a = sample_chunks[:2]
+    mixed = [
+        chunk.model_copy(update={"metadata": {**chunk.metadata, "tenant_id": "a" if i < 2 else "b"}})
+        for i, chunk in enumerate(sample_chunks)
+    ]
+    original = bm25_module.BM25Okapi
+    builds = 0
+
+    def counted_bm25(corpus):
+        nonlocal builds
+        builds += 1
+        return original(corpus)
+
+    monkeypatch.setattr(bm25_module, "BM25Okapi", counted_bm25)
+    index = BM25Index(mixed)
+    initialized_builds = builds
+
+    actual = index.search("API Gateway LiteLLM", top_k=3, tenant_id="a")
+    assert builds == initialized_builds
+    expected = BM25Index(tenant_a).search("API Gateway LiteLLM", top_k=3)
+
+    assert [(item.chunk_id, item.score) for item in actual] == [
+        (item.chunk_id, item.score) for item in expected
+    ]
+    assert builds == initialized_builds + 2  # expected index builds full and default-tenant models
+    index.search("Qdrant knowledge graph", top_k=3, tenant_id="b")
+    assert builds == initialized_builds + 2
+
+
+def test_bm25_add_chunks_rebuilds_tenant_indexes(sample_chunks):
+    initial = [sample_chunks[0].model_copy(update={"metadata": {**sample_chunks[0].metadata, "tenant_id": "a"}})]
+    added = sample_chunks[2].model_copy(update={"metadata": {**sample_chunks[2].metadata, "tenant_id": "b"}})
+    other_added = sample_chunks[3].model_copy(update={"metadata": {**sample_chunks[3].metadata, "tenant_id": "b"}})
+    third_added = sample_chunks[0].model_copy(update={"metadata": {**sample_chunks[0].metadata, "tenant_id": "b"}})
+    index = BM25Index(initial)
+
+    index.add_chunks([added, other_added, third_added])
+
+    results = index.search("ERR-4049 rate limit", top_k=1, tenant_id="b")
+    assert [item.chunk_id for item in results] == [added.id]
+    assert index.search("ERR-4049 rate limit", top_k=1, tenant_id="a") == []
 
 
 def test_hybrid_respects_top_k(sample_chunks):

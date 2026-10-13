@@ -33,6 +33,7 @@ class BM25Index:
         self._doc_lengths: list[int] = []
         self._df: dict[str, int] = defaultdict(int)
         self._avgdl: float = 0.0
+        self._tenant_indexes: dict[str, tuple[BM25Okapi, list[int]]] = {}
         self.corpus = self._corpus  # backward compat alias
         self.bm25 = None
         if self.chunks:
@@ -52,6 +53,17 @@ class BM25Index:
                 self._df[token] += 1
         self._avgdl = sum(self._doc_lengths) / len(self._doc_lengths) if self._doc_lengths else 0.0
         self.bm25 = BM25Okapi(self._corpus) if self._corpus else None
+        self._build_tenant_indexes()
+
+    def _build_tenant_indexes(self) -> None:
+        """Build the tenant-local BM25 statistics used by filtered searches."""
+        tenant_positions: dict[str, list[int]] = defaultdict(list)
+        for position, chunk in enumerate(self.chunks):
+            tenant_positions[str(chunk.metadata.get("tenant_id", "default"))].append(position)
+        self._tenant_indexes = {
+            tenant: (BM25Okapi([self._corpus[position] for position in positions]), positions)
+            for tenant, positions in tenant_positions.items()
+        }
 
     def add_chunks(self, new_chunks: list[Chunk]) -> None:
         """Incrementally add chunks without full rebuild."""
@@ -64,17 +76,14 @@ class BM25Index:
             self._corpus.append(tokens)
             self._doc_lengths.append(len(tokens))
 
-        # Update document frequencies
         for tokens in self._corpus[start_idx:]:
             for token in set(tokens):
                 self._df[token] += 1
 
-        # Update average document length
         total_length = sum(self._doc_lengths)
         self._avgdl = total_length / len(self._doc_lengths) if self._doc_lengths else 0.0
-
-        # Rebuild BM25Okapi with updated corpus
         self.bm25 = BM25Okapi(self._corpus) if self._corpus else None
+        self._build_tenant_indexes()
 
     def search(
         self, query: str, top_k: int = 5, tenant_id: str | None = None
@@ -87,21 +96,17 @@ class BM25Index:
             return []
 
         if tenant_id is None:
-            candidates = list(enumerate(self._corpus))
+            positions = list(range(len(self._corpus)))
             index = self.bm25
         else:
-            candidates = [
-                (position, tokens)
-                for position, (chunk, tokens) in enumerate(zip(self.chunks, self._corpus, strict=True))
-                if str(chunk.metadata.get("tenant_id", "default")) == tenant_id
-            ]
-            if not candidates:
+            tenant_index = self._tenant_indexes.get(tenant_id)
+            if tenant_index is None:
                 return []
-            index = BM25Okapi([tokens for _, tokens in candidates])
+            index, positions = tenant_index
 
         doc_scores = index.get_scores(query_tokens)
         scored_indices = sorted(
-            ((candidates[position][0], score) for position, score in enumerate(doc_scores)),
+            ((positions[position], score) for position, score in enumerate(doc_scores)),
             key=lambda x: x[1],
             reverse=True,
         )
