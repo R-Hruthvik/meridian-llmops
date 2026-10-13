@@ -7,6 +7,41 @@ on:
     branches: [ main ]
 
 jobs:
+  frontend:
+    name: Frontend Tests & Secret-Free Build
+    runs-on: ubuntu-latest
+    env:
+      API_KEYS: '{"phase5-ci-configured-key-a91b":{"tenant":"default","role":"admin"}}'
+      ADMIN_API_KEY: phase5-ci-admin-key-51c0
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix web
+
+      - name: Run frontend tests
+        run: npm --prefix web run test:run
+
+      - name: Build frontend
+        run: npm --prefix web run build
+
+      - name: Check built assets for API keys
+        run: |
+          if grep -R -q -F 'dev-key-change-me' web/dist \
+            || grep -R -q -F 'meridian-test-secret-key-2026' web/dist \
+            || grep -R -q -F 'phase5-ci-configured-key-a91b' web/dist \
+            || grep -R -q -F 'phase5-ci-admin-key-51c0' web/dist \
+            || grep -R -q -E 'phase5-ci-(configured|admin)-key-[A-Za-z0-9]+' web/dist; then
+            echo 'Frontend build contains an API key value or configured-key pattern.'
+            exit 1
+          fi
+
   lint-and-typecheck:
     name: Lint & Typecheck
     runs-on: ubuntu-latest

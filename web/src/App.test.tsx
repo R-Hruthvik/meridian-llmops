@@ -30,26 +30,8 @@ vi.mock('./services/api', () => ({
 
 import { api } from './services/api';
 
-const HEALTHY = {
-  status: 'healthy',
-  service: 'meridian-rag-engine',
-  storage_documents: 4,
-  vector_chunks: 25,
-  services: {
-    qdrant: { status: 'reachable', endpoint: 'http://localhost:6333/collections', reachable: true },
-    neo4j: { status: 'reachable', endpoint: 'http://localhost:7474', reachable: true },
-    litellm: { status: 'reachable', endpoint: 'http://localhost:4000/health', reachable: true },
-  },
-};
-
-const DEGRADED = {
-  ...HEALTHY,
-  services: {
-    qdrant: { status: 'reachable', endpoint: 'http://localhost:6333/collections', reachable: true },
-    neo4j: { status: 'unreachable', endpoint: 'http://localhost:7474', reachable: false },
-    litellm: { status: 'reachable', endpoint: 'http://localhost:4000/health', reachable: true },
-  },
-};
+const HEALTHY = { ready: true };
+const DEGRADED = { ready: false };
 
 const DOC = {
   id: 'doc-arch-1',
@@ -260,7 +242,7 @@ describe('App shell: the top bar is one line', () => {
 });
 
 describe('App shell: the health chip reports real state only', () => {
-  it('reads Online on a fully reachable services map', async () => {
+  it('reads Online when /health/ready reports ready', async () => {
     render(<App />);
 
     await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
@@ -268,7 +250,7 @@ describe('App shell: the health chip reports real state only', () => {
     expect(chipVariant(/Online/)).toHaveAttribute('data-variant', 'ok');
   });
 
-  it('reads Degraded when any service is unreachable', async () => {
+  it('reads Degraded when /health/ready reports not ready', async () => {
     (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue(DEGRADED);
     render(<App />);
 
@@ -285,12 +267,9 @@ describe('App shell: the health chip reports real state only', () => {
   });
 
   it('reads Unknown, never Online, when the payload carries no service evidence', async () => {
-    // `services` is optional in HealthStatus, so a partial or proxied payload is
-    // a real shape. `Object.values({}).some(...)` is false, which used to read as
-    // "nothing is down" — the readout claimed health it had no evidence for.
+    // A malformed or partial response does not establish readiness.
     (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue({
-      status: 'healthy',
-      service: 'meridian-rag-engine',
+      checks: {},
     });
     render(<App />);
 
@@ -299,11 +278,9 @@ describe('App shell: the health chip reports real state only', () => {
     expect(screen.queryByText('Online')).toBeNull();
   });
 
-  it('reads Unknown when the services map is present but empty', async () => {
+  it('reads Unknown when the readiness flag is not boolean', async () => {
     (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue({
-      status: 'healthy',
-      service: 'meridian-rag-engine',
-      services: {},
+      ready: 'yes',
     });
     render(<App />);
 

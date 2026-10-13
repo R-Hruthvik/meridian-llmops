@@ -69,20 +69,6 @@ fi
 PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
 VITE_PORT="${VITE_PORT:-5173}"
-# Secrets: no shared test defaults. Production requires explicit secrets
-# (app boot also fails closed via validate_production); local dev gets an
-# ephemeral generated value per run unless already exported (dev-only).
-if [ "${APP_ENV:-development}" = "production" ]; then
-    if [ -z "${API_KEY_SECRET:-}" ] || [ -z "${LITELLM_MASTER_KEY:-}" ]; then
-        echo -e "${RED}Error: API_KEY_SECRET and LITELLM_MASTER_KEY must be set in production.${NC}"
-        exit 1
-    fi
-else
-    export API_KEY_SECRET="${API_KEY_SECRET:-$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')}"
-    export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-sk-dev-$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')}"
-fi
-export VITE_MERIDIAN_API_KEY="${VITE_MERIDIAN_API_KEY:-$API_KEY_SECRET}"
-
 MODE="dev"
 
 while [[ $# -gt 0 ]]; do
@@ -115,6 +101,56 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Production is explicit and must never fall back to generated local keys.
+if [ "$MODE" = "prod" ] || [ "${APP_ENV:-development}" = "production" ]; then
+    if [ "$MODE" = "dev" ] && [ "${APP_ENV:-}" = "production" ]; then
+        echo -e "${RED}Error: APP_ENV=production cannot be used with --dev.${NC}"
+        exit 1
+    fi
+    export APP_ENV=production
+    if [ -z "${API_KEYS:-}" ] || [ -z "${LITELLM_MASTER_KEY:-}" ]; then
+        echo -e "${RED}Error: API_KEYS and LITELLM_MASTER_KEY must be set for --prod.${NC}"
+        exit 1
+    fi
+    if ! $PYTHON_CMD -c 'import json,os,sys; entries=json.loads(os.environ["API_KEYS"]); sys.exit(not (isinstance(entries,dict) and any(isinstance(item,dict) and item.get("role")=="admin" and isinstance(item.get("tenant"),str) and item["tenant"] for item in entries.values())))'; then
+        echo -e "${RED}Error: API_KEYS must include an admin key with a tenant.${NC}"
+        exit 1
+    fi
+else
+    export APP_ENV="${APP_ENV:-development}"
+
+    # Reuse the generated local key if one was saved by an earlier start.
+    if [ -z "${API_KEYS:-}" ] && [ -f "$ROOT_DIR/.env.local" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in
+                API_KEYS=*)
+                    API_KEYS="${line#API_KEYS=}"
+                    API_KEYS="${API_KEYS#\'}"
+                    API_KEYS="${API_KEYS%\'}"
+                    break
+                    ;;
+            esac
+        done < "$ROOT_DIR/.env.local"
+    fi
+
+    if [ -z "${API_KEYS:-}" ]; then
+        DEV_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+        API_KEYS="$(python3 -c 'import json,sys; print(json.dumps({sys.argv[1]: {"tenant":"default","role":"admin"}}, separators=(",",":")))' "$DEV_API_KEY")"
+        umask 077
+        local_env_tmp="$(mktemp "$ROOT_DIR/.env.local.XXXXXX")"
+        if [ -f "$ROOT_DIR/.env.local" ]; then
+            awk '!/^API_KEYS=/' "$ROOT_DIR/.env.local" > "$local_env_tmp"
+        fi
+        printf 'API_KEYS=%s\n' "$API_KEYS" >> "$local_env_tmp"
+        chmod 600 "$local_env_tmp"
+        mv "$local_env_tmp" "$ROOT_DIR/.env.local"
+        printf 'Generated local API key: %s\n' "$DEV_API_KEY"
+        unset DEV_API_KEY
+    fi
+    export API_KEYS
+    export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-sk-dev-$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')}"
+fi
 
 print_banner
 

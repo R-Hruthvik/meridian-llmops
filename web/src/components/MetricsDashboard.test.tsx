@@ -34,28 +34,27 @@ describe('MetricsDashboard', () => {
       total_tokens: 500,
       total_cost_usd: 0.0123,
     });
-    (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue({
-      status: 'healthy',
-      service: 'meridian-rag-engine',
-      storage_documents: 4,
-      vector_chunks: 25,
-      services: {
-        qdrant: { status: 'reachable', endpoint: 'http://localhost:6333/collections', reachable: true },
-        neo4j: { status: 'reachable', endpoint: 'http://localhost:7474', reachable: true },
-        litellm: { status: 'reachable', endpoint: 'http://localhost:4000/health', reachable: true },
-      },
-    });
+    (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue({ ready: true });
     (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue(INDEX_LIVE);
   });
 
-  it('G6: surfaces storage_documents/vector_chunks counts from /health', async () => {
+  it('uses the public readiness flag for the engine status', async () => {
     render(<MetricsDashboard tenantId="default" />);
 
     await waitFor(() => {
       expect(api.checkHealth).toHaveBeenCalled();
     });
-    expect(await screen.findByText(/4 docs/)).toBeInTheDocument();
-    expect(screen.getByText(/25 chunks/)).toBeInTheDocument();
+    const card = (await screen.findByText('Meridian RAG Engine (FastAPI)')).closest('[data-testid="infra-card"]');
+    expect(card).toHaveTextContent('Online');
+    expect(screen.queryByText(/\d+ docs/)).toBeNull();
+  });
+
+  it('reports Degraded when the public readiness flag is false', async () => {
+    (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue({ ready: false });
+    render(<MetricsDashboard tenantId="default" />);
+
+    const card = (await screen.findByText('Meridian RAG Engine (FastAPI)')).closest('[data-testid="infra-card"]');
+    expect(card).toHaveTextContent('Degraded');
   });
 
   it('G6: Langfuse card is explicitly labeled by data source', async () => {
@@ -191,12 +190,12 @@ describe('MetricsDashboard', () => {
       expect(card).not.toHaveTextContent('Ready');
     });
 
-    it('a failed health poll never claims a sourced card is Online', async () => {
-      (api.checkHealth as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('health unreachable'));
+    it('does not infer gateway reachability from the public readiness response', async () => {
       render(<MetricsDashboard tenantId="default" />);
 
       const card = (await screen.findByText('LiteLLM AI Gateway')).closest('[data-testid="infra-card"]');
-      expect(card).toHaveTextContent('Unprobed');
+      expect(card).toHaveTextContent('Unknown');
+      expect(card).toHaveTextContent(/public readiness does not report gateway reachability/i);
     });
 
     it('self-sourced engine card reads Offline when health is unreachable', async () => {

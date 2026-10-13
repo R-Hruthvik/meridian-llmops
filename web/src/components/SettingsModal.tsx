@@ -879,10 +879,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </p>
                 <input
                   id="platform-key-input"
-                  type="text"
+                  type="password"
                   value={platformKey}
                   onChange={(e) => setPlatformKey(e.target.value)}
-                  placeholder="meridian-test-secret-key-2026"
+                  placeholder="Enter API key"
                   aria-label="Meridian Platform Key"
                   className="mt-2.5 w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                 />

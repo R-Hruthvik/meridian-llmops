@@ -86,18 +86,8 @@ export interface TenantMetrics {
   total_cost_usd: number;
 }
 
-export interface HealthServiceStatus {
-  status: string;
-  endpoint: string;
-  reachable: boolean;
-}
-
-export interface HealthStatus {
-  status: string;
-  service: string;
-  storage_documents?: number;
-  vector_chunks?: number;
-  services?: Record<string, HealthServiceStatus>;
+export interface HealthReadiness {
+  ready: boolean;
 }
 
 /** Masked key status returned by POST /v1/settings/llm (never key material). */

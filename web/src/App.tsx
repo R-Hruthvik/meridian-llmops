@@ -6,6 +6,7 @@ import { RagWorkspace } from './components/RagWorkspace';
 import { LazySurface } from './components/LazySurface';
 import { WorkbenchContext, type OpenOverlayOptions, type OverlayTarget } from './WorkbenchContext';
 import { api } from './services/api';
+import { UnlockScreen } from './components/UnlockScreen';
 
 // Only the Ask canvas ships with the first paint. Every other surface is
 // reachable, but not by default: each is a separate chunk fetched the first time
@@ -61,21 +62,16 @@ export const App: React.FC = () => {
   const [apiKey, setApiKey] = useState(api.getApiKey());
   const [backendHealth, setBackendHealth] = useState<BackendHealth>('offline');
 
-  // Health check polling (driven by /health services map)
+  // Readiness is public, so the shell can report it before API-key unlock.
   useEffect(() => {
     const check = async () => {
       try {
         const h = await api.checkHealth();
-        const services = h.services ?? {};
-        // No evidence is not good news. `services` is optional in HealthStatus,
-        // and an empty map made `some()` false — which read as "nothing is
-        // down" and put a green Online on a backend that had told us nothing.
-        const checked = Object.values(services);
-        if (checked.length === 0) {
+        if (typeof h.ready !== 'boolean') {
           setBackendHealth('unknown');
           return;
         }
-        setBackendHealth(checked.some((s) => !s.reachable) ? 'degraded' : 'online');
+        setBackendHealth(h.ready ? 'online' : 'degraded');
       } catch {
         setBackendHealth('offline');
       }
@@ -113,6 +109,10 @@ export const App: React.FC = () => {
     () => ({ openOverlay, closeOverlay, activeOverlay }),
     [openOverlay, closeOverlay, activeOverlay],
   );
+
+  if (import.meta.env.PROD && !apiKey) {
+    return <UnlockScreen onUnlock={handleSetApiKey} />;
+  }
 
   // Changing lens dismisses the overlay: the two hosts share a canvas, and
   // leaving the surface underneath would mount it twice.

@@ -8,6 +8,8 @@ __pycache__/
 dist/
 build/
 .env
+.env.local
+.env.local.*
 .meridian_settings.json
 .meridian_knowledge_base.json
 storage/

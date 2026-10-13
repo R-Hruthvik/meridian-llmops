@@ -56,13 +56,7 @@ vi.mock('./services/api', () => ({
   api: {
     getApiKey: vi.fn(() => ''),
     setApiKey: vi.fn(),
-    checkHealth: vi.fn(async () => ({
-      status: 'healthy',
-      service: 'meridian-rag-engine',
-      storage_documents: 0,
-      vector_chunks: 0,
-      services: { qdrant: { reachable: true } },
-    })),
+    checkHealth: vi.fn(async () => ({ ready: true })),
     getLLMSettings: vi.fn(async () => ({ active_provider: 'openai', default_model: 'gpt-4o-mini' })),
     query: vi.fn(async () => ANSWER),
     getDocuments: vi.fn(),

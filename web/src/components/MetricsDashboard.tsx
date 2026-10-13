@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { StatusChip, type StatusChipVariant } from './StatusChip';
-import type { HealthServiceStatus, IndexStatusResponse, TenantMetrics } from '../types/api';
+import type { IndexStatusResponse, TenantMetrics } from '../types/api';
 
 interface MetricsDashboardProps {
   tenantId: string;
@@ -31,8 +31,6 @@ interface InfraService {
   source:
     /** The health poll itself answering proves the RAG engine is up. */
     | { kind: 'self' }
-    /** Live reachability from the /health services map. */
-    | { kind: 'health-map'; key: string }
     /** Live reachability observed by an actual index read. */
     | { kind: 'index'; key: 'vector' | 'graph' }
     /** No probe exists for this service — the card admits it. */
@@ -50,7 +48,7 @@ const INFRASTRUCTURE_SERVICES: InfraService[] = [
     name: 'LiteLLM AI Gateway',
     type: 'Ingress Proxy',
     icon: Server,
-    source: { kind: 'health-map', key: 'litellm' },
+    source: { kind: 'static', note: 'Public readiness does not report gateway reachability' },
   },
   {
     name: 'Qdrant Vector Database',
@@ -94,12 +92,8 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
   const [metrics, setMetrics] = useState<TenantMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Live /health services map; null = unreachable (sane static fallback).
-  const [serviceHealth, setServiceHealth] = useState<Record<string, HealthServiceStatus> | null>(null);
-  const [healthReachable, setHealthReachable] = useState(true);
-  // Storage counters surfaced from /health where returned.
-  const [storageDocuments, setStorageDocuments] = useState<number | null>(null);
-  const [vectorChunks, setVectorChunks] = useState<number | null>(null);
+  // Public readiness is the only health signal available without credentials.
+  const [healthReady, setHealthReady] = useState<boolean | null>(null);
   // Live /v1/index/status; null means the probe itself failed, so no card
   // sourced from it may claim to be Ready.
   const [indexStatus, setIndexStatus] = useState<IndexStatusResponse | null>(null);
@@ -120,15 +114,9 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
     }
     try {
       const h = await api.checkHealth();
-      setServiceHealth(h.services ?? {});
-      setHealthReachable(true);
-      setStorageDocuments(typeof h.storage_documents === 'number' ? h.storage_documents : null);
-      setVectorChunks(typeof h.vector_chunks === 'number' ? h.vector_chunks : null);
+      setHealthReady(h.ready);
     } catch {
-      setServiceHealth(null);
-      setHealthReachable(false);
-      setStorageDocuments(null);
-      setVectorChunks(null);
+      setHealthReady(null);
     }
     try {
       setIndexStatus(await api.getIndexStatus(tenantId));
@@ -215,16 +203,6 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
             <Server className="size-3.5 text-accent" aria-hidden="true" />
             <span>Infrastructure</span>
           </h3>
-          {(storageDocuments !== null || vectorChunks !== null) && (
-            <span className="text-micro text-muted">
-              From /health ·{' '}
-              {/* The count and its unit read as one mono readout so the
-                  "unavailable" case shows an em-dash, never a fake 0. */}
-              <span className="num text-label font-semibold text-ink">{`${storageDocuments ?? '—'} docs`}</span>
-              {' · '}
-              <span className="num text-label font-semibold text-ink">{`${vectorChunks ?? '—'} chunks`}</span>
-            </span>
-          )}
         </div>
 
         <ul className="flex flex-col border-t border-hairline">
@@ -237,21 +215,8 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
             let endpoint: string | null = null;
             let sourceNote: string | null = null;
             if (svc.source.kind === 'self') {
-              label = healthReachable ? 'Online' : STATIC_LABELS.selfOffline;
-              tone = healthReachable ? 'ok' : 'fail';
-            } else if (svc.source.kind === 'health-map') {
-              const live = serviceHealth?.[svc.source.key];
-              if (!serviceHealth) {
-                label = STATIC_LABELS.unreached;
-                tone = 'warn';
-              } else if (!live) {
-                label = STATIC_LABELS.unreached;
-                tone = 'warn';
-              } else {
-                label = live.reachable ? 'Online' : 'Degraded';
-                tone = live.reachable ? 'ok' : 'warn';
-                endpoint = live.endpoint;
-              }
+              label = healthReady === null ? STATIC_LABELS.selfOffline : healthReady ? 'Online' : 'Degraded';
+              tone = healthReady === null ? 'fail' : healthReady ? 'ok' : 'warn';
             } else if (svc.source.kind === 'index') {
               const live = indexStatus?.backends?.[svc.source.key];
               if (!live) {
