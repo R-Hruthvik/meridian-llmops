@@ -416,3 +416,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: focused API and Ask tests -> **79 passed**; full `npm run test:run` -> **282 passed across 17 files**; `npm run build` -> TypeScript and Vite production build succeeded.
 - Deviations from plan: none.
 - Open risks / follow-ups: none.
+
+## Task 6.8 Vite development proxy target (2026-10-13)
+- Verified before change: `/v1` and `/health` both targeted hard-coded `http://localhost:8000` in `web/vite.config.ts`.
+- Test added: `src/viteProxyConfig.test.ts` checks that `VITE_API_PROXY_TARGET` sets both proxy routes; no pre-change failure run was recorded.
+- Change summary: Vite reads the `VITE_` environment from the repository root and uses `VITE_API_PROXY_TARGET` for both routes, with `http://localhost:8000` as the fallback. Added the optional setting to `.env.example`.
+- Evidence after: focused proxy config test -> **1 passed**; `npm run build` -> TypeScript and Vite production build succeeded.
+- Deviations from plan: none.
+- Open risks / follow-ups: none.

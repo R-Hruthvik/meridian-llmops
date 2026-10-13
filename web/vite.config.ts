@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { defineConfig, type ConfigEnv, type UserConfig } from 'vite'
+import { defineConfig, loadEnv, type ConfigEnv, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { InlineConfig } from 'vitest/node'
 import { fileURLToPath } from 'node:url'
@@ -31,6 +31,9 @@ function readLocalProxyEnv(): Record<string, string> {
 export default (defineConfig as (
   config: (env: ConfigEnv) => VitestConfigExport,
 ) => (env: ConfigEnv) => VitestConfigExport)(({ mode }) => {
+  const proxyTarget = loadEnv(mode, projectRoot, 'VITE_').VITE_API_PROXY_TARGET
+    || 'http://localhost:8000'
+
   // Read only the root local API-key entries for development proxy setup.
   // Never pass secrets through Vite's client-visible environment or `define`.
   const serverEnv = mode === 'development'
@@ -50,7 +53,7 @@ export default (defineConfig as (
       port: 5173,
       proxy: {
         '/v1': {
-          target: 'http://localhost:8000',
+          target: proxyTarget,
           changeOrigin: true,
           configure: (proxy) => {
             if (proxyApiKey) {
@@ -59,7 +62,7 @@ export default (defineConfig as (
           },
         },
         '/health': {
-          target: 'http://localhost:8000',
+          target: proxyTarget,
           changeOrigin: true,
         },
       },
