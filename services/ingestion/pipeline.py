@@ -121,7 +121,7 @@ class IngestionPipeline:
         )
         injection_found = self._flag_possible_injection(chunks)
         try:
-            entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id)
+            entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id, chunks=chunks)
             self._index_chunks(chunks, tenant_id=tenant_id)
             document = Document(
                 id=doc_id,
@@ -197,7 +197,7 @@ class IngestionPipeline:
         )
         injection_found = self._flag_possible_injection(chunks)
         try:
-            entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id)
+            entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id, chunks=chunks)
             self._index_chunks(chunks, tenant_id=tenant_id)
             created_at = ""
             if persist:

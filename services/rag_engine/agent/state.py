@@ -11,6 +11,7 @@ class RagAgentState(TypedDict, total=False):
     current_search_query: str
     retrieved_chunks: list[SearchResult]
     entities: list[Entity]
+    graph_context: list[dict[str, Any]]
     draft_answer: str
     cycle_count: int
     max_cycles: int

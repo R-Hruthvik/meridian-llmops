@@ -7,6 +7,7 @@ from packages.core.models import Chunk
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.retrieval.hybrid import HybridRetriever, RankedChunk, RetrievalResult
+from services.rag_engine.verification import VerificationResult
 from tests.fakes import FakeEmbedder, FakeLLM, make_vector_store
 
 
@@ -341,3 +342,39 @@ async def test_agent_graph_self_healing_safe_refusal_when_unanswerable(populated
     assert final_state["draft_answer"] == "I don't have enough information in the provided documents to answer that."
     assert final_state["cycle_count"] == 1
     assert client.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("graph_enabled", "context_enabled"), [(False, True), (True, False), (True, True)]
+)
+async def test_graph_context_is_opt_in_and_carries_retrieved_chunk_ids(graph_enabled, context_enabled):
+    chunk = Chunk(id="c-graph", document_id="d-graph", text="Qdrant connects to Neo4j.")
+
+    class Retriever:
+        def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
+            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+
+    graph_store = KnowledgeGraphStore(in_memory=True)
+    graph_store.extract_and_store("d-graph", chunk.text, chunks=[chunk])
+    client = FakeLLM(content="Qdrant connects to Neo4j. [1]")
+
+    async def verify(**kwargs):
+        return VerificationResult(status="citations_ok", scope="format_and_numeric_consistency")
+
+    graph = build_rag_agent_graph(
+        Retriever(), graph_store, llm_client=client, graph_enabled=graph_enabled,
+        graph_context_enabled=context_enabled,
+        min_dense_score=0.2, verify_fn=verify,
+    )
+    await graph.ainvoke({
+        "query": "How does Qdrant connect?", "current_search_query": "How does Qdrant connect?",
+        "retrieved_chunks": [], "entities": [], "draft_answer": "", "cycle_count": 0,
+        "max_cycles": 1, "is_refusal": False, "tenant_id": "default",
+    })
+
+    user_prompt = client.calls[0]["messages"][1]["content"]
+    expected = graph_enabled and context_enabled
+    assert ("Experimental graph context" in user_prompt) is expected
+    if expected:
+        assert "c-graph" in user_prompt

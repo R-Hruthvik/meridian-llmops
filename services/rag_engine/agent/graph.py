@@ -109,6 +109,7 @@ def build_rag_agent_graph(
     llm_config_getter: Callable[[], Mapping[str, Any]] | None = None,
     min_dense_score: float = 0.70,
     graph_enabled: bool = False,
+    graph_context_enabled: bool = False,
     debug_log_prompts: bool = False,
     verify_mode: VerificationMode | None = None,
     verify_fn: Callable[..., Awaitable[VerificationResult]] | None = None,
@@ -131,6 +132,7 @@ def build_rag_agent_graph(
         result = retriever.retrieve(query, top_k=top_k, tenant_id=state.get("tenant_id", "default"))
         sources = [_to_search_result(ranked) for ranked in result.chunks[:top_k]]
         entities: list[Entity] = []
+        graph_context: list[dict[str, Any]] = []
 
         if graph_enabled:
             tenant_id = state.get("tenant_id", "default")
@@ -145,6 +147,12 @@ def build_rag_agent_graph(
             exact_hits: list[Entity] = []
             fuzzy_hits: list[Entity] = []
             seen: set[str] = set()
+            normalized_query = " ".join(re.findall(r"\w+", query.casefold()))
+            for candidate in tenant_entities:
+                name = candidate.normalized_name or " ".join(re.findall(r"\w+", candidate.name.casefold()))
+                if name and f" {name} " in f" {normalized_query} " and candidate.name not in seen:
+                    exact_hits.append(candidate)
+                    seen.add(candidate.name)
             for word in query_words:
                 lowered = word.lower()
                 if len(lowered) < 3 or lowered in stopwords:
@@ -164,14 +172,32 @@ def build_rag_agent_graph(
             entities.extend(exact_hits[:8])
             entities.extend(fuzzy_hits[: max(0, 12 - len(entities))])
             matched_names = {entity.name for entity in entities}
-            for entity in list(entities):
-                for relation in graph_store.query_neighborhood(entity.name, tenant_id=tenant_id):
-                    for target in (relation.source_entity, relation.target_entity):
-                        if target and target not in matched_names:
-                            matched_names.add(target)
-                            graph_entity = tenant_entities_by_name.get(target)
-                            if graph_entity:
-                                entities.append(graph_entity)
+            frontier = list(entities)
+            source_chunk_ids = {source.chunk_id for source in sources}
+            traversed: set[tuple[str, str, str]] = set()
+            for _depth in range(2):
+                next_frontier: list[Entity] = []
+                for entity in frontier:
+                    for relation in graph_store.query_neighborhood(entity.name, tenant_id=tenant_id):
+                        edge = (relation.source_entity, relation.relation_type, relation.target_entity)
+                        if edge not in traversed:
+                            traversed.add(edge)
+                            cited_chunk_ids = sorted(set(relation.chunk_ids) & source_chunk_ids)
+                            if graph_context_enabled and cited_chunk_ids:
+                                graph_context.append({
+                                    "source_entity": relation.source_entity,
+                                    "relation_type": relation.relation_type,
+                                    "target_entity": relation.target_entity,
+                                    "chunk_ids": cited_chunk_ids,
+                                })
+                        for target in (relation.source_entity, relation.target_entity):
+                            if target and target not in matched_names:
+                                matched_names.add(target)
+                                graph_entity = tenant_entities_by_name.get(target)
+                                if graph_entity:
+                                    entities.append(graph_entity)
+                                    next_frontier.append(graph_entity)
+                frontier = next_frontier
             if not entities and tenant_entities:
                 entities = tenant_entities[:10]
 
@@ -182,6 +208,7 @@ def build_rag_agent_graph(
         return {
             "retrieved_chunks": sources,
             "entities": entities,
+            "graph_context": graph_context,
             "cycle_count": cycle,
             "base_top_k": configured_top_k,
             "retry_top_k": top_k,
@@ -211,6 +238,29 @@ def build_rag_agent_graph(
                 "answer_status": "insufficient_context",
                 "verification_result": VerificationResult(status="unchecked", scope="unchecked"),
             }
+
+        if graph_context_enabled and state.get("graph_context"):
+            selected_ids = {str(chunk.get("chunk_id", "")) for chunk in selected_chunks}
+            citations_by_chunk = {
+                str(chunk.get("chunk_id", "")): index
+                for index, chunk in enumerate(selected_chunks, start=1)
+            }
+            lines = []
+            for edge in state["graph_context"]:
+                chunk_ids = [chunk_id for chunk_id in edge["chunk_ids"] if chunk_id in selected_ids]
+                if not chunk_ids:
+                    continue
+                citations = sorted({citations_by_chunk[chunk_id] for chunk_id in chunk_ids})
+                citation_markers = "".join(f"[{index}]" for index in citations)
+                lines.append(
+                    f"- {edge['source_entity']} -[{edge['relation_type']}]-> {edge['target_entity']} "
+                    f"(source chunk IDs: {', '.join(chunk_ids)}; cite: {citation_markers})"
+                )
+            if lines:
+                prompt.messages[1]["content"] += (
+                    "\n\nExperimental graph context. Treat each link as supported only by its listed source chunks; "
+                    "cite the matching numbered source for every factual claim.\n" + "\n".join(lines)
+                )
 
         cfg = _active_llm_config(llm_config_getter)
         provider = cfg.get("provider", "openai")

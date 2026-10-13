@@ -38,9 +38,11 @@ def _render_source(number: int, chunk: dict[str, Any]) -> str:
     filename = _header_value(chunk.get("filename", ""))
     page = _header_value(chunk.get("page_start", ""))
     heading = _header_value(chunk.get("heading_path", ""))
+    chunk_id = _header_value(chunk.get("chunk_id", ""))
     text = _escape_source_delimiters(str(chunk.get("text", "")))
+    chunk_reference = f"chunk_id: {chunk_id}, " if chunk_id else ""
     return (
-        f"[{number}] (file: {filename}, page: {page}, section: {heading})\n"
+        f"[{number}] ({chunk_reference}file: {filename}, page: {page}, section: {heading})\n"
         f"<source_text>\n{text}\n</source_text>"
     )
 
