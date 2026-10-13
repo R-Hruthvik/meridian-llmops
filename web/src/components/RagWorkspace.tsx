@@ -10,7 +10,7 @@ import {
 import { api, ApiError } from '../services/api';
 import { StatusChip, type StatusChipVariant } from './StatusChip';
 import { useWorkbench } from '../WorkbenchContext';
-import type { QueryResponse } from '../types/api';
+import type { QueryResponse, RetrieveResponse, SearchResult } from '../types/api';
 
 // The markdown parser is the single heaviest dependency in the app and there is
 // nothing to parse until an answer exists. Deferring it keeps it out of first
@@ -97,8 +97,10 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   const [topK, setTopK] = useState(3);
   const [maxCycles, setMaxCycles] = useState(3);
   const [enforceGuardrails, setEnforceGuardrails] = useState(true);
+  const [retrievalOnly, setRetrievalOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<QueryResponse | null>(null);
+  const [retrievalResponse, setRetrievalResponse] = useState<RetrieveResponse | null>(null);
   const [error, setError] = useState<{ message: string; status?: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
@@ -112,6 +114,13 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     setError(null);
     setOpenChunkId(null);
     try {
+      if (retrievalOnly) {
+        const result = await api.retrieve({ query: textToSubmit, top_k: topK }, tenantId);
+        setRetrievalResponse(result);
+        setResponse(null);
+        return;
+      }
+      setRetrievalResponse(null);
       const res = await api.query({
         query: textToSubmit,
         tenant_id: tenantId,
@@ -126,6 +135,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
       setError({ message, status });
       // Clear stale query response on error
       setResponse(null);
+      setRetrievalResponse(null);
     } finally {
       setLoading(false);
     }
@@ -147,8 +157,9 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   // An answer must be able to reach the source that produced it: the ranked row
   // hands the document and chunk ids to the Corpus overlay, which names the row
   // it was opened from in its breadcrumb.
+  const chunks: SearchResult[] = retrievalResponse?.chunks ?? response?.source_chunks ?? [];
   const openChunk = (index: number) => {
-    const chunk = response?.source_chunks?.[index];
+    const chunk = chunks[index];
     if (!chunk) return;
     setOpenChunkId(chunk.chunk_id || `chunk-${index}`);
     workbench?.openOverlay('corpus', {
@@ -158,7 +169,6 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     });
   };
 
-  const chunks = response?.source_chunks ?? [];
   const verdict = response ? verdictFor(response) : null;
   const latency = formatLatency(response?.execution_time_ms ?? 0);
 
@@ -189,6 +199,15 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
             <span className={enforceGuardrails ? 'font-semibold' : ''}>
               Enforce guardrails on this query
             </span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-1.5 rounded-pill border border-hairline px-3 py-1 text-label text-muted">
+            <input
+              type="checkbox"
+              checked={retrievalOnly}
+              onChange={(event) => setRetrievalOnly(event.target.checked)}
+              className="size-3 rounded-sm accent-accent"
+            />
+            <span>Retrieval only (no LLM)</span>
           </label>
         </div>
 
@@ -267,7 +286,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
               </>
             ) : (
               <>
-                <span>Run Agent</span>
+                <span>{retrievalOnly ? 'Run Retrieval' : 'Run Agent'}</span>
                 <Send className="size-3.5" />
               </>
             )}
@@ -410,7 +429,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         </>
       )}
 
-      {!loading && !response && !error && (
+      {!loading && !response && !retrievalResponse && !error && (
         <div className="min-h-[12rem] rounded border border-dashed border-hairline bg-surface-raised px-4 py-10 text-center">
           <p className="text-body font-semibold text-ink">No answer yet</p>
           <p className="mt-1 text-micro text-muted">Ask a question to see the answer and its evidence.</p>
@@ -425,7 +444,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
           {chunks.length > 0 && <span className="num text-micro text-faint">{chunks.length}</span>}
         </div>
 
-        {!response || chunks.length === 0 ? (
+        {chunks.length === 0 ? (
           <div className="px-3 py-6 text-center">
             <p className="text-body font-semibold text-ink">No query context retrieved yet</p>
             <p className="mt-1 text-micro text-muted">
@@ -484,8 +503,17 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                         {idx + 1}
                       </button>
                     </td>
-                    <td className="id-mono truncate px-2 text-ink" title={chunk.document_id}>
-                      {shortId(chunk.document_id)}
+                    <td className="px-2 py-1 text-ink" title={chunk.document_id}>
+                      <span className="id-mono block truncate" title={chunk.document_id}>
+                        {chunk.title || chunk.filename || shortId(chunk.document_id)}
+                      </span>
+                      {(chunk.page_start != null || chunk.heading_path) && (
+                        <span className="block truncate text-micro text-muted">
+                          {chunk.page_start != null && <span>Page {chunk.page_start}</span>}
+                          {chunk.page_start != null && chunk.heading_path && <span> · </span>}
+                          {chunk.heading_path}
+                        </span>
+                      )}
                     </td>
                     <td className="num px-2 text-right text-micro font-semibold text-ink">
                       {percent}

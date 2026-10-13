@@ -98,6 +98,25 @@ describe('MeridianApiClient', () => {
     });
   });
 
+  describe('retrieve() retrieval-only request', () => {
+    it('posts query and top_k to the retrieval endpoint with tenant context', async () => {
+      const response = mockResponse({ query: 'q', top_k: 2, chunks: [], timings_ms: {} });
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce(response as unknown as Response);
+
+      await expect(api.retrieve({ query: 'q', top_k: 2 }, 'acme')).resolves.toMatchObject({
+        query: 'q',
+        top_k: 2,
+        chunks: [],
+      });
+
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/v1/retrieve');
+      expect(init.method).toBe('POST');
+      expect((init.headers as Record<string, string>)['X-Tenant-Id']).toBe('acme');
+      expect(JSON.parse(init.body as string)).toEqual({ query: 'q', top_k: 2 });
+    });
+  });
+
   describe('query() error handling with status codes', () => {
     it('throws ApiError with status 401 on unauthorized', async () => {
       const mock = mockResponse({ detail: 'Invalid API key' }, 401, 'Unauthorized');

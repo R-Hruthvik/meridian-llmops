@@ -10,6 +10,7 @@ vi.mock('../services/api', () => ({
   api: {
     getLLMSettings: vi.fn(),
     query: vi.fn(),
+    retrieve: vi.fn(),
     updateLLMSettings: vi.fn(),
   },
   ApiError: class ApiError extends Error {
@@ -149,6 +150,74 @@ describe('RagWorkspace', () => {
     });
 
     expect(await screen.findByText('test answer')).toBeInTheDocument();
+  });
+
+  it('passes the selected top_k to the query API', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockQueryResponse);
+
+    renderCanvas();
+    await user.clear(screen.getByLabelText('Top K Chunks:'));
+    await user.type(screen.getByLabelText('Top K Chunks:'), '7');
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'What is Meridian?');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+
+    await waitFor(() => expect(api.query).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'What is Meridian?', top_k: 7 }),
+    ));
+  });
+
+  it('renders source page and heading metadata when the API provides it', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...mockQueryResponse,
+      source_chunks: [{
+        chunk_id: 'chunk-page-1',
+        document_id: 'doc-page-1',
+        filename: 'handbook.pdf',
+        page_start: 12,
+        heading_path: 'Security > Authentication',
+        text: 'API key requirements',
+        score: 0.91,
+        retrieval_method: 'hybrid',
+      }],
+    });
+
+    renderCanvas();
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'What are the API key requirements?');
+    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+
+    expect(await screen.findByText('handbook.pdf')).toBeInTheDocument();
+    expect(screen.getByText('Page 12')).toBeInTheDocument();
+    expect(screen.getByText('Security > Authentication')).toBeInTheDocument();
+  });
+
+  it('uses retrieval-only mode without calling the answer API', async () => {
+    const user = userEvent.setup();
+    (api.retrieve as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      query: 'What is Meridian?',
+      top_k: 3,
+      chunks: [{
+        chunk_id: 'chunk-retrieved',
+        document_id: 'doc-retrieved',
+        text: 'Retrieved evidence',
+        score: 0.8,
+        retrieval_method: 'hybrid',
+      }],
+      timings_ms: { total: 8 },
+    });
+
+    renderCanvas();
+    await user.click(screen.getByRole('checkbox', { name: /retrieval only/i }));
+    await user.type(screen.getByPlaceholderText(/Type your question/i), 'What is Meridian?');
+    await user.click(screen.getByRole('button', { name: /Run Retrieval/i }));
+
+    await waitFor(() => expect(api.retrieve).toHaveBeenCalledWith(
+      { query: 'What is Meridian?', top_k: 3 },
+      'default',
+    ));
+    expect(api.query).not.toHaveBeenCalled();
+    expect(await screen.findByText('doc-retr…')).toBeInTheDocument();
   });
 
   it('names the guardrail toggle for what it does, and it governs the request', async () => {

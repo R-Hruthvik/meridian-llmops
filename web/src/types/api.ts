@@ -28,6 +28,13 @@ export interface QueryRequest {
   enforce_guardrails?: boolean;
 }
 
+export interface RetrieveResponse {
+  query: string;
+  top_k: number;
+  chunks: SearchResult[];
+  timings_ms: Record<string, number>;
+}
+
 /**
  * Who actually served a query response. Nulls mean no LLM produced the answer.
  * Mirrors the backend ServingProvenance model.

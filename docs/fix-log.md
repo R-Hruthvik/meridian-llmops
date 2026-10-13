@@ -400,3 +400,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: focused `npm run test:run -- src/components/RagWorkspace.test.tsx src/components/MetricsDashboard.test.tsx` -> **67 passed**; `npm run build` -> TypeScript and Vite production build succeeded.
 - Deviations from plan: none.
 - Open risks / follow-ups: none.
+
+## Task 6.7 UI behavior regressions (2026-10-13)
+- Verified before change: upload results, 401/429/503 error mapping, and the health status banner already had direct coverage. `top_k` was wired into the query call but lacked an assertion; source rows omitted available page/heading metadata; the Ask surface had no retrieval-only toggle despite the existing authenticated `/v1/retrieve` endpoint.
+- Test added (failing first): `RagWorkspace` source page/heading and retrieval-only regressions failed before implementation; the selected `top_k` regression passed against the existing query wiring. Added API client coverage for the retrieval-only request contract.
+- Change summary: added typed `api.retrieve` for `/v1/retrieve`; Ask now switches between answer generation and retrieval-only calls, showing returned chunks without an answer card. Source rows display filename/title with page and heading metadata when present. Added direct checks that selected `top_k` reaches the API and retrieval-only mode does not call `/v1/query`.
+- Evidence after: `npm run test:run` -> **282 passed across 17 files**; `npm run build` -> TypeScript and Vite production build succeeded.
+- Deviations from plan: the missing retrieval-only and source-metadata behaviors required minimal UI/API implementation so the requested tests could exercise real behavior.
+- Open risks / follow-ups: none for Task 6.7.

@@ -17,6 +17,7 @@ import type {
   ProvidersResponse,
   QueryRequest,
   QueryResponse,
+  RetrieveResponse,
   ReviewItem,
   ReviewItemActionPayload,
   TenantMetrics,
@@ -158,6 +159,18 @@ class MeridianApiClient {
         }),
       },
       'Query failed',
+    );
+  }
+
+  async retrieve(req: Pick<QueryRequest, 'query' | 'top_k'>, tenantId: string = 'default'): Promise<RetrieveResponse> {
+    return this.requestJSON<RetrieveResponse>(
+      `${this.baseUrl}/v1/retrieve`,
+      {
+        method: 'POST',
+        headers: this.getHeaders(tenantId),
+        body: JSON.stringify({ query: req.query, top_k: req.top_k ?? 5 }),
+      },
+      'Retrieval failed',
     );
   }
 
