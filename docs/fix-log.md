@@ -1,5 +1,7 @@
 # Meridian fix log
 
+Phase 8 authorization: the owner explicitly requested completion of all phases from Task 5.6 through Gate 9, which includes the plan's otherwise optional Phase 8.
+
 ## Task 8.1 — Graph provenance and experimental context (2026-10-13)
 - Implementation: `e13f5af` adds normalized tenant-scoped entity identity, document/chunk provenance edges, semantic relationship persistence, restart reads, safe shared-entity deletion, and legacy migration; `860ee3b` gates source-chunk-grounded graph facts behind `GRAPH_ENABLED` and `GRAPH_CONTEXT_ENABLED` (both default false); `f4c8b1c` adds `eval_retrieval.py --graph` over a committed two-case multi-hop corpus. Review follow-ups: `6ea1a4d` restores graph chunk lineage on delete rollback; `623c059` caps inserted graph facts at five and preserves the `Graph facts:` heading. Behavior and limitations are in `docs/graph-context.md`.
 - Evidence: focused graph provenance, agent, ingestion rollback, and evaluator tests -> **39 passed, 1 skipped** without service credentials; the isolated real Neo4j test then passed, covering persisted write/read after reopening, provenance edges, shared-entity deletion, and legacy migration (**4/4 checks**). Qdrant service integration -> **1/1 passed**. Full suite clean rerun -> **450 passed, 2 skipped, 3 xfailed**.
