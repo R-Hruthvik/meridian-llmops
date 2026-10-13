@@ -1,15 +1,19 @@
 """Unified Meridian RAG Engine & LLMOps FastAPI Application."""
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
+import socket
 import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
+import httpcore
 import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse
@@ -31,19 +35,21 @@ from packages.core.models import (
     UpdateLLMSettingsRequest,
     VerificationSummary,
 )
-from packages.core.secrets_store import SECRET_SUFFIX
+from packages.core.secrets_store import SECRET_SUFFIX, load_secrets, save_secrets
 from packages.core.settings import get_settings as _core_get_settings
 from packages.core.settings import validate_production as _validate_production
-from services.gateway.auth import verify_api_key
+from services.gateway.auth import validate_auth_configuration
 from services.gateway.client import LiteLLMClient
 from services.gateway.guardrails.input_rails import InputGuardrails
 from services.gateway.guardrails.output_rails import OutputGuardrails
+from services.ingestion import storage as ingestion_storage
 from services.ingestion.embedder import FastEmbedEmbedder
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.manifest import ConsistencyReport, check_consistency
 from services.ingestion.pipeline import IngestionPipeline
 from services.ingestion.vector_store import QdrantChunkStore
 from services.rag_engine.agent.graph import build_rag_agent_graph
+from services.rag_engine.deps import require_admin, require_user
 from services.rag_engine.index_inspector import build_index_status
 from services.rag_engine.observability.langfuse_client import MeridianTracer
 from services.rag_engine.retrieval.hybrid import HybridRetriever
@@ -55,6 +61,7 @@ from services.rag_engine.routers.review import router as review_router
 async def lifespan(app: FastAPI):
     """Initialize the semantic model once before serving or loading persisted chunks."""
     settings = _core_get_settings()
+    validate_auth_configuration()
     _validate_production(settings)
     if ingestion_pipeline.embedder is None:
         embedder = await asyncio.to_thread(
@@ -98,6 +105,9 @@ app = FastAPI(
     version="0.1.0",
     description="Production-grade Self-Healing Agentic RAG Platform with Guardrails and Tracing",
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 app.include_router(review_router)
@@ -120,6 +130,24 @@ async def handle_provider_error(request: Request, error: ProviderError) -> JSONR
             "provider_message": error.provider_message,
         }},
     )
+
+
+@app.middleware("http")
+async def limit_model_fetch_json_body(request: Request, call_next):
+    if request.url.path == "/v1/settings/llm/test-and-fetch-models" and request.method == "POST":
+        body = bytearray()
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > 1024 * 1024:
+                return JSONResponse(status_code=413, content={"detail": "Request body too large."})
+            body.extend(chunk)
+
+        payload = bytes(body)
+
+        async def receive():
+            return {"type": "http.request", "body": payload, "more_body": False}
+
+        request = Request(request.scope, receive)
+    return await call_next(request)
 
 
 # Qdrant uses an explicit backend; service failures never switch backends.
@@ -210,6 +238,10 @@ def _get_settings_file() -> Path:
 
 SETTINGS_FILE = _get_settings_file()
 
+
+def _get_secrets_file() -> Path:
+    return ingestion_storage.get_default_storage_root() / "secrets.json"
+
 _default_llm_settings: dict[str, Any] = {
     "active_provider": "openai",
     "openai_api_key": "",
@@ -243,13 +275,29 @@ _default_llm_settings: dict[str, Any] = {
 def _load_persisted_settings() -> dict[str, Any]:
     settings = dict(_default_llm_settings)
     settings_file = _get_settings_file()
+    saved: dict[str, Any] = {}
     if settings_file.exists():
         try:
             with open(settings_file, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-                settings.update(saved)
-        except (OSError, ValueError, TypeError) as e:
-            logger.warning(f"Could not load settings file: {e}")
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    saved = loaded
+        except (OSError, ValueError, TypeError):
+            logger.warning("Could not load settings file.")
+    legacy_secrets = {k: v for k, v in saved.items() if k.endswith(SECRET_SUFFIX)}
+    settings.update({k: v for k, v in saved.items() if not k.endswith(SECRET_SUFFIX)})
+    secrets_file = _get_secrets_file()
+    secrets = load_secrets(secrets_file)
+    if legacy_secrets:
+        secrets = _merge_preserving_saved(legacy_secrets, secrets)
+        save_secrets(secrets_file, secrets)
+        try:
+            preferences = {k: v for k, v in settings.items() if not k.endswith(SECRET_SUFFIX)}
+            settings_file.write_text(json.dumps(preferences, indent=2), encoding="utf-8")
+            os.chmod(settings_file, 0o600)
+        except OSError:
+            logger.warning("Could not remove migrated secrets from settings file.")
+    settings.update(secrets)
     return settings
 
 def _is_masked(value: str) -> bool:
@@ -268,6 +316,104 @@ def _merge_preserving_saved(base: dict[str, Any], incoming: dict[str, Any]) -> d
                 continue
         merged[k] = v
     return merged
+
+
+def _validate_model_fetch_url(provider: str, url: str) -> tuple[str, str, int, tuple[str, ...]]:
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError
+        if (
+            parsed.username is not None
+            or parsed.password is not None
+            or "?" in url
+            or "#" in url
+        ):
+            raise ValueError
+        hostname = parsed.hostname.encode("idna").decode("ascii").lower()
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        addresses = {
+            ipaddress.ip_address(str(info[4][0]).split("%", 1)[0])
+            for info in socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+        }
+        if not addresses:
+            raise ValueError
+        if provider in {"ollama", "custom", "openai_compatible"}:
+            if hostname not in {"localhost", "127.0.0.1", "::1"}:
+                raise ValueError
+            if not all(address.is_loopback for address in addresses):
+                raise ValueError
+        elif not all(
+            address.is_global
+            and not (address.is_private or address.is_loopback or address.is_link_local
+                     or address.is_unspecified or address.is_multicast or address.is_reserved)
+            for address in addresses
+        ):
+            raise ValueError
+    except (OSError, ValueError, IndexError):
+        raise ValueError("Provider URL is not allowed.") from None
+    return url, hostname, port, tuple(sorted(str(address) for address in addresses))
+
+
+class _PinnedAddressBackend:
+    """Connects only to the validated IPs while HTTPCore keeps the URL hostname for TLS."""
+
+    def __init__(self, network_backend: Any):
+        self._network_backend = network_backend
+        self._addresses: dict[tuple[str, int], tuple[str, ...]] = {}
+
+    def pin(self, host: str, port: int, addresses: tuple[str, ...]) -> None:
+        self._addresses[(host.lower(), port)] = addresses
+
+    async def connect_tcp(self, host: str, port: int, **kwargs: Any) -> Any:
+        addresses = self._addresses.get((host.lower(), port), ())
+        if not addresses:
+            raise OSError("No validated provider address is available.")
+        last_error: Exception | None = None
+        for address in addresses:
+            try:
+                return await self._network_backend.connect_tcp(address, port, **kwargs)
+            except (httpcore.ConnectError, httpcore.ConnectTimeout) as error:
+                last_error = error
+        if last_error:
+            raise last_error
+        raise OSError("No validated provider address is available.")
+
+    async def connect_unix_socket(self, path: str, **kwargs: Any) -> Any:
+        return await self._network_backend.connect_unix_socket(path, **kwargs)
+
+    async def sleep(self, seconds: float) -> None:
+        await self._network_backend.sleep(seconds)
+
+
+class _PinnedAsyncHTTPTransport(httpx.AsyncHTTPTransport):
+    def __init__(self):
+        super().__init__(trust_env=False)
+        self.address_backend = _PinnedAddressBackend(self._pool._network_backend)
+        self._pool._network_backend = self.address_backend
+
+
+async def _model_fetch_get(
+    client: httpx.AsyncClient,
+    transport: _PinnedAsyncHTTPTransport,
+    provider: str,
+    url: str,
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    safe_url, host, port, addresses = _validate_model_fetch_url(provider, url)
+    transport.address_backend.pin(host, port, addresses)
+    async with client.stream("GET", safe_url, headers=headers) as response:
+        body = bytearray()
+        async for chunk in response.aiter_bytes():
+            if len(body) + len(chunk) > 1024 * 1024:
+                raise ValueError("Provider response exceeds 1 MiB limit.")
+            body.extend(chunk)
+        return httpx.Response(
+            status_code=response.status_code,
+            headers=response.headers,
+            content=bytes(body),
+            request=httpx.Request("GET", safe_url),
+        )
 
 
 def masked_llm_view(d: dict[str, Any]) -> dict[str, Any]:
@@ -294,13 +440,26 @@ def _save_persisted_settings(settings: dict[str, Any]) -> None:
                 existing = json.load(f)
         except (OSError, ValueError, TypeError):
             existing = {}
-    merged = _merge_preserving_saved(existing, settings)
+    if not isinstance(existing, dict):
+        existing = {}
+    secrets_file = _get_secrets_file()
+    secrets = load_secrets(secrets_file)
+    legacy_secrets = {k: v for k, v in existing.items() if k.endswith(SECRET_SUFFIX)}
+    secrets = _merge_preserving_saved(legacy_secrets, secrets)
+    incoming_secrets = {k: v for k, v in settings.items() if k.endswith(SECRET_SUFFIX)}
+    secrets = _merge_preserving_saved(secrets, incoming_secrets)
+    merged = _merge_preserving_saved(
+        {k: v for k, v in existing.items() if not k.endswith(SECRET_SUFFIX)},
+        {k: v for k, v in settings.items() if not k.endswith(SECRET_SUFFIX)},
+    )
     try:
+        if secrets:
+            save_secrets(secrets_file, secrets)
         with open(settings_file, "w", encoding="utf-8") as f:
             json.dump(merged, f, indent=2)
         os.chmod(settings_file, 0o600)
-    except (OSError, ValueError, TypeError) as e:
-        logger.warning(f"Could not save settings file: {e}")
+    except (OSError, ValueError, TypeError):
+        logger.warning("Could not save settings.")
 
 _runtime_llm_settings: dict[str, Any] = _load_persisted_settings()
 
@@ -354,7 +513,7 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
     default_models = {"openai": "gpt-4o-mini", "anthropic": "claude-3-5-sonnet-20241022", "openrouter": "meta-llama/llama-3.3-70b-instruct", "deepseek": "deepseek-chat", "groq": "llama-3.3-70b-versatile", "ollama": "llama3:latest", "custom": ""}
     model = configured_model or provider_models.get(provider) or default_models[provider]
     api_key = _core_get_settings().__getattribute__(f"{provider}_api_key") or settings.get(f"{provider}_api_key")
-    api_key = _tested_api_keys.get(provider) or api_key
+    api_key = api_key or _tested_api_keys.get(provider)
     base_url = _core_get_settings().__getattribute__(f"{provider}_base_url") or settings.get(f"{provider}_base_url") or PROVIDERS[provider]["base_url_default"]
     if provider == "custom":
         base_url = _core_get_settings().custom_base_url or settings.get("custom_base_url") or base_url
@@ -401,7 +560,7 @@ class GuardrailCheckRequest(BaseModel):
 @app.get("/v1/guardrails/check", response_model=GuardrailResult)
 async def check_guardrails_get(
     text: str,
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_user),
 ):
     """Evaluates text against the same input rails the gateway applies.
 
@@ -413,7 +572,7 @@ async def check_guardrails_get(
 @app.post("/v1/guardrails/check", response_model=GuardrailResult, include_in_schema=False)
 async def check_guardrails_post(
     payload: GuardrailCheckRequest,
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_user),
 ):
     """Deprecated alias for GET /v1/guardrails/check. Use query parameter instead."""
     return input_guardrails.evaluate(payload.text)
@@ -430,7 +589,7 @@ class RetrieveRequest(BaseModel):
 @app.post("/v1/retrieve")
 async def retrieve_endpoint(
     payload: RetrieveRequest,
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_user),
 ):
     """Runs hybrid retrieval only (dense + BM25 + RRF) and returns ranked chunks.
 
@@ -469,41 +628,23 @@ def _index_gate() -> JSONResponse | None:
 @app.get("/health/live")
 async def health_live():
     """Process liveness: the app is up and serving."""
-    return {"status": "alive", "service": "meridian-rag-engine"}
+    return {"alive": True}
 
 
 @app.get("/health/ready")
 async def health_ready():
-    """Real readiness checks; never claims health without evidence."""
-    settings = _core_get_settings()
+    """Return only the serving-readiness bit needed by external probes."""
     qdrant_health = vector_store.health()
-    qdrant_points = vector_store.count()
-    disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
     index_ok = _index_consistency.ok if _index_consistency is not None else False
-    llm_config = _resolve_active_llm_config_with_secrets()
-    llm_configured = bool(llm_config.get("api_key")) or llm_config.get("provider") == "ollama"
     embedder = ingestion_pipeline.embedder
-    checks = {
-        "qdrant": {"ok": qdrant_health["status"] == "ready", "points": qdrant_points, "error": qdrant_health["error"]},
-        "embedder": {
-            "ok": embedder is not None,
-            "model": getattr(embedder, "model_name", None),
-            "dim": getattr(embedder, "dim", None),
-        },
-        "index_consistent": {"ok": index_ok, "disk_chunks": disk_chunks, "qdrant_points": qdrant_points},
-        "llm_configured": {"ok": llm_configured},
-        "neo4j": {"enabled": settings.graph_enabled},
-    }
-    # Readiness reflects serving-critical checks; a missing LLM key is
-    # informational (queries surface the provider error loudly instead).
     ready = qdrant_health["status"] == "ready" and index_ok and embedder is not None
-    return {"ready": ready, "checks": checks}
+    return {"ready": ready}
 
 
 @app.post("/v1/documents")
 async def upload_documents_endpoint(
     files: Annotated[list[UploadFile], File()],
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_user),
 ):
     """Multipart upload (field ``files``, repeatable); one result row per file.
 
@@ -541,7 +682,7 @@ async def upload_documents_endpoint(
 
 
 @app.get("/health")
-async def health_check():
+async def health_check(tenant_id: str = Depends(require_user)):
     return {
         "status": "healthy",
         "service": "meridian-rag-engine",
@@ -555,7 +696,7 @@ async def health_check():
 @app.post("/v1/ingest")
 async def ingest_document_endpoint(
     payload: IngestDocumentRequest,
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_user),
 ):
     """Ingests text into dedicated disk storage, the Qdrant vector store, and the graph."""
     try:
@@ -583,7 +724,7 @@ async def ingest_document_endpoint(
 @app.post("/v1/query", response_model=QueryResponse)
 async def query_endpoint(
     req: QueryRequest,
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_user),
 ):
     """Executes the self-healing Agentic RAG pipeline with guardrails and tracing."""
     blocked = _index_gate()
@@ -712,13 +853,13 @@ async def query_endpoint(
 
 
 @app.get("/v1/metrics")
-async def get_metrics(tenant_id: str = Depends(verify_api_key)):
+async def get_metrics(tenant_id: str = Depends(require_admin)):
     """Returns aggregated token usage and cost metrics."""
     return tracer.get_tenant_metrics(tenant_id)
 
 
 @app.get("/v1/index/status", response_model=IndexStatusResponse)
-async def get_index_status(tenant_id: str = Depends(verify_api_key)):
+async def get_index_status(tenant_id: str = Depends(require_user)):
     """Inspects the live index and storage state behind every subsystem.
 
     Always answers 200 (given valid auth) - a down backend is reported as a
@@ -744,7 +885,7 @@ class TestAndFetchModelsRequest(BaseModel):
 
 
 @app.get("/v1/settings/llm")
-async def get_llm_settings(tenant_id: str = Depends(verify_api_key)):
+async def get_llm_settings(tenant_id: str = Depends(require_admin)):
     """Returns the current LLM configuration (keys never exposed)."""
     resolved = _resolve_active_llm_config_with_secrets()
     provider_names = ("openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom")
@@ -770,7 +911,7 @@ async def get_llm_settings(tenant_id: str = Depends(verify_api_key)):
 
 
 @app.get("/v1/settings/providers")
-async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
+async def get_providers_status(tenant_id: str = Depends(require_admin)):
     """Returns status and details for all configured and supported LLM providers."""
     active_config = _resolve_active_llm_config_with_secrets()
     active = active_config["provider"].lower()
@@ -882,7 +1023,7 @@ async def get_providers_status(tenant_id: str = Depends(verify_api_key)):
 @app.post("/v1/settings/llm")
 async def update_llm_settings(
     payload: UpdateLLMSettingsRequest,
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_admin),
 ):
     """Updates runtime LLM API keys and default model and persists to disk safely."""
     updates = payload.model_dump(exclude_none=True)
@@ -922,7 +1063,7 @@ async def update_llm_settings(
 
 
 @app.post("/v1/reindex")
-async def reindex_endpoint(tenant_id: str = Depends(verify_api_key)):
+async def reindex_endpoint(tenant_id: str = Depends(require_admin)):
     """Rebuilds the vector index from disk chunk records (stop ingestion first)."""
     try:
         manifest = await asyncio.to_thread(ingestion_pipeline.reindex_all)
@@ -943,7 +1084,7 @@ async def reindex_endpoint(tenant_id: str = Depends(verify_api_key)):
 
 
 @app.delete("/v1/documents")
-async def clear_all_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
+async def clear_all_documents_endpoint(tenant_id: str = Depends(require_admin)):
     """Clears all documents and chunks from dedicated storage and active memory."""
     count = ingestion_pipeline.clear_all()
     retriever.update_chunks(vector_store.get_all_chunks(None))
@@ -951,7 +1092,7 @@ async def clear_all_documents_endpoint(tenant_id: str = Depends(verify_api_key))
 
 
 @app.post("/v1/documents/seed-samples")
-async def seed_sample_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
+async def seed_sample_documents_endpoint(tenant_id: str = Depends(require_admin)):
     """Seeds or resets the default sample documentation into the knowledge base."""
     sample_docs_dir = Path(__file__).parents[2] / "sample_docs"
     count = 0
@@ -984,13 +1125,13 @@ def _get_document_list_response() -> dict[str, Any]:
 
 
 @app.get("/v1/documents")
-async def list_documents_endpoint(tenant_id: str = Depends(verify_api_key)):
+async def list_documents_endpoint(tenant_id: str = Depends(require_user)):
     """Lists all stored documents in the permanent knowledge base catalog."""
     return _get_document_list_response()
 
 
 @app.get("/v1/documents/catalog")
-async def catalog_alias_endpoint(tenant_id: str = Depends(verify_api_key)):
+async def catalog_alias_endpoint(tenant_id: str = Depends(require_user)):
     """Alias for document catalog - returns same as /v1/documents for UI compatibility.
 
     .. deprecated::
@@ -1007,7 +1148,7 @@ async def get_document_chunks_endpoint(
     doc_id: str,
     limit: int = 100,
     offset: int = 0,
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_user),
 ):
     """Returns a page of structural chunks for a document with headings and pages."""
     doc = ingestion_pipeline.get_document(doc_id)
@@ -1025,7 +1166,7 @@ async def get_document_chunks_endpoint(
 
 
 @app.get("/v1/documents/{doc_id}")
-async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(verify_api_key)):
+async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(require_user)):
     """Retrieves full document metadata and its constituent chunks."""
     doc = ingestion_pipeline.get_document(doc_id)
     if not doc:
@@ -1034,7 +1175,7 @@ async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(ve
 
 
 @app.delete("/v1/documents/{doc_id}")
-async def delete_document_endpoint(doc_id: str, tenant_id: str = Depends(verify_api_key)):
+async def delete_document_endpoint(doc_id: str, tenant_id: str = Depends(require_user)):
     """Deletes a document and its chunks from vector and graph stores."""
     deleted = ingestion_pipeline.delete_document(doc_id)
     if not deleted:
@@ -1046,7 +1187,7 @@ async def delete_document_endpoint(doc_id: str, tenant_id: str = Depends(verify_
 @app.post("/v1/settings/llm/test-and-fetch-models")
 async def test_and_fetch_models(
     req: TestAndFetchModelsRequest,
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_admin),
 ):
     """Tests LLM provider API key and dynamically fetches available models from the provider."""
     start_time = time.time()
@@ -1071,7 +1212,13 @@ async def test_and_fetch_models(
         }
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        transport = _PinnedAsyncHTTPTransport()
+        async with httpx.AsyncClient(
+            timeout=10.0,
+            follow_redirects=False,
+            trust_env=False,
+            transport=transport,
+        ) as client:
             if provider == "openai":
                 url = (base_url.rstrip("/") if base_url else "https://api.openai.com/v1") + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
@@ -1080,7 +1227,7 @@ async def test_and_fetch_models(
                 if proj_id:
                     headers["OpenAI-Project"] = proj_id
 
-                resp = await client.get(url, headers=headers)
+                resp = await _model_fetch_get(client, transport, provider, url, headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     all_ids = [m["id"] for m in data.get("data", [])]
@@ -1095,7 +1242,7 @@ async def test_and_fetch_models(
                 elif resp.status_code == 403:
                     status_msg = "Access Denied (HTTP 403): Check Organization/Project permissions for this key."
                 else:
-                    status_msg = f"OpenAI error (HTTP {resp.status_code}): {resp.text[:100]}"
+                    status_msg = f"OpenAI error (HTTP {resp.status_code})."
 
             elif provider == "anthropic":
                 anthro_base = base_url.rstrip("/") if base_url else "https://api.anthropic.com"
@@ -1104,7 +1251,7 @@ async def test_and_fetch_models(
                     "x-api-key": api_key,
                     "anthropic-version": "2023-06-01",
                 }
-                resp = await client.get(url, headers=headers)
+                resp = await _model_fetch_get(client, transport, provider, url, headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["id"] for m in data.get("data", [])]
@@ -1123,12 +1270,12 @@ async def test_and_fetch_models(
                     status_msg = "Anthropic API Key verified! Loaded standard Claude model suite."
                     is_success = True
                 else:
-                    status_msg = f"Anthropic error (HTTP {resp.status_code}): {resp.text[:100]}"
+                    status_msg = f"Anthropic error (HTTP {resp.status_code})."
 
             elif provider == "groq":
                 url = (base_url.rstrip("/") if base_url else "https://api.groq.com/openai/v1") + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
-                resp = await client.get(url, headers=headers)
+                resp = await _model_fetch_get(client, transport, provider, url, headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["id"] for m in data.get("data", [])]
@@ -1137,12 +1284,12 @@ async def test_and_fetch_models(
                 elif resp.status_code == 401:
                     status_msg = "Authentication Failed (HTTP 401): The Groq API key is invalid."
                 else:
-                    status_msg = f"Groq error (HTTP {resp.status_code}): {resp.text[:100]}"
+                    status_msg = f"Groq error (HTTP {resp.status_code})."
 
             elif provider == "openrouter":
                 url = (base_url.rstrip("/") if base_url else "https://openrouter.ai/api/v1") + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
-                resp = await client.get(url, headers=headers)
+                resp = await _model_fetch_get(client, transport, provider, url, headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["id"] for m in data.get("data", [])]
@@ -1151,12 +1298,12 @@ async def test_and_fetch_models(
                 elif resp.status_code == 401:
                     status_msg = "Authentication Failed (HTTP 401): The OpenRouter API key is invalid."
                 else:
-                    status_msg = f"OpenRouter error (HTTP {resp.status_code}): {resp.text[:100]}"
+                    status_msg = f"OpenRouter error (HTTP {resp.status_code})."
 
             elif provider == "deepseek":
                 url = (base_url.rstrip("/") if base_url else "https://api.deepseek.com/v1") + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
-                resp = await client.get(url, headers=headers)
+                resp = await _model_fetch_get(client, transport, provider, url, headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["id"] for m in data.get("data", [])]
@@ -1165,23 +1312,23 @@ async def test_and_fetch_models(
                 elif resp.status_code == 401:
                     status_msg = "Authentication Failed (HTTP 401): The DeepSeek API key is invalid."
                 else:
-                    status_msg = f"DeepSeek error (HTTP {resp.status_code}): {resp.text[:100]}"
+                    status_msg = f"DeepSeek error (HTTP {resp.status_code})."
 
             elif provider in ["ollama"]:
                 target_url = (base_url.rstrip("/") if base_url else "http://localhost:11434") + "/api/tags"
-                resp = await client.get(target_url)
+                resp = await _model_fetch_get(client, transport, provider, target_url)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["name"] for m in data.get("models", [])]
                     status_msg = f"Successfully connected to local Ollama! Found {len(models)} installed models."
                     is_success = True
                 else:
-                    status_msg = f"Ollama connection error (HTTP {resp.status_code}). Is Ollama running on {target_url}?"
+                    status_msg = f"Ollama connection error (HTTP {resp.status_code}). Is Ollama running?"
 
             elif provider in ["custom", "openai_compatible"]:
                 target_url = (base_url.rstrip("/") if base_url else "http://localhost:8000/v1") + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-                resp = await client.get(target_url, headers=headers)
+                resp = await _model_fetch_get(client, transport, provider, target_url, headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["id"] for m in data.get("data", [])]
@@ -1190,10 +1337,10 @@ async def test_and_fetch_models(
                 elif resp.status_code == 401:
                     status_msg = "Authentication Failed (HTTP 401): Invalid API key for custom endpoint."
                 else:
-                    status_msg = f"Endpoint error (HTTP {resp.status_code}): {resp.text[:100]}"
+                    status_msg = f"Endpoint error (HTTP {resp.status_code})."
 
-    except (httpx.HTTPError, httpx.RequestError, OSError, ValueError, KeyError) as e:
-        status_msg = f"Connection Failed: Could not reach {provider} endpoint ({str(e)[:80]})"
+    except (httpx.HTTPError, httpx.RequestError, OSError, ValueError, KeyError):
+        status_msg = f"Connection Failed: Could not reach {provider} endpoint."
         is_success = False
 
     if is_success and models:
@@ -1225,7 +1372,7 @@ async def test_and_fetch_models(
 
 @app.post("/v1/settings/test")
 @app.post("/v1/settings/llm/test")
-async def test_llm_connection(tenant_id: str = Depends(verify_api_key)):
+async def test_llm_connection(tenant_id: str = Depends(require_admin)):
     """Runs a one-token generation to verify active provider credentials and endpoint."""
     start = time.time()
     config = _resolve_active_llm_config_with_secrets()

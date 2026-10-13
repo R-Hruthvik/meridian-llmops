@@ -36,7 +36,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-HDR = {"X-API-Key": "meridian-test-secret-key-2026"}
+HDR = {"X-API-Key": "meridian-test-admin-key-2026"}
 
 
 @pytest.fixture()

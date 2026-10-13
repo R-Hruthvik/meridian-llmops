@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from packages.core.config import get_settings, validate_production
 from packages.core.errors import ProviderError
 from packages.core.models import GuardrailResult
-from services.gateway.auth import verify_api_key
+from services.gateway.auth import validate_auth_configuration, verify_api_key
 from services.gateway.client import LiteLLMClient
 from services.gateway.guardrails.input_rails import InputGuardrails
 
@@ -15,6 +15,9 @@ app = FastAPI(
     title="Meridian AI Gateway",
     version="0.1.0",
     description="Enterprise AI Gateway: Provider Routing, Rate Limiting, and NeMo Input Guardrails",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 guardrails = InputGuardrails()
@@ -24,6 +27,7 @@ litellm_client = LiteLLMClient()
 @app.on_event("startup")
 async def on_startup():
     """Fail-fast: refuse to boot in production with empty/test-default secrets."""
+    validate_auth_configuration()
     validate_production(get_settings())
 
 

@@ -9,7 +9,7 @@ import os
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     api_key_secret: str = Field(default_factory=lambda: os.environ.get("API_KEY_SECRET", ""))
+    api_keys: SecretStr = Field(default=SecretStr(""), validation_alias="API_KEYS")
+    admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="ADMIN_API_KEY")
     rate_limit_per_minute: int = 60
     max_upload_mb: int = Field(default=25, gt=0)
 
@@ -121,7 +123,8 @@ def _is_forbidden_production_secret(value: str | None) -> bool:
 def validate_production(s: Settings) -> None:
     if s.app_env != "production":
         return
-    if _is_forbidden_production_secret(s.api_key_secret):
+    has_api_key_config = bool(s.api_keys.get_secret_value() or s.admin_api_key.get_secret_value())
+    if _is_forbidden_production_secret(s.api_key_secret) and not has_api_key_config:
         raise RuntimeError("missing required secret: API_KEY_SECRET")
     if _is_forbidden_production_secret(s.litellm_master_key):
         raise RuntimeError("missing required secret: LITELLM_MASTER_KEY")

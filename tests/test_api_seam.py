@@ -42,7 +42,7 @@ def client():
 
 
 def test_api_health(client):
-    res = client.get("/health")
+    res = client.get("/health", headers={"X-API-Key": "meridian-test-secret-key-2026"})
     assert res.status_code == 200
     assert res.json()["service"] == "meridian-rag-engine"
 

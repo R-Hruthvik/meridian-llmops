@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.core.db import get_db
 from packages.core.models import ExtractedField, ReviewItem
 from packages.core.schemas import ReviewItemAction, ReviewItemResponse
-from services.gateway.auth import verify_api_key
+from services.rag_engine.deps import require_admin
 
 router = APIRouter(prefix="/v1/review", tags=["Human Review Queue"])
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/v1/review", tags=["Human Review Queue"])
 @router.get("/items", response_model=list[ReviewItemResponse])
 async def list_pending_review_items(
     db: AsyncSession = Depends(get_db),
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_admin),
 ):
     """Lists all pending low-confidence items in the Human Review Queue."""
     stmt = (
@@ -51,7 +51,7 @@ async def process_review_action(
     item_id: str,
     action_data: ReviewItemAction,
     db: AsyncSession = Depends(get_db),
-    tenant_id: str = Depends(verify_api_key),
+    tenant_id: str = Depends(require_admin),
 ):
     """Processes approval, rejection, or correction of a queued review item."""
     stmt = (

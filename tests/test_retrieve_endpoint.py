@@ -1,15 +1,19 @@
 """POST /v1/retrieve — retrieval-only endpoint with per-stage scores and timings."""
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 from services.rag_engine.app import app
 
-HEADERS = {"X-API-Key": "meridian-test-secret-key-2026", "X-Tenant-Id": "retrieve-tenant"}
+RETRIEVE_API_KEY = "retrieve-test-key"
+HEADERS = {"X-API-Key": RETRIEVE_API_KEY, "X-Tenant-Id": "retrieve-tenant"}
 
 
 @pytest.fixture
-def seeded_retriever():
+def seeded_retriever(monkeypatch):
+    monkeypatch.setenv("API_KEYS", json.dumps({RETRIEVE_API_KEY: {"tenant": "retrieve-tenant", "role": "user"}}))
     from services.rag_engine import app as app_module
     from tests.fakes import FakeEmbedder
 
@@ -71,11 +75,11 @@ def test_retrieve_requires_auth():
     assert resp.status_code == 401
 
 
-def test_retrieve_is_tenant_scoped(client):
+def test_retrieve_ignores_spoofed_tenant_header(client):
     resp = client.post(
         "/v1/retrieve",
-        headers={"X-API-Key": "meridian-test-secret-key-2026", "X-Tenant-Id": "other-tenant"},
+        headers={"X-API-Key": RETRIEVE_API_KEY, "X-Tenant-Id": "other-tenant"},
         json={"query": "What is Qdrant?", "top_k": 5},
     )
     assert resp.status_code == 200
-    assert resp.json()["chunks"] == []
+    assert resp.json()["chunks"]

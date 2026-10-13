@@ -55,14 +55,7 @@ def test_health_ready_reports_real_checks(seeded):
         resp = client.get("/health/ready")
         assert resp.status_code == 200
         data = resp.json()
-        assert set(data["checks"]) >= {"qdrant", "embedder", "index_consistent", "llm_configured", "neo4j"}
-        qdrant = data["checks"]["qdrant"]
-        assert qdrant["ok"] is True and qdrant["points"] >= 1
-        embedder_check = data["checks"]["embedder"]
-        assert embedder_check["ok"] is True and embedder_check["dim"] > 0
-        index_check = data["checks"]["index_consistent"]
-        assert index_check["ok"] is True
-        assert index_check["disk_chunks"] == index_check["qdrant_points"]
+        assert set(data) == {"ready"}
         assert data["ready"] is True
 
 
@@ -93,7 +86,6 @@ def test_manifest_mismatch_blocks_queries(seeded):
         with TestClient(app) as client:
             ready = client.get("/health/ready").json()
             assert ready["ready"] is False
-            assert ready["checks"]["index_consistent"]["ok"] is False
 
             query = client.post(
                 "/v1/query",
