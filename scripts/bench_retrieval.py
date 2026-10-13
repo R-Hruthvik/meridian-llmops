@@ -125,6 +125,43 @@ def measure(retriever: HybridRetriever, queries: list[str], tenant: str, workers
         return list(executor.map(retrieve_and_serialize, queries))
 
 
+def profile_dense_payload(store: QdrantChunkStore, query_vectors: list[list[float]], tenant: str) -> dict[str, dict[str, float]]:
+    """Compare Qdrant's full-payload query with ID/score-only diagnostic calls."""
+    samples = {"raw_full_payload": [], "raw_no_payload": [], "payload_to_chunk": []}
+    query_filter = store._filter(tenant)
+    for vector in query_vectors:
+        started = time.perf_counter()
+        full = store.client.query_points(
+            collection_name=store.collection_name,
+            query=vector,
+            limit=20,
+            query_filter=query_filter,
+            with_payload=True,
+            with_vectors=False,
+        )
+        samples["raw_full_payload"].append((time.perf_counter() - started) * 1000)
+
+        started = time.perf_counter()
+        store.client.query_points(
+            collection_name=store.collection_name,
+            query=vector,
+            limit=20,
+            query_filter=query_filter,
+            with_payload=False,
+            with_vectors=False,
+        )
+        samples["raw_no_payload"].append((time.perf_counter() - started) * 1000)
+
+        started = time.perf_counter()
+        [store._chunk(point.payload) for point in full.points]
+        samples["payload_to_chunk"].append((time.perf_counter() - started) * 1000)
+
+    return {
+        stage: {f"p{p}": round(percentile(values, p), 3) for p in (50, 95, 99)}
+        for stage, values in samples.items()
+    }
+
+
 def run(args: argparse.Namespace) -> dict:
     validate_corpus_shape(args.docs, args.chunks_per_doc)
     tenant = "retrieval-benchmark"
@@ -164,6 +201,8 @@ def run(args: argparse.Namespace) -> dict:
                 measure(retriever, queries[:WARMUP_COUNT], tenant, workers)
                 samples = measure(retriever, queries, tenant, workers)
                 reports[label] = summarize(samples)
+            diagnostic_vectors = [embedder.embed_query(query).tolist() for query in queries]
+            dense_payload_diagnostic = profile_dense_payload(store, diagnostic_vectors, tenant)
             point_count = store.count(tenant_id=tenant)
             if point_count != len(chunks):
                 raise RuntimeError(f"temporary Qdrant count mismatch: expected {len(chunks)}, got {point_count}")
@@ -176,6 +215,7 @@ def run(args: argparse.Namespace) -> dict:
                 "warmup_queries": WARMUP_COUNT,
                 "concurrency": CONCURRENCY,
                 "timings_ms": reports,
+                "dense_payload_diagnostic_ms": dense_payload_diagnostic,
             }
         finally:
             try:
