@@ -89,6 +89,12 @@ def test_local_tracer_is_bounded_and_reports_per_tenant_request_metrics():
     assert metrics["latency_ms"]["p50"] >= 0
 
 
+def test_empty_latency_windows_return_null_percentiles():
+    metrics = LocalTracer().get_tenant_metrics("tenant-empty")
+    assert metrics["latency_ms"] == {"p50": None, "p95": None, "p99": None}
+    assert metrics["retrieval_latency_ms"] == {"p50": None, "p95": None}
+
+
 def test_local_tracer_counts_errors_and_usage_estimates():
     tracer = LocalTracer()
     try:

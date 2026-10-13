@@ -347,9 +347,9 @@ class _AttachedContext(AbstractContextManager):
         return result
 
 
-def _percentile(values: list[float], percentile: float) -> float:
+def _percentile(values: list[float], percentile: float) -> float | None:
     if not values:
-        return 0.0
+        return None
     index = max(0, min(len(values) - 1, math.ceil(len(values) * percentile) - 1))
     return values[index]
 
