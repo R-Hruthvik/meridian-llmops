@@ -164,3 +164,49 @@ def test_query_top_k_reaches_the_retriever_with_source_metadata(client, monkeypa
     assert data["sources"][0]["scores"]["dense"] == 0.95
     assert data["sources"][0]["metadata"]["title"] == "Doc 0"
     assert data["usage"]["total_tokens"] == 12
+
+
+def test_generation_has_one_timed_event_with_usage_in_diagnostics(client, monkeypatch):
+    from services.rag_engine import app as app_module
+    from services.rag_engine.observability.langfuse_client import LocalTracer
+
+    tracer = LocalTracer()
+    monkeypatch.setattr(app_module, "tracer", tracer)
+    monkeypatch.setattr(app_module.retriever, "tracer", tracer)
+    recorder = _RecordingRetriever()
+    monkeypatch.setattr(
+        app_module,
+        "agent_graph",
+        build_rag_agent_graph(
+            retriever=recorder,
+            graph_store=app_module.graph_store,
+            llm_client=app_module.llm_client,
+            llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
+            tracer=tracer,
+        ),
+    )
+
+    response = client.post(
+        "/v1/query",
+        json={"query": "What does Meridian use for gateway routing?", "top_k": 1, "max_cycles": 1},
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 200
+    trace = tracer.traces[-1]
+    generations = [item for item in trace["generations"] if item["name"] == "generate"]
+    assert len(generations) == 1
+    assert sum(item["name"] == "generate" for item in trace["spans"]) + len(generations) == 1
+    generation = generations[0]
+    assert generation["duration_ms"] > 0
+    assert generation["prompt_tokens"] > 0
+    assert generation["completion_tokens"] > 0
+    assert isinstance(generation["estimated"], bool)
+    assert "cost_usd" in generation
+    assert generation["attributes"]["model"]
+    assert generation["attributes"]["provider"]
+    assert not [item for item in trace["spans"] if item["name"] == "generate"]
+
+    metrics = tracer.get_tenant_metrics(trace["tenant_id"])
+    latest = metrics["recent_requests"][0]
+    assert latest["timings_ms"]["generate"] == generation["duration_ms"]

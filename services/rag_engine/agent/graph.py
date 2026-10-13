@@ -220,17 +220,17 @@ def build_rag_agent_graph(
         try:
             if debug_log_prompts:
                 _log_debug_payload("prompt", state.get("request_id", ""), prompt.messages, api_key)
-            span_context = (
-                tracer.span(
+            generation_context = (
+                tracer.generation(
                     "generate",
                     tenant_id=state.get("tenant_id", "default"),
                     model=model,
                     provider=provider,
                 )
                 if tracer is not None
-                else nullcontext()
+                else nullcontext(None)
             )
-            with span_context:
+            with generation_context as generation:
                 response = await client.chat_completion(
                     messages=prompt.messages,
                     model=model,
@@ -240,7 +240,24 @@ def build_rag_agent_graph(
                     temperature=0.0,
                     max_tokens=600,
                 )
-            draft = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+                draft = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+                served_model = response.get("model", model)
+                usage = normalize_usage(
+                    response,
+                    prompt=json.dumps(prompt.messages, ensure_ascii=False),
+                    completion=draft,
+                    model=served_model,
+                )
+                if generation is not None:
+                    generation.set_attribute("model", served_model)
+                    generation.set_attribute("provider", response.get("provider", provider))
+                    generation.set_tokens(
+                        prompt_tokens=usage["prompt_tokens"],
+                        completion_tokens=usage["completion_tokens"],
+                        model=served_model,
+                        estimated=usage["estimated"],
+                        cost_usd=usage["cost_usd"],
+                    )
             if debug_log_prompts:
                 _log_debug_payload("response", state.get("request_id", ""), response.get("raw_response", response), api_key)
             if not draft.strip():
@@ -256,13 +273,6 @@ def build_rag_agent_graph(
 
         timings = dict(state.get("timings_ms") or {})
         timings["generate"] = timings.get("generate", 0.0) + (time.perf_counter() - started) * 1000
-        served_model = response.get("model", model)
-        usage = normalize_usage(
-            response,
-            prompt=json.dumps(prompt.messages, ensure_ascii=False),
-            completion=draft,
-            model=served_model,
-        )
         return {
             "draft_answer": draft,
             "retrieved_chunks": [SearchResult.model_validate(item) for item in selected_chunks],

@@ -801,24 +801,6 @@ async def query_endpoint(
         else:
             final_answer = raw_answer
 
-        # 4. Record usage only when this request received a provider response.
-        if final_state.get("serving_provider"):
-            with trace.generation(
-                name="generate",
-                model=final_state.get("serving_model"),
-                provider=final_state.get("serving_provider"),
-            ) as gen:
-                usage = final_state.get("usage") or {}
-                prompt_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
-                completion_tokens = usage.get("completion_tokens", usage.get("output_tokens"))
-                if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
-                    gen.set_tokens(
-                        prompt_tokens=prompt_tokens,
-                        completion_tokens=completion_tokens,
-                        estimated=bool(usage.get("estimated", False)),
-                        cost_usd=usage.get("cost_usd"),
-                    )
-
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     timings_ms = dict(final_state.get("timings_ms") or {})
     timings_ms["total"] = elapsed_ms
