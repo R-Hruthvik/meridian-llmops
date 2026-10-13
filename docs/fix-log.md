@@ -321,3 +321,10 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: `.venv/bin/python -m pytest tests/test_api_seam.py tests/test_gateway.py -q` -> **20 passed**; scoped Ruff -> clean; scoped mypy -> no issues in `services/rag_engine/app.py`.
 - Deviations from plan: none.
 - Open risks / follow-ups: rules detect known phrases and patterns only; disabling either server-side switch intentionally disables that class of check.
+
+## Gate 5 evidence (2026-10-13)
+- `uv run pytest -q` -> **412 passed, 3 xfailed**; includes route-auth enumeration, production default-key rejection, secrets, guardrail behavior, and tenant isolation.
+- `npm --prefix web run test:run` -> **262 passed**; `npm --prefix web run build` -> succeeded.
+- Rebuilt with the same synthetic configured-key values used by CI; exact key and configured-key pattern scans over `web/dist` found no matches.
+- `uv run ruff check .` -> clean; `uv run mypy packages services evals scripts --ignore-missing-imports --explicit-package-bases --python-version 3.11` -> **69 source files clean**.
+- Gate 5 passed. Existing warnings: missing `/run/secrets` directory, FastAPI `on_event` deprecations, and React test `act()` warnings.
