@@ -61,7 +61,8 @@ from services.rag_engine.routers.review import router as review_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize the semantic model once before serving or loading persisted chunks."""
-    settings = app.state.settings
+    settings = app.state.settings or _core_get_settings()
+    app.state.settings = settings
     validate_auth_configuration()
     _validate_production(settings)
     if ingestion_pipeline.embedder is None:
@@ -84,12 +85,15 @@ async def lifespan(app: FastAPI):
     docs_loaded = await asyncio.to_thread(ingestion_pipeline.load_persisted_knowledge_base)
     logger.info("Hydrated %d documents from dedicated storage.", docs_loaded)
     retriever.update_chunks(vector_store.get_all_chunks(None))
-    global _index_consistency
+    global _index_consistency, _service_status
     disk_chunks = await asyncio.to_thread(lambda: len(ingestion_pipeline.storage.load_all_chunks()))
     qdrant_points = await asyncio.to_thread(vector_store.count)
     _index_consistency = await asyncio.to_thread(
         check_consistency, settings, qdrant_points, disk_chunks
     )
+    app.state.index_consistency = _index_consistency
+    app.state.service_status = _check_docker_services(settings)
+    _service_status = app.state.service_status
     if _index_consistency.ok:
         logger.info("Index consistent: %d chunks across disk and Qdrant.", disk_chunks)
     else:
@@ -214,13 +218,9 @@ def _probe_http(url: str, timeout: float = 2.0) -> bool:
         return False
 
 
-def _check_docker_services() -> dict[str, Any]:
-    from packages.core.config import get_settings as _get_settings
-
-    try:
-        settings = _get_settings()
-    except Exception:  # noqa: BLE001 - degraded banner is better than a boot crash
-        settings = None  # type: ignore[assignment]
+def _check_docker_services(settings=None) -> dict[str, Any]:
+    if settings is None:
+        settings = _core_get_settings()
 
     qdrant_url = f"http://{getattr(settings, 'qdrant_host', 'localhost')}:{getattr(settings, 'qdrant_port', 6333)}/collections" if settings else "http://localhost:6333/collections"
     neo4j_url = "http://localhost:7474"
@@ -528,7 +528,7 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
     (agent graph, connectivity test). Never expose via API responses.
     """
     settings = dict(_runtime_llm_settings)
-    env_settings = _core_get_settings()
+    env_settings = _settings
     generic = {
         "provider": env_settings.provider,
         "api_key": env_settings.api_key,
@@ -564,11 +564,11 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
         return {"provider": provider, "model": configured_model or "", "api_key": None, "base_url": ""}
     default_models = {"openai": "gpt-4o-mini", "anthropic": "claude-3-5-sonnet-20241022", "openrouter": "meta-llama/llama-3.3-70b-instruct", "deepseek": "deepseek-chat", "groq": "llama-3.3-70b-versatile", "ollama": "llama3:latest", "custom": ""}
     model = configured_model or provider_models.get(provider) or default_models[provider]
-    api_key = _core_get_settings().__getattribute__(f"{provider}_api_key") or settings.get(f"{provider}_api_key")
+    api_key = _settings.__getattribute__(f"{provider}_api_key") or settings.get(f"{provider}_api_key")
     api_key = api_key or _tested_api_keys.get(provider)
-    base_url = _core_get_settings().__getattribute__(f"{provider}_base_url") or settings.get(f"{provider}_base_url") or PROVIDERS[provider]["base_url_default"]
+    base_url = _settings.__getattribute__(f"{provider}_base_url") or settings.get(f"{provider}_base_url") or PROVIDERS[provider]["base_url_default"]
     if provider == "custom":
-        base_url = _core_get_settings().custom_base_url or settings.get("custom_base_url") or base_url
+        base_url = _settings.custom_base_url or settings.get("custom_base_url") or base_url
 
     return {
         "provider": provider,
@@ -580,10 +580,7 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
 
 def get_active_llm_config() -> dict[str, str]:
     """Thin no-secrets reader over the single settings owner."""
-    from packages.core.settings import get_settings
-
-    s = get_settings()
-    return {"provider": "openai", "model": s.default_llm_model, "base_url": s.litellm_base_url}
+    return {"provider": "openai", "model": _settings.default_llm_model, "base_url": _settings.litellm_base_url}
 
 
 # Readiness checks are deferred to the app lifespan.
@@ -626,6 +623,7 @@ class RetrieveRequest(BaseModel):
 @router.post("/v1/retrieve")
 async def retrieve_endpoint(
     payload: RetrieveRequest,
+    request: Request,
     tenant_id: str = Depends(require_user),
 ):
     """Runs hybrid retrieval only (dense + BM25 + RRF) and returns ranked chunks.
@@ -633,7 +631,7 @@ async def retrieve_endpoint(
     The primary debugging tool: inspect which chunks would reach the LLM,
     with per-stage scores and stage timings, before involving generation.
     """
-    blocked = _index_gate()
+    blocked = _index_gate(request)
     if blocked is not None:
         return blocked
     result = retriever.retrieve(payload.query, top_k=payload.top_k, tenant_id=tenant_id, debug=payload.debug)
@@ -645,9 +643,9 @@ async def retrieve_endpoint(
     }
 
 
-def _index_gate() -> JSONResponse | None:
-    """Refuse query/retrieve while the index cannot be trusted (no silent fallback)."""
-    report = _index_consistency
+def _index_gate(request: Request) -> JSONResponse | None:
+    """Refuse query/retrieve while this app's index cannot be trusted."""
+    report = getattr(request.app.state, "index_consistency", None)
     if report is not None and not report.ok:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -669,10 +667,11 @@ async def health_live():
 
 
 @router.get("/health/ready")
-async def health_ready():
+async def health_ready(request: Request):
     """Return only the serving-readiness bit needed by external probes."""
     qdrant_health = vector_store.health()
-    index_ok = _index_consistency.ok if _index_consistency is not None else False
+    consistency = getattr(request.app.state, "index_consistency", None)
+    index_ok = consistency.ok if consistency is not None else False
     embedder = ingestion_pipeline.embedder
     ready = qdrant_health["status"] == "ready" and index_ok and embedder is not None
     return {"ready": ready}
@@ -719,14 +718,14 @@ async def upload_documents_endpoint(
 
 
 @router.get("/health")
-async def health_check(tenant_id: str = Depends(require_user)):
+async def health_check(request: Request, tenant_id: str = Depends(require_user)):
     return {
         "status": "healthy",
         "service": "meridian-rag-engine",
         # Live count, same source as /v1/documents - a boot-time snapshot went stale on ingest.
         "storage_documents": len(ingestion_pipeline.get_documents(tenant_id=tenant_id)),
         "vector_chunks": vector_store.count(tenant_id=tenant_id),
-        "services": _service_status,
+        "services": request.app.state.service_status,
     }
 
 
@@ -761,10 +760,11 @@ async def ingest_document_endpoint(
 @router.post("/v1/query", response_model=QueryResponse)
 async def query_endpoint(
     req: QueryRequest,
+    request: Request,
     tenant_id: str = Depends(require_user),
 ):
     """Executes the self-healing Agentic RAG pipeline with guardrails and tracing."""
-    blocked = _index_gate()
+    blocked = _index_gate(request)
     if blocked is not None:
         return blocked
     start_time = time.perf_counter()
@@ -925,7 +925,7 @@ async def get_llm_settings(tenant_id: str = Depends(require_admin)):
     resolved = _resolve_active_llm_config_with_secrets()
     provider_names = ("openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom")
     provider_flags = {
-        name: bool(getattr(_core_get_settings(), f"{name}_api_key") or _runtime_llm_settings.get(f"{name}_api_key") or name == "ollama")
+        name: bool(getattr(_settings, f"{name}_api_key") or _runtime_llm_settings.get(f"{name}_api_key") or name == "ollama")
         for name in provider_names
     }
     if resolved["provider"] in provider_flags and resolved.get("api_key"):
@@ -951,7 +951,7 @@ async def get_providers_status(tenant_id: str = Depends(require_admin)):
     active_config = _resolve_active_llm_config_with_secrets()
     active = active_config["provider"].lower()
     provider_configured = {
-        name: bool(getattr(_core_get_settings(), f"{name}_api_key") or _runtime_llm_settings.get(f"{name}_api_key") or name == "ollama")
+        name: bool(getattr(_settings, f"{name}_api_key") or _runtime_llm_settings.get(f"{name}_api_key") or name == "ollama")
         for name in ("openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom")
     }
     if active in provider_configured and active_config.get("api_key"):
@@ -1088,11 +1088,11 @@ async def update_llm_settings(
             graph_store=cast(Any, graph_store),
             llm_client=llm_client,
             llm_config_getter=_resolve_active_llm_config_with_secrets,
-            min_dense_score=_core_get_settings().min_dense_score,
-            graph_enabled=_core_get_settings().graph_enabled,
-            graph_context_enabled=_core_get_settings().graph_context_enabled,
-            debug_log_prompts=_core_get_settings().debug_log_prompts,
-            verify_mode=_core_get_settings().verify_mode,
+            min_dense_score=_settings.min_dense_score,
+            graph_enabled=_settings.graph_enabled,
+            graph_context_enabled=_settings.graph_context_enabled,
+            debug_log_prompts=_settings.debug_log_prompts,
+            verify_mode=_settings.verify_mode,
             tracer=tracer,
         )
         active = _active_services.get()
@@ -1104,23 +1104,25 @@ async def update_llm_settings(
 
 
 @router.post("/v1/reindex")
-async def reindex_endpoint(tenant_id: str = Depends(require_admin)):
+async def reindex_endpoint(request: Request, tenant_id: str = Depends(require_admin)):
     """Rebuilds the vector index from disk chunk records (stop ingestion first)."""
     try:
         manifest = await asyncio.to_thread(ingestion_pipeline.reindex_all)
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"Reindex failed: {error}") from error
-    global _index_consistency
     disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
-    _index_consistency = await asyncio.to_thread(
-        check_consistency, _core_get_settings(), await asyncio.to_thread(vector_store.count), disk_chunks
+    request.app.state.index_consistency = await asyncio.to_thread(
+        check_consistency, request.app.state.settings, await asyncio.to_thread(vector_store.count), disk_chunks
     )
+    if getattr(request.app.state, "use_legacy_services", False):
+        global _index_consistency
+        _index_consistency = request.app.state.index_consistency
     retriever.update_chunks(vector_store.get_all_chunks(None))
     return {
         "status": "reindexed",
         "chunk_count": manifest.chunk_count,
         "embedding_model": manifest.embedding_model,
-        "consistent": _index_consistency.ok,
+        "consistent": request.app.state.index_consistency.ok,
     }
 
 
@@ -1571,13 +1573,17 @@ async def _startup(application: FastAPI, settings) -> None:
     application.state.retriever.update_chunks(application.state.vector_store.get_all_chunks(None))
     disk_chunks = await asyncio.to_thread(lambda: len(application.state.ingestion_pipeline.storage.load_all_chunks()))
     qdrant_points = await asyncio.to_thread(application.state.vector_store.count)
-    application.state.index_consistency = await asyncio.to_thread(
-        check_consistency, settings, qdrant_points, disk_chunks
-    )
-    global _index_consistency, _service_status
-    _index_consistency = application.state.index_consistency
-    _service_status = _check_docker_services()
-    _log_service_banner(_service_status)
+    if not hasattr(application.state, "index_consistency"):
+        application.state.index_consistency = await asyncio.to_thread(
+            check_consistency, settings, qdrant_points, disk_chunks
+        )
+    if not hasattr(application.state, "service_status"):
+        application.state.service_status = _check_docker_services(settings)
+    if getattr(application.state, "use_legacy_services", False):
+        global _index_consistency, _service_status
+        _index_consistency = application.state.index_consistency
+        _service_status = application.state.service_status
+    _log_service_banner(application.state.service_status)
     try:
         await init_db()
     except Exception as error:  # noqa: BLE001 - keep the existing degraded DB startup behavior

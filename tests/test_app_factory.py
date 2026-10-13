@@ -1,6 +1,7 @@
 """The app factory keeps service state isolated between FastAPI instances."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -18,8 +19,11 @@ class FakeVectorStore:
     def get_all_chunks(self, tenant_id=None):
         return []
 
-    def count(self):
-        return 0
+    def count(self, tenant_id=None):
+        return getattr(self, "count_value", 0)
+
+    def health(self):
+        return {"status": "ready"}
 
 
 class FakePipeline:
@@ -33,6 +37,9 @@ class FakePipeline:
     def load_all_chunks(self):
         return []
 
+    def get_documents(self, tenant_id=None):
+        return getattr(self, "documents", [])
+
 
 class FakeRetriever:
     def __init__(self):
@@ -41,6 +48,9 @@ class FakeRetriever:
 
     def update_chunks(self, chunks):
         self.chunks = chunks
+
+    def retrieve(self, query, top_k, tenant_id=None, debug=False):
+        return SimpleNamespace(query=query, top_k=top_k, chunks=[], timings_ms={})
 
 
 class FakeGraph:
@@ -71,6 +81,8 @@ def fake_overrides():
         "output_guardrails": FakeGuardrails(),
         "agent_graph": object(),
         "runtime_llm_settings": {},
+        "index_consistency": SimpleNamespace(ok=True, reasons=[]),
+        "service_status": {},
     }
 
 
@@ -81,8 +93,8 @@ def test_create_app_uses_per_instance_settings_and_overrides(monkeypatch):
         return None
     monkeypatch.setattr(app_module, "init_db", no_db)
 
-    first_settings = Settings(app_env="testing", qdrant_local_path=":memory:")
-    second_settings = Settings(app_env="testing", qdrant_local_path=":memory:")
+    first_settings = Settings(_env_file=None, app_env="testing", qdrant_local_path=":memory:")
+    second_settings = Settings(_env_file=None, app_env="testing", qdrant_local_path=":memory:")
     first_services, second_services = fake_overrides(), fake_overrides()
     first = app_module.create_app(first_settings, first_services)
     second = app_module.create_app(second_settings, second_services)
@@ -100,6 +112,63 @@ def test_create_app_uses_per_instance_settings_and_overrides(monkeypatch):
     assert second_services["vector_store"].ready
     assert first.state.vector_store is first_services["vector_store"]
     assert second.state.vector_store is second_services["vector_store"]
+
+
+
+def test_app_consistency_status_and_services_are_isolated(monkeypatch):
+    monkeypatch.setenv(
+        "API_KEYS",
+        '{"factory-user":{"tenant":"default","role":"user"}}',
+    )
+    monkeypatch.setattr(app_module, "validate_auth_configuration", lambda: None)
+    monkeypatch.setattr(app_module, "_validate_production", lambda settings: None)
+
+    async def no_db():
+        return None
+
+    monkeypatch.setattr(app_module, "init_db", no_db)
+    first_services, second_services = fake_overrides(), fake_overrides()
+    first_services["service_status"] = {
+        "qdrant": {"origin": "first app", "reachable": True, "endpoint": "fake"}
+    }
+    first_services["index_consistency"] = SimpleNamespace(ok=True, reasons=[])
+    first_services["vector_store"].count_value = 3
+    first_services["ingestion_pipeline"].documents = ["first", "second"]
+    second_services["service_status"] = {
+        "qdrant": {"origin": "second app", "reachable": False, "endpoint": "fake"}
+    }
+    second_services["index_consistency"] = SimpleNamespace(ok=False, reasons=["second index mismatch"])
+    second_services["vector_store"].count_value = 9
+    second_services["ingestion_pipeline"].documents = ["other"]
+
+    first = app_module.create_app(
+        Settings(_env_file=None, app_env="testing", qdrant_local_path=":memory:"),
+        first_services,
+    )
+    second = app_module.create_app(
+        Settings(_env_file=None, app_env="testing", qdrant_local_path=":memory:"),
+        second_services,
+    )
+    headers = {"X-API-Key": "factory-user"}
+
+    with TestClient(first) as first_client, TestClient(second) as second_client:
+        first_health = first_client.get("/health", headers=headers).json()
+        second_health = second_client.get("/health", headers=headers).json()
+        assert first_health["services"]["qdrant"]["origin"] == "first app"
+        assert second_health["services"]["qdrant"]["origin"] == "second app"
+        assert (first_health["storage_documents"], first_health["vector_chunks"]) == (2, 3)
+        assert (second_health["storage_documents"], second_health["vector_chunks"]) == (1, 9)
+        assert first_client.post(
+            "/v1/retrieve", headers=headers, json={"query": "one", "top_k": 1}
+        ).status_code == 200
+        blocked = second_client.post(
+            "/v1/retrieve", headers=headers, json={"query": "two", "top_k": 1}
+        )
+        assert blocked.status_code == 503
+        assert blocked.json()["error"]["reasons"] == ["second index mismatch"]
+
+    assert first.state.index_consistency.ok is True
+    assert second.state.index_consistency.ok is False
 
 
 def test_fresh_import_does_not_touch_services_filesystem_or_network():
