@@ -88,7 +88,10 @@ def test_rate_limiter_exceeded(gateway_client):
     assert got_429 is True
 
 
-def test_successful_chat_completion(gateway_client):
+def test_successful_chat_completion(gateway_client, monkeypatch):
+    from services.gateway.app import litellm_client
+
+    monkeypatch.setattr(litellm_client, "allow_private_provider_urls", True)
     response = gateway_client.post(
         "/v1/chat/completions",
         headers={"X-API-Key": "meridian-test-secret-key-2026"},
