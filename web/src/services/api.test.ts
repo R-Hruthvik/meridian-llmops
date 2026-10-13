@@ -103,25 +103,46 @@ describe('MeridianApiClient', () => {
       const mock = mockResponse({ detail: 'Invalid API key' }, 401, 'Unauthorized');
       vi.spyOn(global, 'fetch').mockResolvedValue(mock as unknown as Response);
 
-      try {
-        await api.query({ query: 'test' });
-      } catch (err) {
-        expect(err).toBeInstanceOf(ApiError);
-        expect((err as ApiError).status).toBe(401);
-        expect((err as ApiError).message).toMatch(/Invalid API key|Unauthorized/);
-      }
+      await expect(api.query({ query: 'test' })).rejects.toMatchObject({
+        name: 'ApiError',
+        status: 401,
+        message: 'Enter API key',
+      });
     });
 
     it('throws ApiError with status 429 on rate limited', async () => {
       const mock = mockResponse({ detail: 'Rate limit exceeded' }, 429, 'Too Many Requests');
       vi.spyOn(global, 'fetch').mockResolvedValue(mock as unknown as Response);
 
-      try {
-        await api.query({ query: 'test' });
-      } catch (err) {
-        expect(err).toBeInstanceOf(ApiError);
-        expect((err as ApiError).status).toBe(429);
-      }
+      await expect(api.query({ query: 'test' })).rejects.toMatchObject({ status: 429, message: 'Rate limited' });
+    });
+
+    it('maps an inconsistent-index response to a reindex instruction', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse({
+        error: {
+          code: 'index_inconsistent',
+          message: 'The vector index is inconsistent with disk records; run scripts/reindex.py',
+          reasons: ['point count mismatch'],
+        },
+      }, 503, 'Service Unavailable') as unknown as Response);
+
+      await expect(api.query({ query: 'test' })).rejects.toMatchObject({
+        status: 503,
+        code: 'index_inconsistent',
+        message: expect.stringContaining('Run scripts/reindex.py'),
+      });
+    });
+
+    it('publishes failures for the app-level error notice and still rejects for inline handling', async () => {
+      const listener = vi.fn();
+      window.addEventListener('meridian:api-error', listener);
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(mockResponse({ detail: 'bad query' }, 400, 'Bad Request') as unknown as Response);
+
+      await expect(api.query({ query: 'test' })).rejects.toBeInstanceOf(ApiError);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener.mock.calls[0][0]).toMatchObject({ detail: { message: 'bad query', status: 400 } });
+      window.removeEventListener('meridian:api-error', listener);
     });
 
     it('throws ApiError with status 400 on bad request', async () => {

@@ -7,6 +7,7 @@ import { LazySurface } from './components/LazySurface';
 import { WorkbenchContext, type OpenOverlayOptions, type OverlayTarget } from './WorkbenchContext';
 import { api } from './services/api';
 import { UnlockScreen } from './components/UnlockScreen';
+import { ApiErrorNotice } from './components/ApiErrorNotice';
 
 // Only the Ask canvas ships with the first paint. Every other surface is
 // reachable, but not by default: each is a separate chunk fetched the first time
@@ -202,6 +203,7 @@ export const App: React.FC = () => {
   return (
     <WorkbenchContext.Provider value={workbench}>
       <div className="flex min-h-screen flex-col bg-surface text-ink">
+        <ApiErrorNotice />
         <TopBar
           tenantId={tenantId}
           setTenantId={setTenantId}

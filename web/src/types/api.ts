@@ -3,14 +3,21 @@ export interface SearchResult {
   document_id: string;
   text: string;
   score: number;
-  retrieval_method: string;
-  metadata?: Record<string, any>;
+  retrieval_method: 'dense' | 'sparse_bm25' | 'hybrid' | 'graph';
+  metadata?: Record<string, unknown>;
+  rank?: number | null;
+  filename?: string;
+  title?: string;
+  page_start?: number | null;
+  heading_path?: string;
+  scores?: Record<string, unknown>;
+  chunk_index?: number | null;
 }
 
 export interface Entity {
   name: string;
   entity_type: string;
-  properties?: Record<string, any>;
+  properties?: Record<string, unknown>;
 }
 
 export interface QueryRequest {
@@ -50,12 +57,53 @@ export interface QueryResponse {
   /** Authoritative serving provenance. Optional: absent on older backends. */
   serving?: ServingProvenance;
   degraded_reason?: string | null;
+  answer_status: 'answered' | 'insufficient_context' | 'unverified' | 'refused';
+  verification: VerificationSummary;
+  debug: Record<string, unknown>;
+  sources: SearchResult[];
+  request_id?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  timings_ms: Record<string, number>;
+  usage?: Record<string, unknown> | null;
+}
+
+export interface VerificationSummary {
+  status: 'citations_ok' | 'citations_failed' | 'supported' | 'unsupported' | 'unchecked';
+  scope: 'format_and_numeric_consistency' | 'llm_judgment' | 'unchecked';
+  invalid_citations: number[];
+  uncited_claims: string[];
+  numeric_mismatches: string[];
+  unsupported_claims: string[];
+  contradictions: string[];
+  details?: string | null;
+}
+
+export interface ApiFailureDetail {
+  message: string;
+  status: number;
+  code?: string;
+  action?: string;
+}
+
+export interface ApiErrorPayload {
+  detail?: unknown;
+  error?: {
+    code?: string;
+    message?: string;
+    reasons?: string[];
+  };
 }
 
 export interface IngestRequest {
-  title: string;
   text: string;
+  title?: string | null;
   source?: string;
+  metadata?: Record<string, string> | null;
+  chunk_size?: number | null;
+  chunk_overlap?: number | null;
+  format?: 'md' | 'txt' | 'html' | null;
+  filename?: string | null;
 }
 
 export interface IngestResponse {
@@ -183,7 +231,7 @@ export interface DocumentChunk {
   chunk_index: number;
   section_heading?: string | null;
   text: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   embedding?: number[] | null;
 }
 

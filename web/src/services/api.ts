@@ -1,6 +1,8 @@
 import type {
   DocumentDetail,
   DocumentListResponse,
+  ApiErrorPayload,
+  ApiFailureDetail,
   GuardrailResult,
   HealthReadiness,
   IngestRequest,
@@ -27,11 +29,13 @@ import type {
 export class ApiError extends Error {
   readonly status: number;
   readonly detail?: string;
+  readonly code?: string;
 
-  constructor(message: string, status: number, detail?: string) {
+  constructor(message: string, status: number, detail?: string, code?: string) {
     super(message);
     this.status = status;
     this.detail = detail;
+    this.code = code;
     this.name = 'ApiError';
   }
 }
@@ -90,21 +94,47 @@ class MeridianApiClient {
     };
   }
 
-  private async requestJSON<T>(url: string, init: RequestInit, errorFallback: string): Promise<T> {
+  private async requestJSON<T>(url: string, init: RequestInit, errorFallback: string, notifyFailure = true): Promise<T> {
     // NOTE: empty baseUrl is intentional — relative fetch is same-origin in prod
     // (FastAPI serves web/dist) and vite-proxied to :8000 in dev. setBaseUrl()
     // is an opt-in override for remote backends only.
-    const res = await fetch(url, init);
+    let res: Response;
+    try {
+      res = await fetch(url, init);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : errorFallback;
+      const apiError = new ApiError(message || errorFallback, 0, message || errorFallback);
+      if (notifyFailure) this.publishFailure({ message: apiError.message, status: 0 });
+      throw apiError;
+    }
     if (!res.ok) {
-      const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-      const detail = normalizeDetail(errorData?.detail, `${errorFallback}: ${res.statusText}`);
-      throw new ApiError(detail, res.status, detail);
+      const errorData = await res.json().catch(() => ({ detail: res.statusText })) as ApiErrorPayload;
+      const errorCode = errorData.error?.code;
+      const rawDetail = errorData.error?.message ?? errorData.detail;
+      const detail = normalizeDetail(rawDetail, `${errorFallback}: ${res.statusText}`);
+      const message = res.status === 401
+        ? 'Enter API key'
+        : res.status === 429
+          ? 'Rate limited'
+          : res.status === 503 && errorCode === 'index_inconsistent'
+            ? 'Index is inconsistent. Run scripts/reindex.py to rebuild it.'
+            : detail;
+      const action = errorCode === 'index_inconsistent' ? 'Run scripts/reindex.py to rebuild the index.' : undefined;
+      const apiError = new ApiError(message, res.status, detail, errorCode);
+      if (notifyFailure) this.publishFailure({ message, status: res.status, code: errorCode, action });
+      throw apiError;
     }
     return res.json() as Promise<T>;
   }
 
+  private publishFailure(detail: ApiFailureDetail): void {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent<ApiFailureDetail>('meridian:api-error', { detail }));
+    }
+  }
+
   async checkHealth(): Promise<HealthReadiness> {
-    return this.requestJSON<HealthReadiness>(`${this.baseUrl}/health/ready`, {}, 'Health check failed');
+    return this.requestJSON<HealthReadiness>(`${this.baseUrl}/health/ready`, {}, 'Health check failed', false);
   }
 
   async query(req: QueryRequest): Promise<QueryResponse> {
