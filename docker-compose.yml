@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   qdrant:
     image: qdrant/qdrant:v1.11.3
@@ -19,6 +17,7 @@ services:
 
   neo4j:
     image: neo4j:5.18.0-community
+    profiles: ["neo4j"]
     container_name: meridian-neo4j
     ports:
       - "7474:7474"
@@ -36,13 +35,21 @@ services:
 
   litellm:
     image: ghcr.io/berriai/litellm:main-v1.35.8
+    profiles: ["app", "gateway"]
     container_name: meridian-litellm-gateway
     ports:
       - "4000:4000"
     environment:
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
-      - STORE_MODEL_IN_DB=False
-      - OMNIROUTE_API_KEY=${OMNIROUTE_API_KEY:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      STORE_MODEL_IN_DB: "False"
+      OMNIROUTE_API_KEY: ${OMNIROUTE_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
     volumes:
       - ./services/gateway/litellm_config.yaml:/app/config.yaml
     extra_hosts:
@@ -57,7 +64,8 @@ services:
       start_period: 15s
 
   langfuse-db:
-    image: postgres:16-alpine
+    image: postgres:16.4-alpine
+    profiles: ["langfuse"]
     container_name: meridian-langfuse-db
     environment:
       - POSTGRES_USER=langfuse
@@ -72,7 +80,8 @@ services:
       retries: 5
 
   langfuse:
-    image: langfuse/langfuse:2
+    image: langfuse/langfuse:2.95.8
+    profiles: ["langfuse"]
     container_name: meridian-langfuse
     depends_on:
       langfuse-db:
@@ -86,7 +95,29 @@ services:
       - SALT=${SALT:-}
       - TELEMETRY_ENABLED=false
 
+  app:
+    image: meridian-app:0.1.0
+    build: .
+    profiles: ["app"]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      API_KEYS: ${API_KEYS:-}
+      APP_ENV: ${APP_ENV:-development}
+
 volumes:
   qdrant_data:
+    name: meridian_qdrant_data
   neo4j_data:
+    name: meridian_neo4j_data
   langfuse_db_data:
+    name: meridian_langfuse_db_data
