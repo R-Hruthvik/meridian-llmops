@@ -37,7 +37,7 @@ CHUNKS_PER_DOC = 10
 QUERY_COUNT = 200
 WARMUP_COUNT = 10
 CONCURRENCY = 8
-TIMING_STAGES = ("embed", "dense", "bm25", "fusion", "total")
+TIMING_STAGES = ("embed", "dense", "bm25", "fusion", "retrieval", "total")
 REPORT_STAGES = (*TIMING_STAGES, "serialization")
 
 
@@ -114,6 +114,7 @@ def measure(retriever: HybridRetriever, queries: list[str], tenant: str, workers
     def retrieve_and_serialize(query: str) -> dict[str, float]:
         result = retriever.retrieve(query, tenant_id=tenant)
         timings = dict(result.timings_ms)
+        timings["retrieval"] = timings["total"] - timings["embed"]
         started = time.perf_counter()
         json.dumps([chunk.to_dict() for chunk in result.chunks])
         timings["serialization"] = (time.perf_counter() - started) * 1000
@@ -195,7 +196,7 @@ def run(args: argparse.Namespace) -> dict:
             retriever = HybridRetriever(embedder, store, BM25Index(chunks))
             queries = make_queries(QUERY_COUNT, args.docs, args.chunks_per_doc)
             reports = {}
-            for label, workers in (("single_thread", 1), ("8_concurrent", CONCURRENCY)):
+            for label, workers in (("single_thread", 1), ("4_concurrent", 4), ("8_concurrent", CONCURRENCY)):
                 # Warm each execution mode independently so concurrent measurements
                 # do not include the first concurrent embedder/Qdrant calls.
                 measure(retriever, queries[:WARMUP_COUNT], tenant, workers)

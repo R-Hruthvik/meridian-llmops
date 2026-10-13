@@ -103,14 +103,18 @@ def test_bm25_reuses_tenant_index_without_changing_scores(sample_chunks, monkeyp
 
     actual = index.search("API Gateway LiteLLM", top_k=3, tenant_id="a")
     assert builds == initialized_builds
-    expected = BM25Index(tenant_a).search("API Gateway LiteLLM", top_k=3)
-
+    expected_model = original([bm25_module.tokenize(bm25_module.index_text(chunk)) for chunk in tenant_a])
+    expected_scores = expected_model.get_scores(bm25_module.tokenize("API Gateway LiteLLM"))
+    expected = sorted(
+        ((chunk.id, float(score)) for chunk, score in zip(tenant_a, expected_scores, strict=True) if score > 0),
+        key=lambda item: -item[1],
+    )[:3]
     assert [(item.chunk_id, item.score) for item in actual] == [
-        (item.chunk_id, item.score) for item in expected
+        item for item in expected
     ]
-    assert builds == initialized_builds + 2  # expected index builds full and default-tenant models
+    assert builds == initialized_builds
     index.search("Qdrant knowledge graph", top_k=3, tenant_id="b")
-    assert builds == initialized_builds + 2
+    assert builds == initialized_builds
 
 
 def test_bm25_add_chunks_rebuilds_tenant_indexes(sample_chunks):
@@ -125,6 +129,52 @@ def test_bm25_add_chunks_rebuilds_tenant_indexes(sample_chunks):
     results = index.search("ERR-4049 rate limit", top_k=1, tenant_id="b")
     assert [item.chunk_id for item in results] == [added.id]
     assert index.search("ERR-4049 rate limit", top_k=1, tenant_id="a") == []
+
+
+def test_bm25_sparse_scores_match_rank_bm25_after_updates(sample_chunks):
+    chunks = [
+        chunk.model_copy(
+            update={"metadata": {**chunk.metadata, "tenant_id": "a" if i < 2 else "b"}}
+        )
+        for i, chunk in enumerate(sample_chunks)
+    ]
+    # Identical documents exercise the legacy stable ordering for tied scores.
+    tied = chunks[0].model_copy(update={"id": "c5", "text": chunks[0].text})
+    chunks.append(tied)
+    index = BM25Index(chunks)
+
+    def assert_matches_reference(query, tenant_id=None):
+        query_tokens = bm25_module.tokenize(query)
+        selected = [
+            chunk
+            for chunk in index.chunks
+            if tenant_id is None or chunk.metadata.get("tenant_id", "default") == tenant_id
+        ]
+        model = bm25_module.BM25Okapi(
+            [bm25_module.tokenize(bm25_module.index_text(chunk)) for chunk in selected]
+        )
+        scores = model.get_scores(query_tokens)
+        expected = sorted(
+            ((chunk.id, float(score)) for chunk, score in zip(selected, scores, strict=True) if score > 0),
+            key=lambda item: -item[1],
+        )[:10]
+        actual = [(item.chunk_id, item.score) for item in index.search(query, top_k=10, tenant_id=tenant_id)]
+        assert [chunk_id for chunk_id, _ in actual] == [chunk_id for chunk_id, _ in expected]
+        assert [score for _, score in actual] == pytest.approx([score for _, score in expected])
+
+    for query in ("API Gateway LiteLLM", "", "unknown-term"):
+        assert_matches_reference(query)
+        assert_matches_reference(query, "a")
+    tied_results = index.search("API Gateway LiteLLM", top_k=10)
+    assert [item.chunk_id for item in tied_results[:2]] == ["c1", "c5"]
+
+    added = sample_chunks[2].model_copy(
+        update={"id": "c6", "metadata": {**sample_chunks[2].metadata, "tenant_id": "a"}}
+    )
+    index.add_chunks([added])
+    for query in ("ERR-4049 rate limit", "API Gateway", "unknown-term"):
+        assert_matches_reference(query)
+        assert_matches_reference(query, "a")
 
 
 def test_hybrid_respects_top_k(sample_chunks):

@@ -3,6 +3,7 @@
 import re
 from collections import defaultdict
 
+import numpy as np
 from rank_bm25 import BM25Okapi
 
 from packages.core.models import Chunk, SearchResult
@@ -33,7 +34,10 @@ class BM25Index:
         self._doc_lengths: list[int] = []
         self._df: dict[str, int] = defaultdict(int)
         self._avgdl: float = 0.0
-        self._tenant_indexes: dict[str, tuple[BM25Okapi, list[int]]] = {}
+        self._postings: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        self._tenant_indexes: dict[
+            str, tuple[BM25Okapi, list[int], dict[str, tuple[np.ndarray, np.ndarray]]]
+        ] = {}
         self.corpus = self._corpus  # backward compat alias
         self.bm25 = None
         if self.chunks:
@@ -53,17 +57,37 @@ class BM25Index:
                 self._df[token] += 1
         self._avgdl = sum(self._doc_lengths) / len(self._doc_lengths) if self._doc_lengths else 0.0
         self.bm25 = BM25Okapi(self._corpus) if self._corpus else None
+        self._postings = self._build_postings(self.bm25) if self.bm25 else {}
         self._build_tenant_indexes()
+
+    @staticmethod
+    def _build_postings(index: BM25Okapi) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+        """Build sparse per-term BM25 weights for low-cost query scoring."""
+        frequencies_by_token: dict[str, list[tuple[int, int]]] = defaultdict(list)
+        for position, frequencies in enumerate(index.doc_freqs):
+            for token, frequency in frequencies.items():
+                frequencies_by_token[token].append((position, frequency))
+        postings = {}
+        for token, frequencies in frequencies_by_token.items():
+            positions = np.fromiter((position for position, _ in frequencies), dtype=np.intp)
+            token_frequencies = np.fromiter((frequency for _, frequency in frequencies), dtype=np.float64)
+            lengths = np.asarray([index.doc_len[position] for position in positions], dtype=np.float64)
+            weights = token_frequencies * (index.k1 + 1) / (
+                token_frequencies
+                + index.k1 * (1 - index.b + index.b * lengths / index.avgdl)
+            )
+            postings[token] = (positions, weights)
+        return postings
 
     def _build_tenant_indexes(self) -> None:
         """Build the tenant-local BM25 statistics used by filtered searches."""
         tenant_positions: dict[str, list[int]] = defaultdict(list)
         for position, chunk in enumerate(self.chunks):
             tenant_positions[str(chunk.metadata.get("tenant_id", "default"))].append(position)
-        self._tenant_indexes = {
-            tenant: (BM25Okapi([self._corpus[position] for position in positions]), positions)
-            for tenant, positions in tenant_positions.items()
-        }
+        self._tenant_indexes = {}
+        for tenant, positions in tenant_positions.items():
+            index = BM25Okapi([self._corpus[position] for position in positions])
+            self._tenant_indexes[tenant] = (index, positions, self._build_postings(index))
 
     def add_chunks(self, new_chunks: list[Chunk]) -> None:
         """Incrementally add chunks without full rebuild."""
@@ -83,6 +107,7 @@ class BM25Index:
         total_length = sum(self._doc_lengths)
         self._avgdl = total_length / len(self._doc_lengths) if self._doc_lengths else 0.0
         self.bm25 = BM25Okapi(self._corpus) if self._corpus else None
+        self._postings = self._build_postings(self.bm25) if self.bm25 else {}
         self._build_tenant_indexes()
 
     def search(
@@ -98,23 +123,36 @@ class BM25Index:
         if tenant_id is None:
             positions = list(range(len(self._corpus)))
             index = self.bm25
+            postings = self._postings
         else:
             tenant_index = self._tenant_indexes.get(tenant_id)
             if tenant_index is None:
                 return []
-            index, positions = tenant_index
+            index, positions, postings = tenant_index
 
-        doc_scores = index.get_scores(query_tokens)
+        doc_scores = np.zeros(len(index.doc_len), dtype=np.float64)
+        for token in query_tokens:
+            idf = index.idf.get(token) or 0.0
+            term_postings = postings.get(token)
+            if idf == 0.0 or term_postings is None:
+                continue
+            term_positions, term_weights = term_postings
+            doc_scores[term_positions] += idf * term_weights
+
+        candidate_positions = np.flatnonzero(doc_scores > 0.0)
+        if candidate_positions.size > top_k:
+            threshold = np.partition(doc_scores[candidate_positions], -top_k)[-top_k]
+            candidate_positions = candidate_positions[doc_scores[candidate_positions] >= threshold]
         scored_indices = sorted(
-            ((positions[position], score) for position, score in enumerate(doc_scores)),
-            key=lambda x: x[1],
-            reverse=True,
-        )
+            (
+                (positions[position], float(doc_scores[position]))
+                for position in candidate_positions
+            ),
+            key=lambda item: (-item[1], item[0]),
+        )[:top_k]
 
         results: list[SearchResult] = []
-        for idx, score in scored_indices[:top_k]:
-            if score <= 0.0:
-                continue
+        for idx, score in scored_indices:
             chunk = self.chunks[idx]
             results.append(
                 SearchResult(

@@ -81,7 +81,31 @@
 - Local payload profile on 200 queries at 5k points: raw `query_points` p95 was **74.584 ms** with full payload and **77.703 ms** without payload. Converting the 20 full payload hits into `Chunk` models took **0.156 ms p95**. This sequential, non-counterbalanced diagnostic did not demonstrate a material benefit from omitting payload; its measurements do not establish the dense-stage root cause, and full payload behavior remains unchanged. The production-stage p95 was **129.675 ms dense**, **33.980 ms embed**, **23.526 ms BM25**, and **177.590 ms total**; the eight-way total p95 was **1,154.782 ms**.
 - Quality evidence after the change: `evals/eval_retrieval.py` passes 50 cases with hit@5 **1.000**, MRR **0.873**, unanswerable accuracy **1.000**, and evaluator p95 **11.380 ms** on its smaller golden corpus. This confirms golden-set quality remains above the existing thresholds; it does not represent the 5k-point latency benchmark.
 - Server benchmark follow-up: `scripts/bench_retrieval.py --qdrant-url http://localhost:6333` created temporary collection `bench_d599c5b50aad4a84a147fc2b9d6f6c6f` and timed out during indexing at **1,200/5,000** points. Qdrant logs showed the process reached its **1,024 open-file limit** and stopped responding. After the benchmark process exited, the task-started Qdrant container was restarted; only that exact temporary collection was deleted, and `/healthz` plus collection listing verified recovery and cleanup. The configured application collection was not touched. Server-mode latency remains unmeasured; the benchmark now prints its UUID collection name and closes its client if cleanup fails.
-- Open item: the **100 ms total p95** definition-of-done gate remains unmet. The bottleneck is dense Qdrant search under the tested local client; a deployment-server comparison is pending because the service timed out during the run.
+- Open item at the time: the **100 ms total p95** definition-of-done gate remained unmet. The bottleneck was dense Qdrant search under the tested local client; a deployment-server comparison was pending because the service timed out during the run.
+
+### Task 7.6 sparse BM25 and server latency follow-up
+- Change: BM25 now precomputes sparse per-token weighted postings for the global and tenant-local corpora. Search accumulates only matching term postings, selects the top candidates, and keeps stable corpus-order tie handling. `add_chunks()` rebuilds global and tenant postings with their BM25 statistics.
+- Correctness evidence: focused retrieval/store/benchmark tests -> **34 passed**; Ruff passed. The new regression compares unscoped and tenant-scoped rankings and scores directly with `rank_bm25.BM25Okapi` for multi-token, empty, unknown-term, tied-score, and post-`add_chunks()` queries. Golden evaluation -> **50 cases**, hit@5 **1.000**, MRR **0.873**, unanswerable accuracy **1.000** (gate PASS).
+- Server measurement: `.venv/bin/python scripts/bench_retrieval.py --qdrant-url http://localhost:6336` used an isolated Qdrant 1.11.3 service, a UUID temporary collection, 5,000 points, 10 warmups, 200 measured queries per mode, and 1/4/8 worker modes. The report now includes `retrieval = total - embed` per query, matching plan S2's retrieval-only definition, while retaining full total and stage timings. Percentiles in milliseconds:
+
+| Mode / measure | p50 | p95 | p99 |
+|---|---:|---:|---:|
+| Single embed | 10.005 | 11.450 | 12.442 |
+| Single retrieval-only | 9.192 | 10.317 | 12.579 |
+| Single total including embed | 19.116 | 21.369 | 23.055 |
+| Four-way embed | 20.041 | 28.716 | 31.105 |
+| Four-way retrieval-only | 23.241 | 32.343 | 34.976 |
+| Four-way total including embed | 42.803 | 55.030 | 58.962 |
+| Eight-way embed | 24.230 | 37.286 | 48.647 |
+| Eight-way retrieval-only | 61.574 | 89.418 | 136.847 |
+| Eight-way total including embed | 85.376 | 119.820 | 170.740 |
+| Eight-way dense | 29.604 | 45.977 | 53.049 |
+| Eight-way BM25 | 29.863 | 51.791 | 113.558 |
+
+- Interpretation: the plan's retrieval-only p95 target of **100 ms** is met in all measured modes, including eight concurrent queries at **89.418 ms**. Full request total includes query embedding; its eight-way p95 is **119.820 ms**, while single and four-way full totals are below 100 ms. This separates the deployment retrieval gate from end-to-end embedding contention rather than labeling the eight-way full total as passing.
+- Compared with the preceding server BM25-cache run, eight-way BM25 p95 decreased from **115.401 ms** to **51.791 ms**. The eight-way total p95 shifted from **173.488 ms** to **119.820 ms**; the remaining full-total p95 includes embedding p95 **37.286 ms**. The BM25 change does not alter candidate counts or tenant scope.
+- Cleanup: the temporary server collection list was empty after the run; only disposable container `p76-bench-bounded-g76` was removed. Existing `meridian-qdrant` and configured application collections were not touched.
+- Residual: full end-to-end p95 under eight simultaneous queries remains above 100 ms because the benchmark includes query embedding and CPU contention. The plan's S2 retrieval-only latency threshold is met; the full Gate 7 verdict remains subject to its other CI and quality conditions.
 
 ## Task 7.1 Tracing and tenant metrics (2026-10-13)
 - Verified before change: tracing used an unbounded in-memory list, hard-coded one-model pricing, and request metrics omitted errors and latency. Retrieval stage timings existed but were not named spans.
