@@ -424,3 +424,11 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Evidence after: focused proxy config test -> **1 passed**; `npm run build` -> TypeScript and Vite production build succeeded.
 - Deviations from plan: none.
 - Open risks / follow-ups: none.
+
+### Gate 6 follow-up — Diagnostics Retrieval Playground (2026-10-13)
+- Verified before change: the Phase 6 plan requires Diagnostics to provide a Retrieval Playground, but `MetricsDashboard` had only telemetry, infrastructure, and health readouts. The typed `/v1/retrieve` client already returned ranked chunks with dense, BM25, and RRF scores.
+- Test added (failing first): `runs retrieval in Diagnostics and displays ranked chunks with backend scores` failed because the Diagnostics query input was absent.
+- Change summary: `MetricsDashboard` now has a tenant-scoped query form backed by `api.retrieve`, with pending and error states and ranked chunk cards showing source metadata and the returned dense, BM25, and RRF scores. Existing telemetry and infrastructure readouts are unchanged.
+- Evidence after: focused `npm run test:run -- src/components/MetricsDashboard.test.tsx` -> **21 passed**; `npm run build` -> TypeScript and Vite production build succeeded; full `npm run test:run` -> **285 passed**, with one teardown-time `ReferenceError: window is not defined` from the existing SettingsModal test's delayed callback after its test environment closed.
+- Deviations from plan: no live Gate 6 browser checklist was run in this follow-up; the playground component contract and production build were verified.
+- Open risks / follow-ups: full frontend suite still reports the SettingsModal delayed-callback teardown error described above. The remainder of Gate 6's manual checklist remains to be recorded.

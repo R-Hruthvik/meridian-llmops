@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { StatusChip, type StatusChipVariant } from './StatusChip';
-import type { IndexStatusResponse, TenantMetrics } from '../types/api';
+import type { IndexStatusResponse, RetrieveResponse, TenantMetrics } from '../types/api';
 
 interface MetricsDashboardProps {
   tenantId: string;
@@ -97,6 +97,10 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
   // Live /v1/index/status; null means the probe itself failed, so no card
   // sourced from it may claim to be Ready.
   const [indexStatus, setIndexStatus] = useState<IndexStatusResponse | null>(null);
+  const [retrievalQuery, setRetrievalQuery] = useState('');
+  const [retrievalResponse, setRetrievalResponse] = useState<RetrieveResponse | null>(null);
+  const [retrievalLoading, setRetrievalLoading] = useState(false);
+  const [retrievalError, setRetrievalError] = useState<string | null>(null);
 
   const fetchMetrics = async () => {
     setLoading(true);
@@ -136,6 +140,23 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
     const interval = setInterval(refreshHealth, 15000);
     return () => clearInterval(interval);
   }, []);
+
+  const runRetrieval = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = retrievalQuery.trim();
+    if (!query) return;
+
+    setRetrievalLoading(true);
+    setRetrievalError(null);
+    setRetrievalResponse(null);
+    try {
+      setRetrievalResponse(await api.retrieve({ query, top_k: 5 }, tenantId));
+    } catch (err: unknown) {
+      setRetrievalError(err instanceof Error ? err.message : 'Retrieval failed');
+    } finally {
+      setRetrievalLoading(false);
+    }
+  };
 
   // Unmeasured telemetry is not a measurement of zero. `metrics` is null on
   // first paint and after a failed fetch, and the strip used to render 0 req /
@@ -212,6 +233,73 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
           </div>
         ))}
       </dl>
+
+      <section aria-labelledby="retrieval-playground-title" className="flex flex-col gap-3 rounded-sm border border-hairline bg-surface-raised p-3">
+        <div>
+          <h3 id="retrieval-playground-title" className="label-section text-ink">Retrieval Playground</h3>
+          <p className="mt-1 text-micro text-muted">Run retrieval for this tenant and inspect the ranked chunk scores.</p>
+        </div>
+
+        <form onSubmit={runRetrieval} className="flex flex-col gap-2 sm:flex-row">
+          <label htmlFor="diagnostics-retrieval-query" className="sr-only">Retrieval query</label>
+          <input
+            id="diagnostics-retrieval-query"
+            value={retrievalQuery}
+            onChange={(event) => setRetrievalQuery(event.target.value)}
+            placeholder="Type a query to inspect retrieval…"
+            className="min-w-0 flex-1 rounded-sm border border-hairline bg-surface px-3 py-2 text-label text-ink placeholder:text-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          />
+          <button
+            type="submit"
+            disabled={retrievalLoading || !retrievalQuery.trim()}
+            className="rounded-sm border border-accent bg-accent px-3 py-2 text-label font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {retrievalLoading ? 'Retrieving…' : 'Run retrieval'}
+          </button>
+        </form>
+
+        <div role={retrievalLoading ? 'status' : undefined} aria-live="polite" aria-busy={retrievalLoading} className="text-label text-muted">
+          {retrievalLoading ? 'Searching ranked chunks…' : null}
+        </div>
+        {retrievalError && (
+          <div role="alert" className="rounded-sm border border-fail/30 bg-fail-wash px-3 py-2 text-label font-semibold text-fail">
+            {retrievalError}
+          </div>
+        )}
+        {retrievalResponse && (
+          retrievalResponse.chunks.length === 0 ? (
+            <p className="text-label text-muted">No chunks found for this query.</p>
+          ) : (
+            <ol aria-label="Ranked retrieval chunks" className="flex flex-col divide-y divide-hairline border-y border-hairline">
+              {retrievalResponse.chunks.map((chunk) => (
+                <li key={chunk.chunk_id} aria-label={`Rank ${chunk.rank} result`} className="flex flex-col gap-2 py-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <div className="min-w-0 text-label font-semibold text-ink">
+                      <span className="num mr-2 text-accent-ink">#{chunk.rank}</span>
+                      <span>{chunk.filename || chunk.title || chunk.document_id}</span>
+                      {chunk.page_start !== null && <span className="ml-2 text-micro font-normal text-muted">p. {chunk.page_start}</span>}
+                    </div>
+                    {chunk.heading_path && <span className="text-micro text-muted">{chunk.heading_path}</span>}
+                  </div>
+                  <p className="whitespace-pre-wrap text-label leading-relaxed text-muted">{chunk.text}</p>
+                  <dl className="grid grid-cols-3 gap-2 border-t border-hairline pt-2">
+                    {([
+                      ['Dense', chunk.scores.dense],
+                      ['BM25', chunk.scores.bm25],
+                      ['RRF', chunk.scores.rrf],
+                    ] as const).map(([label, score]) => (
+                      <div key={label}>
+                        <dt className="text-micro uppercase tracking-[0.1em] text-faint">{label}</dt>
+                        <dd className="num mt-0.5 text-label font-semibold text-ink">{score == null ? '—' : String(score)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </li>
+              ))}
+            </ol>
+          )
+        )}
+      </section>
 
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

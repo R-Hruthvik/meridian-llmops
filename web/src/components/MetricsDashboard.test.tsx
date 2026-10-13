@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MetricsDashboard } from './MetricsDashboard';
 import { api } from '../services/api';
 
@@ -9,6 +9,7 @@ vi.mock('../services/api', () => ({
     getMetrics: vi.fn(),
     checkHealth: vi.fn(),
     getIndexStatus: vi.fn(),
+    retrieve: vi.fn(),
   },
 }));
 
@@ -90,6 +91,55 @@ describe('MetricsDashboard', () => {
 
     const card = (await screen.findByText('Meridian RAG Engine (FastAPI)')).closest('[data-testid="infra-card"]');
     expect(card).toHaveTextContent('Degraded');
+  });
+
+  it('runs retrieval in Diagnostics and displays ranked chunks with backend scores', async () => {
+    (api.retrieve as ReturnType<typeof vi.fn>).mockResolvedValue({
+      query: 'What is hybrid retrieval?',
+      top_k: 5,
+      timings_ms: { total: 18.2 },
+      chunks: [
+        {
+          rank: 1,
+          chunk_id: 'chunk-a',
+          document_id: 'doc-a',
+          filename: 'retrieval-notes.md',
+          title: 'Hybrid retrieval',
+          page_start: 4,
+          heading_path: 'Search / Ranking',
+          text: 'Reciprocal rank fusion combines dense and BM25 results.',
+          scores: {
+            dense: 0.83,
+            bm25: 5.27,
+            dense_rank: 1,
+            bm25_rank: 2,
+            rrf: 0.0325,
+            rerank: null,
+            final: 0.0325,
+          },
+        },
+      ],
+    });
+    render(<MetricsDashboard tenantId="tenant-a" />);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: /retrieval query/i }), {
+      target: { value: 'What is hybrid retrieval?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /run retrieval/i }));
+
+    expect(api.retrieve).toHaveBeenCalledWith(
+      { query: 'What is hybrid retrieval?', top_k: 5 },
+      'tenant-a',
+    );
+    expect(await screen.findByText('Reciprocal rank fusion combines dense and BM25 results.')).toBeInTheDocument();
+    expect(screen.getByText('retrieval-notes.md')).toBeInTheDocument();
+    expect(screen.getByText('0.83')).toBeInTheDocument();
+    expect(screen.getByText('5.27')).toBeInTheDocument();
+    expect(screen.getByText('0.0325')).toBeInTheDocument();
+    expect(screen.getByText('Dense')).toBeInTheDocument();
+    expect(screen.getByText('BM25')).toBeInTheDocument();
+    expect(screen.getByText('RRF')).toBeInTheDocument();
+    expect(screen.getByTestId('kpi-total-requests')).toHaveTextContent('10');
   });
 
   it('G6: Langfuse card is explicitly labeled by data source', async () => {
