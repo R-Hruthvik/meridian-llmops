@@ -44,9 +44,15 @@ def validate_provider_url(
             and parsed.scheme == "http"
             and hostname in {"localhost", "127.0.0.1", "::1"}
         )
+        is_compose_litellm_http = (
+            provider == "litellm" and parsed.scheme == "http" and hostname == "litellm"
+        )
         if parsed.scheme == "http":
             is_loopback_host = hostname in {"localhost", "127.0.0.1", "::1"}
-            if not allow_private and not (provider == "litellm" and is_loopback_host):
+            is_trusted_litellm_host = provider == "litellm" and (
+                is_loopback_host or hostname == "litellm"
+            )
+            if not allow_private and not is_trusted_litellm_host:
                 raise ValueError
             if provider != "litellm" and (not allow_private or not is_loopback_host):
                 raise ValueError
@@ -73,6 +79,20 @@ def validate_provider_url(
                 raise ValueError
         elif is_loopback_litellm_http:
             if not all(address.is_loopback for address in parsed_addresses):
+                raise ValueError
+        elif is_compose_litellm_http:
+            # Permit only the private bridge address for Compose's named gateway service.
+            if not all(
+                address.is_private
+                and not (
+                    address.is_loopback
+                    or address.is_link_local
+                    or address.is_unspecified
+                    or address.is_multicast
+                    or address.is_reserved
+                )
+                for address in parsed_addresses
+            ):
                 raise ValueError
         elif not all(
             address.is_global

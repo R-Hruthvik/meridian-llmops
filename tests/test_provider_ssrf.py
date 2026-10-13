@@ -124,6 +124,25 @@ async def test_generation_allows_loopback_litellm_proxy_without_private_opt_in(m
 
 
 @pytest.mark.asyncio
+async def test_generation_allows_compose_litellm_service_without_private_opt_in(monkeypatch):
+    _resolve_to(monkeypatch, "172.20.0.5")
+    client = LiteLLMClient(allow_private_provider_urls=False)
+    fake_http = _HTTPClient()
+    monkeypatch.setattr(client, "_get_client", lambda: fake_http)
+
+    result = await client.chat_completion(
+        [{"role": "user", "content": "hello"}],
+        provider="litellm",
+        model="test-model",
+        api_key="test-key",
+        base_url="http://litellm:4000/v1",
+    )
+
+    assert result["choices"][0]["message"]["content"] == "ok"
+    assert fake_http.requests[0][0] == "http://litellm:4000/v1/chat/completions"
+
+
+@pytest.mark.asyncio
 async def test_generation_allows_local_ollama_only_when_private_urls_are_enabled(monkeypatch):
     _resolve_to(monkeypatch, "127.0.0.1")
     client = LiteLLMClient(allow_private_provider_urls=True)
