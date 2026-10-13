@@ -9,7 +9,7 @@ import os
 import time
 import uuid
 from collections import defaultdict, deque
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, nullcontext
 from contextvars import ContextVar, Token
 from pathlib import Path
 from typing import Any, Literal, Protocol, Self, cast
@@ -160,18 +160,25 @@ class _TraceContext:
         self.generations: list[GenerationSpan] = []
         self._context_token: Token[_TraceContext | None] | None = None
 
-    def span(self, name: str, **attrs: Any) -> Span:
+    def span(self, name: str, **attrs: Any) -> AbstractContextManager[Span]:
         span = Span(name, attrs)
         self.spans.append(span)
-        return span
+        return _AttachedContext(self, span, generation=False, attach_on_exit=False)
 
-    def generation(self, name: str, **attrs: Any) -> GenerationSpan:
+    def generation(self, name: str, **attrs: Any) -> AbstractContextManager[GenerationSpan]:
         generation = GenerationSpan(name, attrs)
         self.generations.append(generation)
-        return generation
+        return cast(
+            AbstractContextManager[GenerationSpan],
+            _AttachedContext(self, generation, generation=True, attach_on_exit=False),
+        )
 
     def __enter__(self) -> Self:
         self._context_token = _active_trace.set(self)
+        self._remote_context = self.tracer._observation_context(
+            "span", self.name, {"tenant_id": self.tenant_id}
+        )
+        self._remote_observation = self._remote_context.__enter__()
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
@@ -189,6 +196,14 @@ class _TraceContext:
             "spans": [span.to_dict() for span in self.spans],
             "generations": generations,
         }
+        if self._remote_observation is not None:
+            _update_observation(
+                self._remote_observation,
+                level="ERROR" if exc is not None else "DEFAULT",
+                output={"tokens": data["total_tokens"], "cost_usd": data["cost_usd"]},
+            )
+        if hasattr(self, "_remote_context"):
+            _close_observation_context(self._remote_context, exc_type, exc, traceback)
         self.tracer._record_trace(data)
         if self._context_token is not None:
             _active_trace.reset(self._context_token)
@@ -232,6 +247,9 @@ class LocalTracer:
 
     def trace(self, name: str, tenant_id: str = "default", query: str | None = None) -> _TraceContext:
         return _TraceContext(self, name, tenant_id, query)
+
+    def _observation_context(self, as_type: str, name: str, attributes: dict[str, Any]):
+        return nullcontext(None)
 
     def span(self, name: str, **attrs: Any) -> AbstractContextManager[Span]:
         return self._standalone_span(name, attrs, generation=False)
@@ -333,28 +351,130 @@ class _RecordingContext(AbstractContextManager[Span]):
         self.tenant_id = tenant_id
 
     def __enter__(self) -> Span:
+        self._remote_context = self.tracer._observation_context(
+            "generation" if isinstance(self.span, GenerationSpan) else "span",
+            self.span.name,
+            self.span.attributes,
+        )
+        self._remote_observation = self._remote_context.__enter__()
         return self.span.__enter__()
 
     def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
         result = self.span.__exit__(exc_type, exc, traceback)
+        _finish_observation(
+            self._remote_context, self._remote_observation, self.span, exc_type, exc, traceback
+        )
         self.tracer._record_standalone(self.span, self.tenant_id)
         return result
 
 
 class _AttachedContext(AbstractContextManager[Span]):
-    def __init__(self, trace: _TraceContext, span: Span, generation: bool):
+    def __init__(
+        self, trace: _TraceContext, span: Span, generation: bool, attach_on_exit: bool = True
+    ):
         self.trace = trace
         self.span = span
         self.generation = generation
+        self.attach_on_exit = attach_on_exit
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.span, name)
 
     def __enter__(self) -> Span:
+        self._remote_context = self.trace.tracer._observation_context(
+            "generation" if self.generation else "span",
+            self.span.name,
+            {**self.span.attributes, "tenant_id": self.trace.tenant_id},
+        )
+        self._remote_observation = self._remote_context.__enter__()
         return self.span.__enter__()
 
     def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
         result = self.span.__exit__(exc_type, exc, traceback)
-        target = self.trace.generations if self.generation else self.trace.spans
-        target.append(self.span)  # type: ignore[arg-type]
+        _finish_observation(
+            self._remote_context, self._remote_observation, self.span, exc_type, exc, traceback
+        )
+        if self.attach_on_exit:
+            target = self.trace.generations if self.generation else self.trace.spans
+            target.append(self.span)  # type: ignore[arg-type]
         return result
+
+
+def _finish_observation(remote_context, observation, span: Span, exc_type, exc, traceback) -> None:
+    if observation is not None:
+        metadata = {**span.attributes, "duration_ms": span.duration_ms}
+        if isinstance(span, GenerationSpan):
+            metadata.update(
+                estimated=span.estimated,
+                cost_usd=span.cost_usd,
+            )
+            _update_observation(
+                observation,
+                level="ERROR" if exc is not None else "DEFAULT",
+                model=span.attributes.get("model"),
+                usage_details={
+                    "input": span.prompt_tokens,
+                    "output": span.completion_tokens,
+                },
+                cost_details=(
+                    {"total": span.cost_usd} if span.cost_usd is not None else None
+                ),
+                metadata=metadata,
+            )
+        else:
+            _update_observation(
+                observation,
+                level="ERROR" if exc is not None else "DEFAULT",
+                metadata=metadata,
+            )
+    _close_observation_context(remote_context, exc_type, exc, traceback)
+
+
+def _update_observation(observation, **attributes: Any) -> None:
+    try:
+        observation.update(**attributes)
+    except Exception as error:  # noqa: BLE001 - SDK failures must never affect requests
+        logger.warning("Langfuse observation update failed (%s)", type(error).__name__)
+
+
+def _close_observation_context(remote_context, exc_type, exc, traceback) -> None:
+    try:
+        remote_context.__exit__(exc_type, exc, traceback)
+    except Exception as error:  # noqa: BLE001 - SDK failures must never affect requests
+        logger.warning("Langfuse observation close failed (%s)", type(error).__name__)
+
+
+class _BestEffortObservationContext(AbstractContextManager):
+    def __init__(self, client, as_type: str, name: str, attributes: dict[str, Any]):
+        self.client = client
+        self.as_type = as_type
+        self.name = name
+        self.attributes = attributes
+        self._manager = None
+
+    def __enter__(self):
+        kwargs = {
+            "as_type": self.as_type,
+            "name": self.name,
+            "metadata": self.attributes,
+        }
+        if self.as_type == "generation" and self.attributes.get("model"):
+            kwargs["model"] = self.attributes["model"]
+        try:
+            self._manager = self.client.start_as_current_observation(**kwargs)
+            return self._manager.__enter__()
+        except Exception as error:  # noqa: BLE001 - SDK failures must never affect requests
+            self._manager = None
+            logger.warning("Langfuse observation start failed (%s)", type(error).__name__)
+            return None
+
+    def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
+        if self._manager is not None:
+            try:
+                self._manager.__exit__(exc_type, exc, traceback)
+            except Exception as error:  # noqa: BLE001 - SDK failures must never affect requests
+                logger.warning("Langfuse observation close failed (%s)", type(error).__name__)
+        return False
 
 
 def _percentile(values: list[float], percentile: float) -> float | None:
@@ -387,55 +507,13 @@ class LangfuseTracer(LocalTracer):
                 logger.warning("Langfuse initialization failed; continuing with local tracing (%s)", type(error).__name__)
                 self.enabled = False
 
+    def _observation_context(self, as_type: str, name: str, attributes: dict[str, Any]):
+        if not self.enabled or self._client is None:
+            return nullcontext(None)
+        return _BestEffortObservationContext(self._client, as_type, name, attributes)
+
     def _record_trace(self, data: dict[str, Any]) -> None:
         super()._record_trace(data)
-        if not self.enabled or self._client is None:
-            return
-        try:
-            with self._client.start_as_current_observation(
-                as_type="span", name=data["name"], metadata={"tenant_id": data["tenant_id"]}
-            ) as observation:
-                observation.update(
-                    level="ERROR" if data["error"] else "DEFAULT",
-                    output={"tokens": data["total_tokens"], "cost_usd": data["cost_usd"]},
-                )
-                for item in data["spans"]:
-                    with self._client.start_as_current_observation(
-                        as_type="span", name=item["name"], metadata=item["attributes"]
-                    ):
-                        pass
-                for item in data["generations"]:
-                    self._client.start_observation(
-                        as_type="generation",
-                        name=item["name"],
-                        model=item["attributes"].get("model"),
-                        usage_details={
-                            "input": item["prompt_tokens"],
-                            "output": item["completion_tokens"],
-                        },
-                        metadata={"estimated": item["estimated"], "cost_usd": item["cost_usd"]},
-                    ).end()
-        except Exception as error:  # noqa: BLE001 - remote tracing must never fail requests
-            logger.warning("Langfuse trace export failed (%s)", type(error).__name__)
-
-    def _record_standalone(self, span: Span, tenant_id: str) -> None:
-        super()._record_standalone(span, tenant_id)
-        if not self.enabled or self._client is None:
-            return
-        try:
-            observation = self._client.start_observation(
-                as_type="generation" if isinstance(span, GenerationSpan) else "span",
-                name=span.name,
-                metadata={**span.attributes, "tenant_id": tenant_id},
-            )
-            if isinstance(span, GenerationSpan):
-                observation.update(
-                    usage_details={"input": span.prompt_tokens, "output": span.completion_tokens},
-                    metadata={"estimated": span.estimated, "cost_usd": span.cost_usd},
-                )
-            observation.end()
-        except Exception as error:  # noqa: BLE001 - remote tracing must never fail requests
-            logger.warning("Langfuse span export failed (%s)", type(error).__name__)
 
 
 class MeridianTracer(LocalTracer):
