@@ -1,6 +1,9 @@
 """Run DeepEval generation metrics against the golden RAG dataset.
 
 EVAL_LLM_API_KEY=... uv run python evals/eval_generation.py
+
+Generation uses EVAL_LLM_PROVIDER/MODEL/BASE_URL. DeepEval's OpenAI-compatible
+judge uses EVAL_JUDGE_MODEL/BASE_URL and the same EVAL_LLM_API_KEY.
 """
 
 import argparse
@@ -63,53 +66,76 @@ async def _generate_cases(
     model: str,
     api_key: str,
     base_url: str | None,
+    llm_client: Any | None = None,
 ) -> list[dict[str, Any]]:
-    client = LiteLLMClient()
+    client = llm_client or LiteLLMClient()
+    owns_client = llm_client is None
     rows = []
-    for case in cases:
-        result = retriever.retrieve(case["question"], top_k=top_k, tenant_id=tenant_id)
-        ranked = result.chunks[:top_k]
-        context = [item.to_dict() for item in ranked]
-        sufficient = has_sufficient_context(
-            case["question"], context, min_dense_score=min_dense_score
-        )
-        if sufficient:
-            prompt = build_prompt(case["question"], context)
-            response = await client.chat_completion(
-                messages=prompt.messages,
-                provider=provider,
-                model=model,
-                api_key=api_key,
-                base_url=base_url,
-                temperature=0.0,
-                max_tokens=600,
+    try:
+        for case in cases:
+            result = retriever.retrieve(case["question"], top_k=top_k, tenant_id=tenant_id)
+            ranked = result.chunks[:top_k]
+            context = [item.to_dict() for item in ranked]
+            sufficient = has_sufficient_context(
+                case["question"], context, min_dense_score=min_dense_score
             )
-            answer = response["choices"][0]["message"]["content"]
-        else:
-            answer = INSUFFICIENT_ANSWER
-        expected = " ".join(case["expected_phrases"]) if case["answerable"] else INSUFFICIENT_ANSWER
-        rows.append(
-            {
-                "id": case["id"],
-                "input": case["question"],
-                "actual_output": answer,
-                "expected_output": expected,
-                "retrieval_context": [item.chunk.text for item in ranked],
-            }
-        )
-    await client.close()
+            if sufficient:
+                prompt = build_prompt(case["question"], context)
+                used_context = prompt.selected_chunks
+                sufficient = bool(used_context) and has_sufficient_context(
+                    case["question"], used_context, min_dense_score=min_dense_score
+                )
+            if sufficient:
+                response = await client.chat_completion(
+                    messages=prompt.messages,
+                    provider=provider,
+                    model=model,
+                    api_key=api_key,
+                    base_url=base_url,
+                    temperature=0.0,
+                    max_tokens=600,
+                )
+                answer = response["choices"][0]["message"]["content"]
+                answer_status = "answered"
+            else:
+                answer = INSUFFICIENT_ANSWER
+                answer_status = "insufficient_context"
+                used_context = []
+            expected = (
+                " ".join(case["expected_phrases"]) if case["answerable"] else INSUFFICIENT_ANSWER
+            )
+            rows.append(
+                {
+                    "id": case["id"],
+                    "input": case["question"],
+                    "actual_output": answer,
+                    "expected_output": expected,
+                    "answer_status": answer_status,
+                    "retrieval_context": [item["text"] for item in used_context],
+                }
+            )
+    finally:
+        if owns_client:
+            await client.close()
     return rows
 
 
 def evaluate_with_deepeval(
-    rows: list[dict[str, Any]], *, api_key: str, model_name: str, base_url: str | None
+    rows: list[dict[str, Any]],
+    *,
+    api_key: str,
+    generator_provider: str,
+    generator_model: str,
+    generator_base_url: str | None,
+    judge_model: str,
+    judge_base_url: str | None,
 ) -> dict[str, Any]:
     """Score generated rows with the real DeepEval metrics and configured judge."""
     from deepeval.metrics import AnswerRelevancyMetric, ContextualRecallMetric, FaithfulnessMetric
     from deepeval.models import OpenAIModel
     from deepeval.test_case import LLMTestCase
 
-    judge = OpenAIModel(model=model_name, api_key=api_key, base_url=base_url, temperature=0)
+    judge = OpenAIModel(model=judge_model, api_key=api_key, base_url=judge_base_url, temperature=0)
     metrics = {
         "faithfulness": FaithfulnessMetric(model=judge, threshold=0.85, async_mode=False),
         "answer_relevancy": AnswerRelevancyMetric(model=judge, async_mode=False),
@@ -133,7 +159,16 @@ def evaluate_with_deepeval(
     average_faithfulness = statistics.mean(faithfulness_scores) if faithfulness_scores else 0.0
     return {
         "tool": "DeepEval",
-        "judge_model": model_name,
+        "generator": {
+            "provider": generator_provider,
+            "model": generator_model,
+            "base_url": generator_base_url,
+        },
+        "judge": {
+            "provider": "openai-compatible",
+            "model": judge_model,
+            "base_url": judge_base_url,
+        },
         "metrics": {
             "faithfulness_average": average_faithfulness,
             "answer_relevancy_average": statistics.mean(
@@ -155,6 +190,7 @@ def evaluate_with_deepeval(
                 "input": source["input"],
                 "actual_output": source["actual_output"],
                 "expected_output": source["expected_output"],
+                "answer_status": source["answer_status"],
             }
             for item, source in zip(results, rows, strict=True)
         ],
@@ -169,6 +205,8 @@ def main() -> int:
     parser.add_argument("--provider", default=os.environ.get("EVAL_LLM_PROVIDER", "openai"))
     parser.add_argument("--model", default=os.environ.get("EVAL_LLM_MODEL", "gpt-4o-mini"))
     parser.add_argument("--base-url", default=os.environ.get("EVAL_LLM_BASE_URL"))
+    parser.add_argument("--judge-model", default=os.environ.get("EVAL_JUDGE_MODEL", "gpt-4o-mini"))
+    parser.add_argument("--judge-base-url", default=os.environ.get("EVAL_JUDGE_BASE_URL"))
     args = parser.parse_args()
 
     api_key = os.environ.get("EVAL_LLM_API_KEY")
@@ -199,7 +237,13 @@ def main() -> int:
         )
 
     report = evaluate_with_deepeval(
-        rows, api_key=api_key, model_name=args.model, base_url=args.base_url
+        rows,
+        api_key=api_key,
+        generator_provider=args.provider,
+        generator_model=args.model,
+        generator_base_url=args.base_url,
+        judge_model=args.judge_model,
+        judge_base_url=args.judge_base_url,
     )
     args.report_dir.mkdir(parents=True, exist_ok=True)
     report_path = args.report_dir / f"{date.today().isoformat()}.json"
