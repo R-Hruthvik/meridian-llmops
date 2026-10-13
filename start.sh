@@ -40,11 +40,11 @@ print_help() {
     echo ""
 }
 
-# Bring up supporting Docker services (Qdrant, Neo4j, litellm, Langfuse) if Docker is available.
+# Bring up Qdrant if Docker is available.
 # `up -d` is idempotent: no-op if already running. Left running on exit (persistent data layer).
 start_docker_stack() {
     if ! command -v docker >/dev/null 2>&1; then
-        echo -e "${YELLOW}Docker not found — skipping containers (in-memory fallback may be used).${NC}"
+        echo -e "${YELLOW}Docker not found — skipping Qdrant startup; the app preflight requires a reachable Qdrant instance.${NC}"
         return 0
     fi
     if ! docker compose ps >/dev/null 2>&1; then
