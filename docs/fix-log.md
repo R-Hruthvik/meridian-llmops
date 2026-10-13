@@ -22,6 +22,30 @@
 - Gate status: the retrieval job correctly remains red because the golden run reports unanswerable accuracy **0.500 < 0.850**; hit@5 **1.000** and MRR **0.873** pass. Real DeepEval was not invoked without credentials. Independent Luna review approved the workflow and found no CI configuration blocker.
 - Open risks / follow-ups: improve the sufficiency behavior without hiding the unanswerable threshold failure, then rerun Gate 7.
 
+## Task 7.6 Retrieval latency benchmark (2026-10-13)
+- Verified before change: `HybridRetriever.retrieve()` already reports embed, dense, BM25, fusion, rerank, and total stage timings; no 5k-chunk latency harness existed.
+- Change summary: added `scripts/bench_retrieval.py`, which creates 500 synthetic documents / 5,000 concrete `Chunk` records, embeds and indexes them in a temporary local Qdrant directory, warms up for 10 queries, then measures 200 queries serially and 200 with eight workers. The FastEmbed cache and index are temporary; the configured storage and server collection are untouched. The report includes nearest-rank p50/p95/p99 by required HybridRetriever stage plus a separately measured JSON response-serialization diagnostic. Added scoped percentile and minimum corpus-shape tests.
+- Evidence after: `.venv/bin/python -m pytest tests/test_bench_retrieval.py -q` -> 3 passed; `.venv/bin/ruff check scripts/bench_retrieval.py tests/test_bench_retrieval.py` -> passed; `git diff --check -- scripts/bench_retrieval.py tests/test_bench_retrieval.py docs/fix-log.md` -> passed. Real run: `.venv/bin/python scripts/bench_retrieval.py` -> 500 documents, 5,000 Qdrant points, 10 warmups, 200 queries per mode. Timings are milliseconds:
+
+| Mode / stage | p50 | p95 | p99 |
+|---|---:|---:|---:|
+| Single embed | 8.963 | 14.763 | 17.292 |
+| Single dense | 50.837 | 93.292 | 96.435 |
+| Single BM25 | 65.598 | 136.697 | 157.556 |
+| Single fusion | 0.160 | 0.200 | 0.291 |
+| Single total | 156.878 | 221.225 | 261.130 |
+| Single JSON serialization diagnostic | 0.095 | 0.110 | 0.135 |
+| Eight-concurrent embed | 54.651 | 173.116 | 290.273 |
+| Eight-concurrent dense | 527.147 | 919.736 | 976.345 |
+| Eight-concurrent BM25 | 609.854 | 996.048 | 1,225.658 |
+| Eight-concurrent fusion | 0.169 | 4.249 | 25.933 |
+| Eight-concurrent total | 1,255.190 | 1,765.076 | 1,991.467 |
+| Eight-concurrent JSON serialization diagnostic | 0.091 | 0.138 | 10.246 |
+
+- Investigation (plan order): query embedding p95 is 14.8 ms single-thread, below the 100 ms target; under eight-way CPU contention it rises to 173.1 ms. Dense p95 is 93.3 ms single-thread and 919.7 ms concurrent. The isolated benchmark uses the embedded local Qdrant client with default HNSW settings and `with_payload=True` for complete chunk text/metadata. A controlled `hnsw_ef`/payload comparison was not run, so its contribution remains unmeasured. BM25 p95 is 136.7 ms single-thread and 996.0 ms concurrent. `BM25Index.search()` rebuilds a tenant-specific `BM25Okapi` over the matching corpus on each query, making it the first single-thread stage above 100 ms and the clearest per-query cost at this corpus size; sparse-vector alternatives remain a later option from the plan. JSON serialization of the five returned chunk dictionaries is 0.110 ms p95 single-thread, so it does not explain the total latency. No speculative optimization was applied.
+- Deviations: the harness constructs production-shaped `Chunk` records directly and indexes them through the production embedder, Qdrant store, BM25 index, and retriever; this isolates retrieval latency from file parsing and disk ingestion overhead. Synthetic chunk bodies are compact (about 35 words), so full-payload dense latency may be lower than for production chunks near the 350-token target.
+- Open risks / follow-ups: retrieval p95 misses the 100 ms target at 5k chunks, especially with eight concurrent requests. BM25 corpus filtering and concurrent CPU/backend capacity need evidence-backed follow-up work before optimization.
+
 ## Task 7.1 Tracing and tenant metrics (2026-10-13)
 - Verified before change: tracing used an unbounded in-memory list, hard-coded one-model pricing, and request metrics omitted errors and latency. Retrieval stage timings existed but were not named spans.
 - Tests added first: bounded local trace storage, span attributes, disabled Langfuse behavior, provider usage/estimation, error accounting, and tenant metric shape. The focused tests initially failed because the planned `LocalTracer`, `LangfuseTracer`, and usage normalizer were absent.
