@@ -3,6 +3,7 @@
 import pytest
 
 from packages.core.models import Chunk
+from services.rag_engine.observability.langfuse_client import LocalTracer
 from services.rag_engine.retrieval.bm25 import BM25Index
 from services.rag_engine.retrieval.fusion import reciprocal_rank_fusion
 from services.rag_engine.retrieval.hybrid import HybridRetriever
@@ -124,6 +125,24 @@ def test_stage_timings_present(sample_chunks):
         assert key in timings
     assert timings["total"] >= timings["dense"] + timings["bm25"]
     assert timings["rerank"] == 0
+
+
+def test_retrieval_records_named_stage_spans(sample_chunks):
+    tracer = LocalTracer()
+    embedder = FakeEmbedder()
+    vector_store = make_vector_store(embedder)
+    vector_store.upsert_chunks(sample_chunks, embedder.embed_passages([c.text for c in sample_chunks]))
+    retriever = HybridRetriever(
+        embedder=embedder,
+        vector_store=vector_store,
+        bm25_index=BM25Index(sample_chunks),
+        tracer=tracer,
+    )
+
+    retriever.retrieve("gateway load balancing", top_k=2, tenant_id="tenant-a")
+
+    names = {item["name"] for item in tracer.traces}
+    assert {"embed_query", "dense_search", "bm25_search", "fusion"} <= names
 
 
 def test_result_chunks_are_ranked(sample_chunks):

@@ -81,6 +81,7 @@ class HybridRetriever:
         rrf_k: int = 60,
         pool_min: int = 20,
         reranker: Any | None = None,
+        tracer: Any | None = None,
     ):
         self.embedder = embedder
         self.vector_store = vector_store
@@ -88,6 +89,7 @@ class HybridRetriever:
         self.rrf_k = rrf_k
         self.pool_min = pool_min
         self.reranker = reranker
+        self.tracer = tracer
 
     def update_chunks(self, chunks: list[Chunk]) -> None:
         """Rebuild the lexical corpus from the caller's chunk records.
@@ -111,23 +113,27 @@ class HybridRetriever:
         stage = time.perf_counter()
         if self.embedder is None:
             raise RuntimeError('Embedder must be initialized at startup or explicitly injected')
-        query_vector = self.embedder.embed_query(query)
+        with self._span("embed_query", tenant_id=tenant_id):
+            query_vector = self.embedder.embed_query(query)
         timings["embed"] = _ms(stage)
 
         stage = time.perf_counter()
-        dense_hits = self.vector_store.search(query_vector, k=pool, tenant_id=tenant_id)
+        with self._span("dense_search", tenant_id=tenant_id):
+            dense_hits = self.vector_store.search(query_vector, k=pool, tenant_id=tenant_id)
         timings["dense"] = _ms(stage)
 
         stage = time.perf_counter()
-        sparse_results = self.bm25_index.search(query, top_k=pool, tenant_id=tenant_id)
+        with self._span("bm25_search", tenant_id=tenant_id):
+            sparse_results = self.bm25_index.search(query, top_k=pool, tenant_id=tenant_id)
         timings["bm25"] = _ms(stage)
 
         stage = time.perf_counter()
-        fused = reciprocal_rank_fusion(
-            [(hit.chunk.id, hit.score) for hit in dense_hits],
-            [(result.chunk_id, result.score) for result in sparse_results],
-            k=self.rrf_k,
-        )
+        with self._span("fusion", tenant_id=tenant_id):
+            fused = reciprocal_rank_fusion(
+                [(hit.chunk.id, hit.score) for hit in dense_hits],
+                [(result.chunk_id, result.score) for result in sparse_results],
+                k=self.rrf_k,
+            )
         timings["fusion"] = _ms(stage)
 
         dense_by_id = {hit.chunk.id: hit for hit in dense_hits}
@@ -160,11 +166,12 @@ class HybridRetriever:
         if self.reranker is not None and candidates:
             stage = time.perf_counter()
             rerank_candidates = candidates[: max(20, 2 * top_k)]
-            reranked = self.reranker.rerank(
-                query=query,
-                chunks=[chunk for chunk, _ in rerank_candidates],
-                top_k=max(top_k, 1),
-            )
+            with self._span("rerank", tenant_id=tenant_id):
+                reranked = self.reranker.rerank(
+                    query=query,
+                    chunks=[chunk for chunk, _ in rerank_candidates],
+                    top_k=max(top_k, 1),
+                )
             timings["rerank"] = _ms(stage)
             by_id = {result.chunk_id: result.score for result in reranked}
             candidates = [
@@ -180,6 +187,13 @@ class HybridRetriever:
         ]
         timings["total"] = _ms(started)
         return RetrievalResult(query=query, top_k=top_k, chunks=chunks, timings_ms=timings)
+
+    def _span(self, name: str, **attributes: Any):
+        if self.tracer is None:
+            from contextlib import nullcontext
+
+            return nullcontext()
+        return self.tracer.span(name, **attributes)
 
 
 def _ms(started: float) -> float:

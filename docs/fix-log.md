@@ -1,5 +1,13 @@
 # Meridian fix log
 
+## Task 7.1 Tracing and tenant metrics (2026-10-13)
+- Verified before change: tracing used an unbounded in-memory list, hard-coded one-model pricing, and request metrics omitted errors and latency. Retrieval stage timings existed but were not named spans.
+- Tests added first: bounded local trace storage, span attributes, disabled Langfuse behavior, provider usage/estimation, error accounting, and tenant metric shape. The focused tests initially failed because the planned `LocalTracer`, `LangfuseTracer`, and usage normalizer were absent.
+- Change summary: added the `Tracer` protocol, bounded `LocalTracer`, optional best-effort Langfuse export gated by `LANGFUSE_ENABLED` and both keys, normalized provider usage with approximate-token fallback, configurable `config/pricing.json`, and per-tenant rolling request/error/latency/token/cost metrics at admin `/v1/metrics`. Instrumented embed, dense search, BM25, fusion, rerank, generation, and verification with behavior-based span names. Documented that in-memory data resets on process restart.
+- Evidence after: focused observability/retrieval/agent/API tests -> **37 passed**; full Python suite -> **420 passed, 3 xfailed**; scoped Ruff -> **all checks passed**. Tests use local/in-memory stores and do not call the external Langfuse service.
+- Deviations: none.
+- Open risks: Langfuse export failures are deliberately swallowed so tracing cannot fail a request; local metrics remain available regardless of remote export configuration.
+
 ## Task 0.1–0.3 Phase 0 baseline and verification (2026-10-10)
 - Verified before change: checkout `f2a32e6`; plan references older `e2bc6fc`. Phase 0 audit classified all F-01..F-30 in `docs/findings-verification.md`.
 - Test added (failing first): no tests added in this inventory task. Planned reproductions are being adapted to current findings; stale findings will not be encoded as expected bugs.

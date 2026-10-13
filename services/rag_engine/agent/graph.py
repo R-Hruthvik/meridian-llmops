@@ -5,6 +5,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import nullcontext
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
@@ -19,6 +20,7 @@ from services.rag_engine.agent.refusal import SafeRefusalGenerator
 from services.rag_engine.agent.state import RagAgentState
 from services.rag_engine.generation.prompt import build_prompt
 from services.rag_engine.generation.sufficiency import has_sufficient_context
+from services.rag_engine.observability.langfuse_client import normalize_usage
 from services.rag_engine.retrieval.hybrid import RankedChunk
 from services.rag_engine.verification import (
     VerificationMode,
@@ -111,6 +113,7 @@ def build_rag_agent_graph(
     verify_mode: VerificationMode | None = None,
     verify_fn: Callable[..., Awaitable[VerificationResult]] | None = None,
     reformulate_fn: Callable[..., str | Awaitable[str]] | None = None,
+    tracer: Any | None = None,
 ):
     """Compile the retrieve, sufficiency, generation, verification, and retry graph."""
     mode = verify_mode or get_settings().verify_mode
@@ -217,15 +220,26 @@ def build_rag_agent_graph(
         try:
             if debug_log_prompts:
                 _log_debug_payload("prompt", state.get("request_id", ""), prompt.messages, api_key)
-            response = await client.chat_completion(
-                messages=prompt.messages,
-                model=model,
-                provider=provider,
-                api_key=api_key,
-                base_url=cfg.get("base_url"),
-                temperature=0.0,
-                max_tokens=600,
+            span_context = (
+                tracer.span(
+                    "generate",
+                    tenant_id=state.get("tenant_id", "default"),
+                    model=model,
+                    provider=provider,
+                )
+                if tracer is not None
+                else nullcontext()
             )
+            with span_context:
+                response = await client.chat_completion(
+                    messages=prompt.messages,
+                    model=model,
+                    provider=provider,
+                    api_key=api_key,
+                    base_url=cfg.get("base_url"),
+                    temperature=0.0,
+                    max_tokens=600,
+                )
             draft = response.get("choices", [{}])[0].get("message", {}).get("content", "")
             if debug_log_prompts:
                 _log_debug_payload("response", state.get("request_id", ""), response.get("raw_response", response), api_key)
@@ -242,6 +256,13 @@ def build_rag_agent_graph(
 
         timings = dict(state.get("timings_ms") or {})
         timings["generate"] = timings.get("generate", 0.0) + (time.perf_counter() - started) * 1000
+        served_model = response.get("model", model)
+        usage = normalize_usage(
+            response,
+            prompt=json.dumps(prompt.messages, ensure_ascii=False),
+            completion=draft,
+            model=served_model,
+        )
         return {
             "draft_answer": draft,
             "retrieved_chunks": [SearchResult.model_validate(item) for item in selected_chunks],
@@ -249,8 +270,8 @@ def build_rag_agent_graph(
             "verification_result": None,
             "is_refusal": False,
             "serving_provider": response.get("provider", provider),
-            "serving_model": response.get("model", model),
-            "usage": response.get("usage"),
+            "serving_model": served_model,
+            "usage": usage,
             "timings_ms": timings,
         }
 
@@ -269,16 +290,26 @@ def build_rag_agent_graph(
         ]
         cfg = _active_llm_config(llm_config_getter)
         started = time.perf_counter()
-        result = await verifier(
-            question=state["query"],
-            answer=state.get("draft_answer", ""),
-            sources=sources,
-            mode=mode,
-            answer_status=state.get("answer_status", "answered"),
-            llm_client=client,
-            llm_config=cfg,
-            model=cfg.get("model") or "gpt-4o-mini",
+        span_context = (
+            tracer.span(
+                "verify",
+                tenant_id=state.get("tenant_id", "default"),
+                mode=mode,
+            )
+            if tracer is not None
+            else nullcontext()
         )
+        with span_context:
+            result = await verifier(
+                question=state["query"],
+                answer=state.get("draft_answer", ""),
+                sources=sources,
+                mode=mode,
+                answer_status=state.get("answer_status", "answered"),
+                llm_client=client,
+                llm_config=cfg,
+                model=cfg.get("model") or "gpt-4o-mini",
+            )
         timings = dict(state.get("timings_ms") or {})
         timings["verify"] = timings.get("verify", 0.0) + (time.perf_counter() - started) * 1000
         return {"verification_result": result, "timings_ms": timings}

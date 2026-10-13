@@ -51,7 +51,7 @@ from services.ingestion.vector_store import QdrantChunkStore
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.deps import require_admin, require_user
 from services.rag_engine.index_inspector import build_index_status
-from services.rag_engine.observability.langfuse_client import MeridianTracer
+from services.rag_engine.observability.langfuse_client import LangfuseTracer
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 from services.rag_engine.retrieval.reranker import CrossEncoderReranker, LexicalReranker
 from services.rag_engine.routers.review import router as review_router
@@ -163,10 +163,10 @@ ingestion_pipeline = IngestionPipeline(
     graph_store=graph_store,
     max_upload_bytes=_settings.max_upload_mb * 1024 * 1024,
 )
-retriever = HybridRetriever(embedder=None, vector_store=vector_store)
+tracer = LangfuseTracer()
+retriever = HybridRetriever(embedder=None, vector_store=vector_store, tracer=tracer)
 input_guardrails = InputGuardrails()
 output_guardrails = OutputGuardrails()
-tracer = MeridianTracer()
 llm_client = LiteLLMClient()
 
 logger = logging.getLogger("meridian.rag_engine")
@@ -550,6 +550,7 @@ agent_graph = build_rag_agent_graph(
     graph_enabled=_settings.graph_enabled,
     debug_log_prompts=_settings.debug_log_prompts,
     verify_mode=_settings.verify_mode,
+    tracer=tracer,
 )
 
 
@@ -802,12 +803,21 @@ async def query_endpoint(
 
         # 4. Record usage only when this request received a provider response.
         if final_state.get("serving_provider"):
-            with trace.generation(name="rag-generation") as gen:
+            with trace.generation(
+                name="generate",
+                model=final_state.get("serving_model"),
+                provider=final_state.get("serving_provider"),
+            ) as gen:
                 usage = final_state.get("usage") or {}
                 prompt_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
                 completion_tokens = usage.get("completion_tokens", usage.get("output_tokens"))
                 if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
-                    gen.set_tokens(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+                    gen.set_tokens(
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        estimated=bool(usage.get("estimated", False)),
+                        cost_usd=usage.get("cost_usd"),
+                    )
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     timings_ms = dict(final_state.get("timings_ms") or {})
@@ -1062,6 +1072,7 @@ async def update_llm_settings(
             graph_enabled=_core_get_settings().graph_enabled,
             debug_log_prompts=_core_get_settings().debug_log_prompts,
             verify_mode=_core_get_settings().verify_mode,
+            tracer=tracer,
         )
 
     return masked_llm_view(_runtime_llm_settings)

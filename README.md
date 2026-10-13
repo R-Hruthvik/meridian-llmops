@@ -115,6 +115,16 @@ Services started:
 - **Neo4j Graph Browser**: `http://localhost:7474`
 - **Langfuse Observability**: `http://localhost:3000`
 
+The RAG API keeps the latest 1,000 local traces and rolling per-tenant request,
+error, latency, token, and cost metrics in memory. Query `/v1/metrics` with an
+admin API key to inspect the authenticated tenant's metrics. These counters and
+traces reset when the API process restarts. Langfuse export is optional; set
+`LANGFUSE_ENABLED=true`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY` to
+enable best-effort export. Provider token usage is preferred; missing usage is
+estimated with Meridian's approximate word/punctuation counter. Per-model USD
+rates are configured in `config/pricing.json`; models without a price have
+unknown (`null`) cost.
+
 ### 4. Start Application
 
 ```bash
