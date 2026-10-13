@@ -1,0 +1,29 @@
+[
+  {
+    "id": "graph-001",
+    "category": "multi_hop",
+    "question": "Where do requests from Aster Dispatch ultimately store vector records, and which embeddings does that index use?",
+    "answerable": true,
+    "expected_doc": "03_embeddings.md",
+    "expected_phrases": ["Delta Embeddings"],
+    "start_entity": "Aster Dispatch",
+    "expected_hops": [
+      {"source_entity": "Aster Dispatch", "relation_type": "ROUTES_TO", "target_entity": "Beacon Gateway", "source_doc": "01_gateway.md"},
+      {"source_entity": "Beacon Gateway", "relation_type": "STORES_IN", "target_entity": "Cobalt Index", "source_doc": "02_storage.md"},
+      {"source_entity": "Cobalt Index", "relation_type": "RELATES_TO", "target_entity": "Delta Embeddings", "source_doc": "03_embeddings.md"}
+    ]
+  },
+  {
+    "id": "graph-002",
+    "category": "multi_hop",
+    "question": "Which gateway sits between Aster Dispatch and Cobalt Index?",
+    "answerable": true,
+    "expected_doc": "02_storage.md",
+    "expected_phrases": ["Beacon Gateway", "Cobalt Index"],
+    "start_entity": "Aster Dispatch",
+    "expected_hops": [
+      {"source_entity": "Aster Dispatch", "relation_type": "ROUTES_TO", "target_entity": "Beacon Gateway", "source_doc": "01_gateway.md"},
+      {"source_entity": "Beacon Gateway", "relation_type": "STORES_IN", "target_entity": "Cobalt Index", "source_doc": "02_storage.md"}
+    ]
+  }
+]
