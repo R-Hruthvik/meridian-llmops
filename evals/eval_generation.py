@@ -13,7 +13,7 @@ import os
 import statistics
 import sys
 import tempfile
-from datetime import date
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -246,7 +246,7 @@ def main() -> int:
         judge_base_url=args.judge_base_url,
     )
     args.report_dir.mkdir(parents=True, exist_ok=True)
-    report_path = args.report_dir / f"{date.today().isoformat()}.json"
+    report_path = args.report_dir / f"{datetime.now(UTC).date().isoformat()}.json"
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(
         json.dumps(
