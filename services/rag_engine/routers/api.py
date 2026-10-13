@@ -177,28 +177,8 @@ def _default_services() -> dict[str, Any]:
     global _default_service_cache, _default_settings
     if _default_service_cache is None:
         _default_settings = _core_get_settings()
-        settings = _default_settings
-        client = (QdrantClient(':memory:') if settings.qdrant_local_path == ':memory:' else QdrantClient(path=settings.qdrant_local_path)) if settings.vector_backend == 'qdrant_local' else QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port, timeout=5)
-        vector = QdrantChunkStore(client, settings.qdrant_collection, settings.qdrant_vector_dim)
-        graph = KnowledgeGraphStore(in_memory=not settings.graph_enabled)
-        pipeline = IngestionPipeline(vector_store=vector, graph_store=graph, max_upload_bytes=settings.max_upload_mb * 1024 * 1024)
-        trace = LangfuseTracer()
-        retrieval = HybridRetriever(embedder=None, vector_store=vector, tracer=trace)
-        llm = LiteLLMClient()
-        _default_service_cache = {
-            "vector_store": vector, "graph_store": graph, "ingestion_pipeline": pipeline,
-            "tracer": trace, "retriever": retrieval, "llm_client": llm,
-            "input_guardrails": InputGuardrails(), "output_guardrails": OutputGuardrails(),
-        }
-        _default_service_cache["agent_graph"] = build_rag_agent_graph(
-            retriever=retrieval, graph_store=graph, llm_client=llm,
-            llm_config_getter=_resolve_active_llm_config_with_secrets,
-            min_dense_score=settings.min_dense_score, graph_enabled=settings.graph_enabled,
-            graph_context_enabled=settings.graph_context_enabled,
-            debug_log_prompts=settings.debug_log_prompts, verify_mode=settings.verify_mode, tracer=trace,
-        )
+        _default_service_cache = _build_services(_default_settings)
     return _default_service_cache
-
 
 _settings = _ServiceProxy("settings")
 vector_store = _ServiceProxy("vector_store")
