@@ -497,7 +497,7 @@ fast →uv run fastapi dev   FastAPI   Starting development server 🚀
 - Deviations from plan: none.
 - Open risks / follow-ups: none beyond the Task 6.3 session-scoped status limitation recorded above.
 
-## Task 6.4 Main-app guardrail check route (2026-10-13) — fixes: F-07
+## Task 6.4 Main-app guardrail check route (2026-10-13) — fixes: F-22
 - Verified before change: the RAG app had a POST guardrail handler protected by Phase 5 `require_user`, but hid it from the API schema as a deprecated alias; the UI sent guardrail text in a GET query string.
 - Test added (failing first): main-app route visibility and frontend POST-body regressions failed as expected (`include_in_schema` was false; frontend still sent `?text=...`). Added a POST missing-key check to protect the Phase 5 auth contract.
 - Change summary: made the authenticated POST handler the documented contract and marked the retained GET route deprecated. The UI now posts `{text}` as JSON to the main app with the existing API-key and tenant headers, keeping submitted text out of URLs.
