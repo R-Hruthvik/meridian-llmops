@@ -21,6 +21,7 @@
 ## Task 9.2 — Compose provider configuration (2026-10-13)
 - The optional Compose app service now forwards the generic direct-provider variables and their `LLM_` aliases. The LiteLLM service continues to receive its provider-specific key variables.
 - Verification: `docker compose config --quiet` and scoped `git diff --check` passed.
+- Independent synthetic-value check at source `3b91e84`: rendered Compose JSON contained all eight provider variables under the app service; empty input rendered those fields empty and `ALLOW_PRIVATE_PROVIDER_URLS=false`. Settings checks confirmed `LLM_*` aliases work as fallbacks and generic names take precedence. No live provider call or real credential was used.
 
 ## Task 7.3 Retrieval evaluation (2026-10-13)
 - Verified before change: retrieval evaluation only existed as a smoke-set reranker comparison; no golden-set evaluator or threshold file existed. The prior smoke check used a dense-score shortcut for unanswerable cases rather than the generation sufficiency check.
