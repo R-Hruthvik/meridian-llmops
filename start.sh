@@ -34,6 +34,7 @@ print_help() {
     echo ""
     echo "Environment Variables:"
     echo "  PORT             Backend port (default: 8000)"
+    echo "  GATEWAY_PORT     Gateway port (default: 8001; PORT is used when explicitly set)"
     echo "  HOST             Backend host (default: 0.0.0.0)"
     echo "  VITE_PORT        Frontend dev port (default: 5173)"
     echo ""
@@ -50,8 +51,57 @@ start_docker_stack() {
         echo -e "${YELLOW}Docker daemon not running — skipping containers.${NC}"
         return 0
     fi
-    echo -e "${BLUE}Starting Docker services (Qdrant, Neo4j, litellm, Langfuse)...${NC}"
-    docker compose up -d || echo -e "${YELLOW}Some Docker services failed to start; continuing.${NC}"
+    echo -e "${BLUE}Starting Qdrant...${NC}"
+    docker compose up -d qdrant || echo -e "${YELLOW}Qdrant could not be started; startup preflight will report how to fix it.${NC}"
+}
+
+preflight_app_dependencies() {
+    echo -e "${BLUE}Checking Qdrant and embedding model availability...${NC}"
+    $PYTHON_CMD - <<'PY'
+import sys
+import time
+import urllib.error
+import urllib.request
+
+from packages.core.settings import get_settings
+
+settings = get_settings()
+url = f"http://{settings.qdrant_host}:{settings.qdrant_port}/healthz"
+last_error = None
+for attempt in range(15):
+    try:
+        with urllib.request.urlopen(url, timeout=2) as response:
+            if response.status == 200:
+                break
+    except (OSError, urllib.error.URLError) as error:
+        last_error = error
+    if attempt < 14:
+        time.sleep(2)
+else:
+    print(
+        f"Qdrant is not reachable at {url} ({last_error}). Start it with `docker compose up -d qdrant`, "
+        "or set QDRANT_HOST/QDRANT_PORT to a reachable instance.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+try:
+    from services.ingestion.embedder import FastEmbedEmbedder
+
+    FastEmbedEmbedder(
+        settings.embedding_model,
+        cache_path=settings.fastembed_cache_path,
+        expected_dim=settings.qdrant_vector_dim,
+    )
+except Exception as error:
+    print(
+        f"Embedding model {settings.embedding_model!r} is unavailable or invalid in "
+        f"{settings.fastembed_cache_path!r}: {error}. Check network access and model/cache settings, "
+        "then rerun `./start.sh`.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PY
 }
 
 # Parse Python executable
@@ -66,7 +116,6 @@ else
     exit 1
 fi
 
-PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
 VITE_PORT="${VITE_PORT:-5173}"
 MODE="dev"
@@ -101,6 +150,11 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [ "$MODE" = "gateway" ]; then
+    GATEWAY_PORT="${GATEWAY_PORT:-${PORT:-8001}}"
+fi
+PORT="${PORT:-8000}"
 
 # Production is explicit and must never fall back to generated local keys.
 if [ "$MODE" = "prod" ] || [ "${APP_ENV:-development}" = "production" ]; then
@@ -157,6 +211,10 @@ print_banner
 # Start the data-layer containers before launching the app services.
 start_docker_stack
 
+if [ "$MODE" != "gateway" ]; then
+    preflight_app_dependencies
+fi
+
 # Trap function to clean up background processes on Ctrl+C / kill
 cleanup() {
     echo -e "\n${YELLOW}Shutting down Meridian services...${NC}"
@@ -190,7 +248,6 @@ elif [ "$MODE" = "backend" ]; then
     $PYTHON_CMD -m uvicorn services.rag_engine.app:app --host "$HOST" --port "$PORT" --reload
 
 elif [ "$MODE" = "gateway" ]; then
-    GATEWAY_PORT="${PORT:-8001}"
     echo -e "${BLUE}Starting AI Gateway at http://${HOST}:${GATEWAY_PORT}${NC}"
     echo -e "${BLUE}API Documentation: http://localhost:${GATEWAY_PORT}/docs${NC}"
     echo -e "${YELLOW}Press Ctrl+C to stop.${NC}\n"
