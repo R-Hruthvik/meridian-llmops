@@ -80,7 +80,9 @@ const STATIC_LABELS = {
 
 /** Cost is a small fraction of a dollar; a raw float is not a readout. */
 const COST_SCALE = 4;
-const formatCost = (usd: number) => `$${usd.toFixed(COST_SCALE)}`;
+const formatCost = (usd: number | null) => usd === null ? '—' : `$${usd.toFixed(COST_SCALE)}`;
+const formatLatency = (milliseconds: number | null | undefined) =>
+  milliseconds == null ? '—' : `${milliseconds.toFixed(1)} ms`;
 
 const KPIS: Array<{ key: string; label: string; unit: string; hint: string; icon: typeof Zap; accent: boolean }> = [
   { key: 'total-requests', label: 'Total requests', unit: 'req', hint: 'Recorded in Langfuse telemetry', icon: Zap, accent: false },
@@ -241,6 +243,59 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
           </div>
         ))}
       </dl>
+
+      <section aria-labelledby="request-telemetry-title" className="flex flex-col gap-3 rounded-sm border border-hairline bg-surface-raised p-3">
+        <div>
+          <h3 id="request-telemetry-title" className="label-section text-ink">Request telemetry</h3>
+          <p className="mt-1 text-micro text-muted">Recent queries and retrieval timing recorded for this tenant.</p>
+        </div>
+
+        {metrics ? (
+          <>
+            <dl className="grid grid-cols-1 divide-y divide-hairline border-y border-hairline sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="px-3 py-2.5">
+                <dt className="text-micro uppercase tracking-[0.12em] text-muted">Errors</dt>
+                <dd data-testid="error-count" className="num mt-0.5 text-readout font-semibold text-ink">{metrics.error_count?.toLocaleString() ?? '—'}</dd>
+              </div>
+              <div className="px-3 py-2.5">
+                <dt className="text-micro uppercase tracking-[0.12em] text-muted">Retrieval p50</dt>
+                <dd data-testid="retrieval-p50" className="num mt-0.5 text-readout font-semibold text-ink">{formatLatency(metrics.retrieval_latency_ms?.p50)}</dd>
+              </div>
+              <div className="px-3 py-2.5">
+                <dt className="text-micro uppercase tracking-[0.12em] text-muted">Retrieval p95</dt>
+                <dd data-testid="retrieval-p95" className="num mt-0.5 text-readout font-semibold text-ink">{formatLatency(metrics.retrieval_latency_ms?.p95)}</dd>
+              </div>
+            </dl>
+
+            {metrics.recent_requests?.length ? (
+              <ol aria-label="Recent tenant requests" className="flex flex-col divide-y divide-hairline border-y border-hairline">
+                {metrics.recent_requests.slice(0, 20).map((request, index) => (
+                  <li key={`${request.query}-${index}`} className="flex flex-col gap-1.5 py-2.5">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <p className="min-w-0 break-words text-label font-semibold text-ink">{request.query}</p>
+                      <span className="num shrink-0 text-micro text-muted">{formatLatency(request.duration_ms)}</span>
+                    </div>
+                    <dl className="flex flex-wrap gap-x-4 gap-y-1">
+                      {Object.entries(request.timings_ms ?? {}).map(([name, duration]) => (
+                        <div key={name} className="flex items-baseline gap-1">
+                          <dt className="text-micro text-faint">{name}</dt>
+                          <dd className="num text-micro text-muted">{formatLatency(duration)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-label text-muted">No recent requests recorded for this tenant.</p>
+            )}
+          </>
+        ) : loading ? (
+          <p className="text-label text-muted">Loading recent tenant telemetry…</p>
+        ) : error ? (
+          <p className="rounded-sm border border-fail/30 bg-fail-wash px-3 py-2 text-label font-semibold text-fail">Recent tenant telemetry is unavailable.</p>
+        ) : null}
+      </section>
 
       <section aria-labelledby="retrieval-playground-title" className="flex flex-col gap-3 rounded-sm border border-hairline bg-surface-raised p-3">
         <div>

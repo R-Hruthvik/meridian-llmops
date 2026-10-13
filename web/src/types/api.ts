@@ -172,9 +172,27 @@ export interface GuardrailResult {
 
 export interface TenantMetrics {
   tenant_id: string;
+  request_count: number;
   total_requests: number;
+  error_count: number;
+  latency_ms: {
+    p50: number;
+    p95: number;
+    p99: number;
+  };
+  retrieval_latency_ms: {
+    p50: number | null;
+    p95: number | null;
+  };
+  recent_requests: Array<{
+    query: string;
+    duration_ms: number;
+    timings_ms: Record<string, number>;
+  }>;
   total_tokens: number;
-  total_cost_usd: number;
+  estimated_tokens: number;
+  total_cost_usd: number | null;
+  total_cost: number | null;
 }
 
 export interface HealthReadiness {

@@ -44,6 +44,7 @@ describe('MetricsDashboard', () => {
     render(<MetricsDashboard tenantId="default" />);
 
     expect(screen.getByRole('status')).toHaveTextContent('Loading telemetry metrics');
+    expect(screen.getByText(/Loading recent tenant telemetry/)).toBeInTheDocument();
     expect(screen.getByTestId('kpi-strip')).toHaveClass('grid-cols-1');
     expect(screen.getByTestId('metrics-loading-status')).toHaveClass('min-h-[3rem]');
     await waitFor(() => expect(api.checkHealth).toHaveBeenCalled());
@@ -282,6 +283,72 @@ describe('MetricsDashboard', () => {
       render(<MetricsDashboard tenantId="default" />);
 
       expect(await screen.findByTestId('kpi-cost')).toHaveTextContent('$0.0000');
+    });
+
+    it('shows an unavailable cost placeholder when upstream cost is unknown', async () => {
+      (api.getMetrics as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        tenant_id: 'default',
+        total_requests: 1,
+        total_tokens: 30,
+        total_cost_usd: null,
+      });
+      render(<MetricsDashboard tenantId="default" />);
+
+      expect(await screen.findByTestId('kpi-cost')).toHaveTextContent('—');
+    });
+  });
+
+  describe('tenant request telemetry', () => {
+    it('shows error count, retrieval percentiles, and the tenant recent requests', async () => {
+      const recentRequests = Array.from({ length: 22 }, (_, index) => ({
+        query: `Question ${22 - index}`,
+        duration_ms: index + 10,
+        timings_ms: { embed_query: 1.2, dense_search: 2.3 },
+      }));
+      (api.getMetrics as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        tenant_id: 'tenant-a',
+        total_requests: 22,
+        total_tokens: 300,
+        total_cost_usd: null,
+        error_count: 3,
+        retrieval_latency_ms: { p50: 12.5, p95: 31.25 },
+        recent_requests: recentRequests,
+      });
+      render(<MetricsDashboard tenantId="tenant-a" />);
+
+      expect(await screen.findByTestId('error-count')).toHaveTextContent('3');
+      expect(screen.getByText('12.5 ms')).toBeInTheDocument();
+      expect(screen.getByText('31.3 ms')).toBeInTheDocument();
+      expect(await screen.findByText('Question 22')).toBeInTheDocument();
+      expect(screen.getByText('Question 3')).toBeInTheDocument();
+      expect(screen.queryByText('Question 2')).not.toBeInTheDocument();
+      expect(screen.getAllByText('embed_query')).toHaveLength(20);
+      expect(screen.getAllByText('dense_search')).toHaveLength(20);
+      expect(api.getMetrics).toHaveBeenCalledWith('tenant-a');
+    });
+
+    it('shows an empty state when the tenant has no recent requests', async () => {
+      (api.getMetrics as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        tenant_id: 'tenant-a',
+        total_requests: 0,
+        total_tokens: 0,
+        total_cost_usd: 0,
+        error_count: 0,
+        retrieval_latency_ms: { p50: null, p95: null },
+        recent_requests: [],
+      });
+      render(<MetricsDashboard tenantId="tenant-a" />);
+
+      expect(await screen.findByText('No recent requests recorded for this tenant.')).toBeInTheDocument();
+    });
+
+    it('uses the metrics error state when recent request telemetry cannot load', async () => {
+      (api.getMetrics as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('metrics unavailable'));
+      render(<MetricsDashboard tenantId="tenant-a" />);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('metrics unavailable');
+      expect(screen.getByText('Recent tenant telemetry is unavailable.')).toBeInTheDocument();
+      expect(screen.queryByText('No recent requests recorded for this tenant.')).not.toBeInTheDocument();
     });
   });
 
