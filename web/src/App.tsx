@@ -6,6 +6,7 @@ import { WorkbenchContext, type OpenOverlayOptions, type OverlayTarget } from '.
 import { api } from './services/api';
 import { StatusChip } from './components/StatusChip';
 import './WorkbenchShell.css';
+import { DesignPreviews } from './components/DesignPreviews';
 
 const IngestionStudio = React.lazy(() => import('./components/IngestionStudio').then((m) => ({ default: m.IngestionStudio })));
 const GuardrailsStudio = React.lazy(() => import('./components/GuardrailsStudio').then((m) => ({ default: m.GuardrailsStudio })));
@@ -32,7 +33,7 @@ const TARGET_ROUTE: Record<OverlayTarget, Route> = {
   review: '/operations/review', metrics: '/operations/usage', settings: '/settings',
 };
 
-export const App: React.FC = () => {
+const WorkspaceApp: React.FC = () => {
   const [route, setRoute] = useState<Route>(parseRoute);
   const [tenantId, setTenantId] = useState('default');
   const [health, setHealth] = useState<BackendHealth>('offline');
@@ -129,5 +130,7 @@ export const App: React.FC = () => {
     </WorkbenchContext.Provider>
   );
 };
+
+export const App: React.FC = () => new URLSearchParams(window.location.search).get('ui-previews') === '1' ? <DesignPreviews /> : <WorkspaceApp />;
 
 export default App;

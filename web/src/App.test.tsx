@@ -69,6 +69,13 @@ beforeEach(() => {
 });
 
 describe('Meridian workbench navigation', () => {
+  it('opens the isolated design directions when requested by query parameter', () => {
+    window.history.replaceState(null, '', '/?ui-previews=1');
+    render(<App />);
+    expect(screen.getByRole('navigation', { name: 'Design directions' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Route Map' })).toBeInTheDocument();
+  });
+
   it('opens the workspace without an in-app unlock gate', async () => {
     (api.getApiKey as ReturnType<typeof vi.fn>).mockReturnValue('');
     render(<App />);
