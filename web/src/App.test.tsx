@@ -38,6 +38,13 @@ const QUERY_RESPONSE = {
   serving: { provider: 'custom', model: 'kilo-auto/free', fresh: true },
 };
 const EMPTY_DOCUMENTS = { total_documents: 0, total_chunks: 0, total_entities: 0, documents: [] };
+const EMPTY_INDEX_STATUS = {
+  vector: { collections: [], points_per_collection: {}, total_points: null, vector_dimension: null, is_fallback: true, detail: '' },
+  graph: { node_count: null, relationship_count: null, entity_index_size: null, is_fallback: true, detail: '' },
+  lexical: { corpus_size: null, document_count: null, is_fallback: true, detail: '' },
+  relational: { dialect: null, tables: [], total_rows: 0, is_fallback: true, detail: '' },
+  backends: {},
+};
 const nav = () => screen.getByRole('navigation', { name: 'Primary navigation' });
 const go = (name: string) => within(nav()).getByRole('link', { name });
 
@@ -56,7 +63,7 @@ beforeEach(() => {
   (api.listReviewItems as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (api.getMetrics as ReturnType<typeof vi.fn>).mockResolvedValue({ tenant_id: 'default', total_requests: 0, total_tokens: 0, total_cost_usd: 0 });
   (api.checkGuardrails as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  (api.getIndexStatus as ReturnType<typeof vi.fn>).mockResolvedValue(EMPTY_INDEX_STATUS);
   (api.query as ReturnType<typeof vi.fn>).mockResolvedValue(QUERY_RESPONSE);
 });
 
@@ -78,6 +85,16 @@ describe('Meridian workbench navigation', () => {
     expect(go('Operations')).toHaveAttribute('aria-current', 'page');
     expect(await screen.findByRole('heading', { name: /review queue/i })).toBeInTheDocument();
     await waitFor(() => expect(api.listReviewItems).toHaveBeenCalled());
+  });
+
+  it('navigates between the source catalog and index view', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(go('Sources'));
+    const sections = screen.getByRole('navigation', { name: 'Sources sections' });
+    await user.click(within(sections).getByRole('link', { name: 'Index & storage' }));
+    expect(window.location.hash).toBe('#/sources/index');
+    await waitFor(() => expect(api.getIndexStatus).toHaveBeenCalled());
   });
 
   it('follows browser back and forward between sections', async () => {

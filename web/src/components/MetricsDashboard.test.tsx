@@ -178,7 +178,7 @@ describe('MetricsDashboard', () => {
     render(<MetricsDashboard tenantId="default" />);
 
     const card = (await screen.findByText('Meridian RAG Engine (FastAPI)')).closest('[data-testid="infra-card"]');
-    expect(card).toHaveTextContent('Degraded');
+    await waitFor(() => expect(card).toHaveTextContent('Degraded'));
   });
 
   it('runs retrieval in Diagnostics and displays ranked chunks with backend scores', async () => {
