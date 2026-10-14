@@ -56,11 +56,7 @@ export default (defineConfig as (
         '/v1': {
           target: proxyTarget,
           changeOrigin: true,
-          configure: (proxy) => {
-            if (proxyApiKey) {
-              proxy.on('proxyReq', (proxyReq) => proxyReq.setHeader('X-API-Key', proxyApiKey))
-            }
-          },
+          headers: proxyApiKey ? { 'X-API-Key': proxyApiKey } : undefined,
         },
         '/health': {
           target: proxyTarget,
