@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import { ArrowUpRight, BookOpen, Check, ChevronDown, CircleHelp, Command, Database, FileText, Search, Settings2, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import { Activity, ArrowUpRight, BookOpen, Check, ChevronDown, Command, Database, FileText, LibraryBig, MessageSquareText, PanelLeftClose, PanelLeftOpen, Search, Settings2, ShieldCheck } from 'lucide-react';
 import './DesignPreview.css';
 
 type Section = 'Ask' | 'Sources' | 'Operations' | 'Settings';
 
 const destinations: { name: Section; icon: typeof BookOpen }[] = [
-  { name: 'Ask', icon: CircleHelp },
-  { name: 'Sources', icon: BookOpen },
-  { name: 'Operations', icon: SlidersHorizontal },
+  { name: 'Ask', icon: MessageSquareText },
+  { name: 'Sources', icon: LibraryBig },
+  { name: 'Operations', icon: Activity },
   { name: 'Settings', icon: Settings2 },
 ];
 
@@ -18,6 +18,7 @@ const sectionFromHash = (): Section => {
 
 export function DesignPreview() {
   const [section, setSection] = useState<Section>(sectionFromHash);
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [question, setQuestion] = useState('How does Meridian keep answers grounded in source documents?');
   const [answered, setAnswered] = useState(false);
 
@@ -37,22 +38,22 @@ export function DesignPreview() {
   };
 
   return (
-    <div className="preview-shell">
+    <div className={`preview-shell${sidebarExpanded ? ' sidebar-expanded' : ' sidebar-collapsed'}`}>
       <aside className="preview-sidebar">
-        <a className="preview-brand" href="?design-preview=1#/ask" onClick={(event) => { event.preventDefault(); navigate('Ask'); }}>
+        <div className="sidebar-top"><a className="preview-brand" href="?design-preview=1#/ask" onClick={(event) => { event.preventDefault(); navigate('Ask'); }}>
           <span className="brand-mark">m</span><span>Meridian</span>
-        </a>
+        </a><button type="button" className="sidebar-toggle" aria-label={sidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'} title={sidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'} onClick={() => setSidebarExpanded((expanded) => !expanded)}>{sidebarExpanded ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}</button></div>
         <div className="workspace-label">WORKSPACE</div>
         <nav aria-label="Main navigation" className="preview-nav">
           {destinations.map(({ name, icon: Icon }) => (
             <a key={name} href={`?design-preview=1#/${name.toLowerCase()}`} aria-current={section === name ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(name); }}>
-              <Icon size={18} strokeWidth={1.7} /><span>{name}</span>{name === 'Sources' && <span className="nav-count">12</span>}
+              <span className="nav-icon"><Icon size={18} strokeWidth={1.8} /></span><span className="nav-label">{name}</span>{name === 'Sources' && <span className="nav-count">12</span>}
             </a>
           ))}
         </nav>
         <div className="sidebar-bottom">
           <div className="workspace-switch"><span className="workspace-avatar">N</span><span className="workspace-name">Northstar Labs<small>Personal workspace</small></span><ChevronDown size={15} /></div>
-          <div className="connection-state"><span className="state-dot" /> Demo workspace <span>Preview</span></div>
+          <div className="connection-state"><span className="state-dot" /> <span className="connection-label">Demo workspace · Preview</span></div>
         </div>
       </aside>
 
@@ -60,8 +61,6 @@ export function DesignPreview() {
         <header className="preview-header">
           <div className="mobile-brand"><span className="brand-mark">m</span> Meridian</div>
           <div className="breadcrumb"><span>Northstar Labs</span><span className="crumb-divider">/</span><strong>{section}</strong></div>
-          <button className="search-trigger" type="button" aria-label="Search workspace"><Search size={16} /><span>Search anything</span><kbd>⌘ K</kbd></button>
-          <button className="avatar-button" type="button" aria-label="Workspace profile">AR</button>
         </header>
 
         <main className="preview-content">
@@ -94,7 +93,9 @@ function AskPage({ question, setQuestion, answered, setAnswered, navigate }: { q
 
 function SourcesPage() {
   const [filter, setFilter] = useState('All sources');
-  return <><div className="page-heading"><div><p className="eyebrow">YOUR KNOWLEDGE LIBRARY</p><h1>Sources</h1><p className="page-intro">Documents Meridian can use to answer your questions.</p></div><button className="ask-button add-source" type="button">Add sources <span>＋</span></button></div><div className="sources-toolbar"><div className="tabs" role="tablist" aria-label="Source filters">{['All sources', 'Recently added', 'Needs attention'].map((item) => <button type="button" role="tab" aria-selected={filter === item} onClick={() => setFilter(item)} key={item}>{item}</button>)}</div><button className="quiet-button" type="button"><Search size={16} /> Search sources</button></div><div className="source-table"><div className="source-table-head"><span>DOCUMENT</span><span>ADDED</span><span>STATUS</span></div>{[['Product handbook','Today','Ready'],['Retrieval overview','Yesterday','Ready'],['Security and privacy guide','Oct 10','Ready'],['Customer onboarding notes','Oct 08','Processing']].filter((row) => filter !== 'Needs attention' || row[2] === 'Processing').map(([title,date,status], index) => <button className="source-table-row" type="button" key={title}><span className="table-document"><span className="file-icon"><FileText size={17} /></span><span>{title}<small>{index % 2 ? 'PDF · 9 pages' : 'PDF · 18 pages'}</small></span></span><span>{date}</span><span className={`source-status ${status === 'Processing' ? 'processing' : ''}`}>{status}</span></button>)}</div><div className="library-foot"><span>12 sources · 246 passages</span><button type="button" className="text-link"><Database size={14} /> Index details</button></div></>;
+  const [query, setQuery] = useState('');
+  const sources = [['Product handbook','Today','Ready'],['Retrieval overview','Yesterday','Ready'],['Security and privacy guide','Oct 10','Ready'],['Customer onboarding notes','Oct 08','Processing']].filter(([title,,status]) => (filter !== 'Needs attention' || status === 'Processing') && title.toLowerCase().includes(query.toLowerCase()));
+  return <><div className="page-heading"><div><p className="eyebrow">YOUR KNOWLEDGE LIBRARY</p><h1>Sources</h1><p className="page-intro">Documents Meridian can use to answer your questions.</p></div></div><div className="sources-toolbar"><div className="source-actions"><label className="source-search"><Search size={17} /><span className="sr-only">Search sources</span><input aria-label="Search sources" placeholder="Search your documents" value={query} onChange={(event) => setQuery(event.target.value)} /></label><button className="ask-button add-source" type="button"><FileText size={16} /> Add sources</button></div><div className="tabs" role="tablist" aria-label="Source filters">{['All sources', 'Recently added', 'Needs attention'].map((item) => <button type="button" role="tab" aria-selected={filter === item} onClick={() => setFilter(item)} key={item}>{item}</button>)}</div></div><div className="source-table"><div className="source-table-head"><span>DOCUMENT</span><span>ADDED</span><span>STATUS</span></div>{sources.map(([title,date,status], index) => <button className="source-table-row" type="button" key={title}><span className="table-document"><span className="file-icon"><FileText size={17} /></span><span>{title}<small>{index % 2 ? 'PDF · 9 pages' : 'PDF · 18 pages'}</small></span></span><span>{date}</span><span className={`source-status ${status === 'Processing' ? 'processing' : ''}`}>{status}</span></button>)}</div><div className="library-foot"><span>12 sources · 246 passages</span><button type="button" className="text-link"><Database size={14} /> Index details</button></div></>;
 }
 
 function OperationsPage() {

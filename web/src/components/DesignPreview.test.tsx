@@ -17,6 +17,14 @@ describe('DesignPreview', () => {
     await user.click(screen.getByRole('link', { name: /^Sources/ }));
     expect(screen.getByRole('heading', { name: 'Sources' })).toBeInTheDocument();
     expect(screen.getByText('Product handbook')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Search workspace' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Workspace profile' })).not.toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: 'Search sources' }), 'privacy');
+    expect(screen.getByText('Security and privacy guide')).toBeInTheDocument();
+    expect(screen.queryByText('Product handbook')).not.toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(document.querySelector('.preview-shell')).toHaveClass('sidebar-collapsed');
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
   });
 });
