@@ -43,7 +43,7 @@ Cache invalidation is handled via Kafka events emitted by write operations.
 Cache hit ratios are tracked in Prometheus and visualized in Grafana dashboards.
 `;
 
-/** §9 — one cell of a dense readout strip: label on top, value in mono below. */
+/** Compact processing statistics shown after a document has been indexed. */
 const Readout: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div data-slot="readout" className="border-l border-hairline pl-3 first:border-l-0 first:pl-0">
     <div className="label-section text-faint">{label}</div>
@@ -288,7 +288,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       {/* Toast Notification */}
       {toastMessage && (
         <div
@@ -345,140 +345,112 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
         </div>
       )}
 
-      {/* §4/§9 readout strip — replaces the four stat cards */}
-      <div
-        data-testid="corpus-readout-strip"
-        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded border border-hairline bg-surface-raised px-3 py-2"
-      >
-        <h2 className="label-section text-muted">Corpus Readout</h2>
-        <Readout label="Documents" value={docList.total_documents.toLocaleString()} />
-        <Readout label="Chunks" value={docList.total_chunks.toLocaleString()} />
-        <Readout label="Entities" value={docList.total_entities.toLocaleString()} />
-        <p className="ml-auto text-micro text-faint">
-          Dual in-memory + disk ·{' '}
-          <span className="id-mono">.meridian_knowledge_base.json</span>
-        </p>
-      </div>
-
-      {/* Navigation Tabs Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline pb-2">
-        <div role="tablist" aria-label="Ingestion Studio Navigation" className="flex items-center gap-1">
+      <header className="flex flex-col gap-3 border-b border-hairline pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="font-serif text-3xl font-normal tracking-tight text-ink sm:text-4xl">
+            {activeTab === 'catalog' ? 'Sources' : 'Add sources'}
+          </h1>
+          <p className="mt-2 max-w-2xl text-body leading-relaxed text-muted">
+            {activeTab === 'catalog'
+              ? 'Documents Meridian can use to answer your questions.'
+              : 'Upload files or add text documents to your source library.'}
+          </p>
+        </div>
+        {activeTab === 'upload' && (
           <button
-            role="tab"
-            aria-selected={activeTab === 'catalog'}
+            type="button"
             onClick={() => setActiveTab('catalog')}
-            className={`flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-label font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-              activeTab === 'catalog'
-                ? 'bg-accent-wash text-accent-ink'
-                : 'text-muted hover:bg-surface-sunken hover:text-ink'
-            }`}
+            className="self-start rounded-sm px-2 py-2 text-label font-semibold text-accent-ink hover:bg-accent-wash focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:self-auto"
           >
-            <BookOpen className="size-3.5" />
-            <span>Document Catalog</span>
-            <span className="num text-micro text-faint">
-              <span className="sr-only">document count </span>
-              {docList.total_documents}
-            </span>
+            Back to sources
           </button>
+        )}
+      </header>
 
-          <button
-            role="tab"
-            aria-selected={activeTab === 'upload'}
-            onClick={() => setActiveTab('upload')}
-            className={`flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-label font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-              activeTab === 'upload'
-                ? 'bg-accent-wash text-accent-ink'
-                : 'text-muted hover:bg-surface-sunken hover:text-ink'
-            }`}
-          >
-            <Plus className="size-3.5" />
-            <span>Ingest New Document</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => void fetchDocuments(false)}
-            disabled={loadingDocs}
-            aria-label="Refresh document catalog"
-            className="flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
-            title="Refresh Knowledge Base"
-          >
-            <RefreshCw className={`size-3.5 ${loadingDocs ? 'animate-spin text-accent-ink' : ''}`} />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
-
-          <button
-            onClick={async () => {
-              try {
-                const res = await api.seedSampleDocuments(tenantId);
-                showToast(`Seeded ${res.documents_seeded} sample architecture documents.`);
-                await fetchDocuments();
-              } catch (err: unknown) {
-                const msg = err instanceof Error ? err.message : 'Failed to seed sample docs';
-                showToast(msg, 'error');
-              }
-            }}
-            className="flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            title="Seed sample architecture documents"
-          >
-            <Sparkles className="size-3.5" />
-            <span className="hidden md:inline">Seed Samples</span>
-          </button>
-
-          {docList.total_documents > 0 && (
-            <button
-              onClick={async () => {
-                if (!window.confirm('Are you sure you want to delete ALL documents from the Knowledge Base?')) {
-                  return;
-                }
-                try {
-                  const res = await api.clearAllDocuments(tenantId);
-                  showToast(`Cleared all ${res.deleted_count} documents from storage.`);
-                  await fetchDocuments();
-                } catch (err: unknown) {
-                  const msg = err instanceof Error ? err.message : 'Failed to clear documents';
-                  showToast(msg, 'error');
-                }
-              }}
-              className="flex items-center gap-1.5 rounded-sm border border-hairline bg-fail-wash px-2.5 py-1 text-label text-fail transition-colors hover:border-fail focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              title="Clear entire Knowledge Base"
-            >
-              <Trash2 className="size-3.5" />
-              <span className="hidden md:inline">Clear All</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* TAB 1: Document Catalog View */}
+      {/* Sources catalog */}
       {activeTab === 'catalog' && (
         <div className="flex flex-col gap-3">
           {/* Search & Filter Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="relative min-w-[220px] flex-1">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
               <input
-                type="text"
+                type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search documents by title, source, or content..."
-                aria-label="Search documents catalog"
-                className="w-full rounded-sm border border-hairline bg-surface py-1.5 pl-8 pr-2.5 text-body text-ink outline-none transition-colors placeholder:text-faint focus:border-hairline-strong focus:bg-surface-raised focus-visible:ring-2 focus-visible:ring-accent"
+                placeholder="Search by name, source, or content"
+                aria-label="Search sources"
+                className="w-full rounded-sm border border-hairline bg-surface-raised py-2.5 pl-9 pr-3 text-body text-ink outline-none transition-colors placeholder:text-faint focus:border-hairline-strong focus-visible:ring-2 focus-visible:ring-accent"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="num text-micro text-muted">
+            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTab('upload')}
+                className="flex min-h-10 items-center justify-center gap-2 rounded-sm bg-accent px-4 text-label font-semibold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+              >
+                <Plus className="size-4" aria-hidden="true" />
+                Add sources
+              </button>
+              <span className="num px-1 text-micro text-muted">
                 <span className="sr-only">showing </span>
                 {filteredDocs.length} <span className="text-faint">of</span> {docList.total_documents}{' '}
                 <span className="font-sans text-faint">documents</span>
               </span>
-              <span
-                className="rounded-pill bg-surface-sunken px-2 py-0.5 text-micro font-semibold text-muted"
-                title="The document catalog is shared across tenants"
+              <button
+                type="button"
+                onClick={() => void fetchDocuments(false)}
+                disabled={loadingDocs}
+                aria-label="Refresh sources"
+                className="flex size-10 items-center justify-center rounded-sm border border-hairline bg-surface-raised text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
+                title="Refresh sources"
               >
-                Global
-              </span>
+                <RefreshCw className={`size-4 ${loadingDocs ? 'animate-spin text-accent-ink' : ''}`} />
+              </button>
+              <details className="relative">
+                <summary className="flex min-h-10 cursor-pointer list-none items-center rounded-sm px-2 text-label font-semibold text-muted hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                  More
+                </summary>
+                <div className="absolute right-0 top-full z-10 mt-1 flex min-w-40 flex-col rounded-sm border border-hairline bg-surface-raised p-1 shadow-overlay">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const res = await api.seedSampleDocuments(tenantId);
+                        showToast(`Seeded ${res.documents_seeded} sample architecture documents.`);
+                        await fetchDocuments();
+                      } catch (err: unknown) {
+                        const msg = err instanceof Error ? err.message : 'Failed to seed sample docs';
+                        showToast(msg, 'error');
+                      }
+                    }}
+                    className="flex min-h-10 items-center gap-2 rounded-sm px-2 text-left text-label text-ink hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    <Sparkles className="size-3.5" /> Seed samples
+                  </button>
+                  {docList.total_documents > 0 && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!window.confirm('Are you sure you want to delete ALL documents from the Knowledge Base?')) {
+                          return;
+                        }
+                        try {
+                          const res = await api.clearAllDocuments(tenantId);
+                          showToast(`Cleared all ${res.deleted_count} documents from storage.`);
+                          await fetchDocuments();
+                        } catch (err: unknown) {
+                          const msg = err instanceof Error ? err.message : 'Failed to clear documents';
+                          showToast(msg, 'error');
+                        }
+                      }}
+                      className="flex min-h-10 items-center gap-2 rounded-sm px-2 text-left text-label text-fail hover:bg-fail-wash focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      <Trash2 className="size-3.5" /> Clear all sources
+                    </button>
+                  )}
+                </div>
+              </details>
             </div>
           </div>
 
@@ -495,18 +467,18 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
           {/* Document catalog — §8 table language, matching the chunk table */}
           {loadingDocs && docList.documents.length === 0 ? (
             <div role="status" aria-live="polite" className="rounded border border-hairline bg-surface-raised px-3 py-10 text-center text-label font-semibold text-muted">
-              Loading document catalog…
+              Loading sources…
             </div>
           ) : filteredDocs.length === 0 ? (
             <div className="rounded border border-dashed border-hairline px-3 py-10 text-center">
               <FileText className="mx-auto mb-2 size-6 text-faint" />
               <h3 className="text-body font-semibold text-ink">
-                {searchQuery ? 'No matching documents found' : 'No documents in Knowledge Base'}
+                {searchQuery ? 'No sources match your search' : 'No sources yet'}
               </h3>
               <p className="mx-auto mt-1 max-w-md text-micro text-muted">
                 {searchQuery
-                  ? 'Try searching with different keywords or reset your filter.'
-                  : 'Start by ingesting your first document to enable dual-memory search and semantic retrieval.'}
+                  ? 'Try another search or clear the search field.'
+                  : 'Add a document to let Meridian answer from your material.'}
               </p>
               {searchQuery ? (
                 <button
@@ -514,25 +486,17 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                   className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 text-label font-semibold text-ink transition-colors hover:bg-accent-wash focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <RefreshCw className="size-3.5" />
-                  <span>Reset Search</span>
+                  <span>Clear search</span>
                 </button>
-              ) : (
-                <button
-                  onClick={() => setActiveTab('upload')}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-label font-semibold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  <Plus className="size-3.5" />
-                  <span>Ingest Your First Document</span>
-                </button>
-              )}
+              ) : null}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded border border-hairline bg-surface-raised" tabIndex={0} aria-label="Document catalog table; scroll horizontally to see all columns">
-              <table className="w-full min-w-[760px] border-collapse text-left">
+            <div className="overflow-x-auto rounded border border-hairline bg-surface-raised" tabIndex={0} aria-label="Sources table; scroll horizontally for more details">
+              <table className="w-full min-w-full border-collapse text-left sm:min-w-[640px]">
                 <caption className="sr-only">Indexed documents with chunk, entity and relationship counts</caption>
                 <thead>
                   <tr className="border-b border-hairline-strong">
-                    <th scope="col" className="label-section w-8 px-3 py-1.5 font-normal text-faint">
+                    <th scope="col" className="label-section hidden w-8 px-3 py-1.5 font-normal text-faint sm:table-cell">
                       #
                     </th>
                     <th scope="col" className="label-section px-2 py-1.5 font-normal text-faint">
@@ -546,23 +510,23 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                     </th>
                     <th
                       scope="col"
-                      className="label-section w-14 px-2 py-1.5 text-right font-normal text-faint"
+                      className="label-section hidden w-14 px-2 py-1.5 text-right font-normal text-faint md:table-cell"
                     >
                       ENTS
                     </th>
                     <th
                       scope="col"
-                      className="label-section w-14 px-2 py-1.5 text-right font-normal text-faint"
+                      className="label-section hidden w-14 px-2 py-1.5 text-right font-normal text-faint md:table-cell"
                     >
                       RELS
                     </th>
-                    <th scope="col" className="label-section w-24 px-2 py-1.5 font-normal text-faint">
+                    <th scope="col" className="label-section hidden w-24 px-2 py-1.5 font-normal text-faint md:table-cell">
                       SOURCE
                     </th>
-                    <th scope="col" className="label-section w-16 px-2 py-1.5 font-normal text-faint">
+                    <th scope="col" className="label-section hidden w-16 px-2 py-1.5 font-normal text-faint md:table-cell">
                       FORMAT
                     </th>
-                    <th scope="col" className="label-section w-32 px-2 py-1.5 font-normal text-faint">
+                    <th scope="col" className="label-section hidden w-32 px-2 py-1.5 font-normal text-faint md:table-cell">
                       ADDED
                     </th>
                     <th scope="col" className="label-section w-24 px-3 py-1.5 text-right font-normal text-faint">
@@ -588,7 +552,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                           doc.id === focusedDocumentId ? 'bg-accent-wash' : ''
                         }`}
                       >
-                        <td className="border-l-2 border-transparent px-3 py-1.5 group-hover:border-accent">
+                        <td className="hidden border-l-2 border-transparent px-3 py-1.5 group-hover:border-accent sm:table-cell">
                           <span className="num text-micro text-faint">{idx + 1}</span>
                         </td>
                         <td className="max-w-[220px] px-2 py-1.5">
@@ -602,17 +566,17 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                         <td className="num px-2 py-1.5 text-right text-readout font-semibold text-ink">
                           {doc.chunk_count.toLocaleString()}
                         </td>
-                        <td className="num px-2 py-1.5 text-right text-readout text-muted">
+                        <td className="num hidden px-2 py-1.5 text-right text-readout text-muted md:table-cell">
                           {doc.entities_count.toLocaleString()}
                         </td>
-                        <td className="num px-2 py-1.5 text-right text-readout text-muted">
+                        <td className="num hidden px-2 py-1.5 text-right text-readout text-muted md:table-cell">
                           {doc.relationships_count.toLocaleString()}
                         </td>
-                        <td className="id-mono truncate px-2 text-muted" title={doc.source}>
+                        <td className="id-mono hidden truncate px-2 text-muted md:table-cell" title={doc.source}>
                           {doc.source}
                         </td>
-                        <td className="id-mono truncate px-2 text-muted">{doc.format || 'MD'}</td>
-                        <td className="id-mono truncate px-2 text-faint" title={doc.created_at ?? undefined}>
+                        <td className="id-mono hidden truncate px-2 text-muted md:table-cell">{doc.format || 'MD'}</td>
+                        <td className="id-mono hidden truncate px-2 text-faint md:table-cell" title={doc.created_at ?? undefined}>
                           {added}
                         </td>
                         <td className="px-3 py-1.5">
@@ -622,7 +586,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                               className="flex items-center gap-1.5 rounded-sm border border-hairline px-2 py-1 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                             >
                               <Eye className="size-3.5" />
-                              <span>Inspect Chunks</span>
+                              <span className="hidden sm:inline">Inspect chunks</span>
                             </button>
                             <button
                               onClick={() => handleDelete(doc.id, doc.title)}
@@ -833,7 +797,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                     className="flex w-full items-center justify-center gap-1.5 rounded-sm border border-hairline px-3 py-1.5 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
                     <BookOpen className="size-3.5" />
-                    <span>View in Document Catalog</span>
+                    <span>View all sources</span>
                   </button>
                 </div>
               ) : result ? (
@@ -874,7 +838,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                     className="flex w-full items-center justify-center gap-1.5 rounded-sm border border-hairline px-3 py-1.5 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
                     <BookOpen className="size-3.5" />
-                    <span>View in Document Catalog</span>
+                    <span>View all sources</span>
                   </button>
                 </div>
               ) : null}

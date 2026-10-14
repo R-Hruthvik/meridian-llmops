@@ -10,6 +10,24 @@ describe('IngestionStudio Component', () => {
     vi.clearAllMocks();
   });
 
+  it('presents the catalog as Sources with explicitly scoped search and a primary add action', async () => {
+    vi.spyOn(api, 'getDocuments').mockResolvedValueOnce({
+      total_documents: 0,
+      total_chunks: 0,
+      total_entities: 0,
+      documents: [],
+    });
+
+    render(<IngestionStudio tenantId="default" />);
+
+    expect(await screen.findByRole('heading', { name: 'Sources', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search sources' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add sources' })).toBeInTheDocument();
+    expect(screen.queryByText('Global')).not.toBeInTheDocument();
+    const toolbar = screen.getByRole('searchbox', { name: 'Search sources' }).parentElement?.parentElement;
+    expect(toolbar).toHaveClass('flex-col', 'sm:flex-row');
+  });
+
   it('shows a loading state instead of the empty catalog during the first request', async () => {
     let resolveCatalog!: (value: {
       total_documents: number;
@@ -23,14 +41,14 @@ describe('IngestionStudio Component', () => {
 
     render(<IngestionStudio tenantId="default" />);
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading document catalog');
-    expect(screen.queryByText('No documents in Knowledge Base')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading sources');
+    expect(screen.queryByText('No sources yet')).not.toBeInTheDocument();
 
     resolveCatalog({ total_documents: 0, total_chunks: 0, total_entities: 0, documents: [] });
-    expect(await screen.findByText('No documents in Knowledge Base')).toBeInTheDocument();
+    expect(await screen.findByText('No sources yet')).toBeInTheDocument();
   });
 
-  it('renders Document Catalog tab with document rows and a readout strip', async () => {
+  it('renders source rows with a compact result count', async () => {
     vi.spyOn(api, 'getDocuments').mockResolvedValueOnce({
       total_documents: 1,
       total_chunks: 3,
@@ -54,13 +72,11 @@ describe('IngestionStudio Component', () => {
     render(<IngestionStudio tenantId="default" />);
 
     expect(await screen.findByText('Meridian Architecture Overview')).toBeInTheDocument();
-    expect(screen.getByText('Documents')).toBeInTheDocument();
+    expect(screen.getByText('documents')).toBeInTheDocument();
     expect(screen.getAllByText('3').length).toBeGreaterThanOrEqual(1); // chunks count in strip and row
   });
 
-  // §4/§9 — the four "KNOWLEDGE BASE DOCUMENTS / 8 / Persisted Permanently"
-  // cards collapse into one hairline-separated strip of label + mono value.
-  it('reads the corpus counts as a dense readout strip, not stat cards', async () => {
+  it('shows the Sources heading without exposing storage internals', async () => {
     vi.spyOn(api, 'getDocuments').mockResolvedValue({
       total_documents: 8,
       total_chunks: 21,
@@ -70,23 +86,10 @@ describe('IngestionStudio Component', () => {
 
     render(<IngestionStudio tenantId="default" />);
 
-    const strip = await screen.findByTestId('corpus-readout-strip');
-    const cells = strip.querySelectorAll('[data-slot="readout"]');
-    expect(cells).toHaveLength(3);
-
-    const readout = (label: string) =>
-      within(strip).getByText(label).closest('[data-slot="readout"]') as HTMLElement;
-
-    expect(readout('Documents')).toHaveTextContent('8');
-    expect(readout('Chunks')).toHaveTextContent('21');
-    expect(readout('Entities')).toHaveTextContent('14');
-    // §9 — every count is monospace tabular.
-    for (const cell of Array.from(cells)) {
-      expect(cell.querySelector('.num')).not.toBeNull();
-      expect(cell.querySelector('.label-section')).not.toBeNull();
-    }
-    // The retired card chrome must not come back.
-    expect(document.querySelectorAll('.shadow-card')).toHaveLength(0);
+    expect(await screen.findByRole('heading', { name: 'Sources', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText('Documents Meridian can use to answer your questions.')).toBeInTheDocument();
+    expect(screen.queryByText('Corpus Readout')).not.toBeInTheDocument();
+    expect(screen.queryByText('.meridian_knowledge_base.json')).not.toBeInTheDocument();
   });
 
   // §8/§9 — the catalog grid of rounded cards becomes a ranked table.
@@ -187,7 +190,7 @@ describe('IngestionStudio Component', () => {
     expect(api.getDocument).toHaveBeenCalledWith('doc-inspect-1', 'default');
   });
 
-  it('switches to Ingest New Document tab and submits text', async () => {    const user = userEvent.setup();
+  it('opens Add sources and submits text', async () => {    const user = userEvent.setup();
     vi.spyOn(api, 'getDocuments').mockResolvedValue({
       total_documents: 0,
       total_chunks: 0,
@@ -204,8 +207,7 @@ describe('IngestionStudio Component', () => {
 
     render(<IngestionStudio tenantId="default" />);
 
-    const uploadTab = screen.getByText('Ingest New Document');
-    await user.click(uploadTab);
+    await user.click(screen.getByRole('button', { name: 'Add sources' }));
 
     expect(screen.getByPlaceholderText('e.g. Enterprise Security Policy 2026')).toBeInTheDocument();
 
@@ -261,7 +263,7 @@ describe('IngestionStudio Component', () => {
     });
 
     render(<IngestionStudio tenantId="default" />);
-    await user.click(screen.getByText('Ingest New Document'));
+    await user.click(screen.getByRole('button', { name: 'Add sources' }));
 
     const fileInput = screen.getByLabelText('Upload document file') as HTMLInputElement;
     expect(fileInput.multiple).toBe(true);
@@ -283,7 +285,7 @@ describe('IngestionStudio Component', () => {
     });
 
     render(<IngestionStudio tenantId="default" />);
-    await user.click(screen.getByText('Ingest New Document'));
+    await user.click(screen.getByRole('button', { name: 'Add sources' }));
 
     const fileInput = screen.getByLabelText('Upload document file') as HTMLInputElement;
     const indexedFile = new File(['%PDF-1.4 bytes'], 'manual.pdf', { type: 'application/pdf' });
@@ -321,7 +323,7 @@ describe('IngestionStudio Component', () => {
     vi.spyOn(api, 'uploadDocuments').mockResolvedValueOnce({ results: [] });
 
     render(<IngestionStudio tenantId="default" />);
-    await user.click(screen.getByText('Ingest New Document'));
+    await user.click(screen.getByRole('button', { name: 'Add sources' }));
     const file = new File(['# notes'], 'notes.md', { type: 'text/markdown' });
     const fileDrop = screen.getByLabelText('Upload document file').parentElement as HTMLElement;
     fireEvent.drop(fileDrop, { dataTransfer: { files: [file] } });
@@ -349,7 +351,7 @@ describe('IngestionStudio Component', () => {
     });
 
     render(<IngestionStudio tenantId="default" />);
-    await user.click(screen.getByText('Ingest New Document'));
+    await user.click(screen.getByRole('button', { name: 'Add sources' }));
     await user.type(screen.getByPlaceholderText('e.g. Enterprise Security Policy 2026'), 'New Policy');
     await user.type(screen.getByPlaceholderText(/Paste or write structured documentation/), '# Body');
     await user.click(screen.getByText('Index & Store Permanently'));
@@ -358,7 +360,7 @@ describe('IngestionStudio Component', () => {
     await waitFor(() => {
       expect(api.ingest).toHaveBeenCalled();
     });
-    await user.click(screen.getByText('Ingest New Document'));
+    await user.click(screen.getByRole('button', { name: 'Add sources' }));
 
     expect(await screen.findByText('policy.md')).toBeInTheDocument();
     expect(screen.getByText(/Created:/)).toBeInTheDocument();
@@ -428,15 +430,15 @@ describe('IngestionStudio focused source (citation drill-through)', () => {
     const { rerender } = render(<IngestionStudio tenantId="default" />);
 
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText('Search documents catalog'), 'zzz-no-match');
-    expect(screen.getByText('No matching documents found')).toBeInTheDocument();
+    await user.type(screen.getByRole('searchbox', { name: 'Search sources' }), 'zzz-no-match');
+    expect(screen.getByText('No sources match your search')).toBeInTheDocument();
 
     rerender(<IngestionStudio tenantId="default" focusedDocumentId="doc-arch-1" focusedChunkId="chunk-b" />);
 
     await waitFor(() => {
       expect(document.querySelector('[data-focused-document="doc-arch-1"]')).toBeInTheDocument();
     });
-    expect(screen.queryByText('No matching documents found')).toBeNull();
+    expect(screen.queryByText('No sources match your search')).toBeNull();
   });
 
   it('reports back when the user dismisses the focus', async () => {
