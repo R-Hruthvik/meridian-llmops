@@ -1,6 +1,7 @@
 """TDD Tests for Observability, OpenTelemetry Tracing, and Cost Economics."""
 
 from contextlib import contextmanager
+from datetime import datetime
 
 from services.rag_engine.observability.langfuse_client import (
     LangfuseTracer,
@@ -87,6 +88,16 @@ def test_local_tracer_is_bounded_and_reports_per_tenant_request_metrics():
     assert metrics["request_count"] == 3
     assert metrics["error_count"] == 0
     assert metrics["latency_ms"]["p50"] >= 0
+
+
+def test_recent_request_metrics_include_timestamp_and_outcome():
+    tracer = LocalTracer()
+    with tracer.trace(name="query", tenant_id="tenant-abc", query="sample question"):
+        pass
+
+    request = tracer.get_tenant_metrics("tenant-abc")["recent_requests"][0]
+    assert datetime.fromisoformat(request["recorded_at"])
+    assert request["error"] is False
 
 
 def test_empty_latency_windows_return_null_percentiles():

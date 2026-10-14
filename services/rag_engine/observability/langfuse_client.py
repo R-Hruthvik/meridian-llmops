@@ -11,6 +11,7 @@ import uuid
 from collections import defaultdict, deque
 from contextlib import AbstractContextManager, nullcontext
 from contextvars import ContextVar, Token
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Protocol, Self, cast
 
@@ -189,6 +190,7 @@ class _TraceContext:
             "name": self.name,
             "tenant_id": self.tenant_id,
             "query": self.query,
+            "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "duration_ms": latency,
             "error": type(exc).__name__ if exc is not None else None,
             "total_tokens": sum(item["total_tokens"] for item in generations),
@@ -314,6 +316,8 @@ class LocalTracer:
             recent_requests.append(
                 {
                     "query": trace["query"],
+                    "recorded_at": trace["recorded_at"],
+                    "error": trace["error"] is not None,
                     "duration_ms": trace["duration_ms"],
                     "timings_ms": dict(timings),
                 }
