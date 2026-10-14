@@ -5,3 +5,32 @@
 @media(max-width:620px){.ol-ops,.ol-settings{padding:25px 18px 88px}.ol-metrics>div{padding:12px 8px}.ol-metrics>div:first-child{padding-left:0}.ol-metrics span{font-size:10px}.ol-metrics strong{font-size:21px}.ol-settings-group>label{grid-template-columns:1fr;gap:6px}.ol-settings-inline{align-items:flex-start;flex-direction:column;gap:12px}.ol-settings-actions{flex-wrap:wrap}.ol-settings-actions>button{flex:1}.ol-events p{align-items:flex-start;flex-direction:column;gap:3px}}
 .ol-settings>h1{font:500 clamp(28px,3vw,38px)/1.1 Georgia,serif;letter-spacing:-.04em;margin:0 0 24px}.ol-preview input[type=checkbox]{accent-color:var(--ol-teal)}
 @media(max-width:620px){.ol-settings>h1{font-size:30px}}
+/* Direct manipulation and reader states required by the Open Library spec. */
+.ol-nav { transition: none; }
+.ol-resize-handle { position: relative; z-index: 2; flex: 0 0 5px; margin-left: -3px; border: 0; padding: 0; background: transparent; cursor: col-resize; touch-action: none; }
+.ol-resize-handle:hover, .ol-resize-handle:focus-visible { background: #9bbdb5; outline: 0; }
+.ol-reader-back { display: none; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--ol-teal); font: 600 12px Geist,system-ui; cursor: pointer; }
+.ol-page h3 { margin: 28px 0 10px; font: 600 13px Geist,system-ui; color: var(--ol-ink); }
+.ol-chunks { display: grid; gap: 8px; padding: 0; list-style: none; font: 13px/1.6 Geist,system-ui; }
+.ol-chunks li { display: grid; gap: 5px; padding: 12px 14px; border-top: 1px solid #d9d5e7; background: #f1eff8; }
+.ol-chunks li b { color: var(--ol-violet); font: 11px 'Geist Mono',monospace; }
+.ol-chunks li span { color: #343047; }
+@media (max-width: 900px) { .ol-resize-handle { display: none; } }
+@media (max-width: 620px) {
+  .ol-layout--reader-open .ol-catalog { display: none; }
+  .ol-layout--reader-open .ol-reader { display: block; min-height: calc(100vh - 116px); }
+  .ol-reader-back { display: inline-flex; }
+  .ol-reader-head { flex-wrap: wrap; }
+  .ol-reader-head > svg { display: none; }
+  .ol-nav { transition: none; }
+}
+@media (prefers-reduced-motion: reduce) { .ol-nav { transition: none; } }
+.ol-source-scope { display: flex; align-items: center; gap: 6px; padding: 0 7px; color: var(--ol-muted); white-space: nowrap; font-size: 12px; }
+.ol-source-scope select { max-width: 200px; min-width: 0; border: 1px solid var(--ol-rule); border-radius: 5px; background: white; color: var(--ol-ink); padding: 7px; font: 12px Geist,system-ui; }
+@media (max-width: 700px) { .ol-ask form { flex-wrap: wrap; }.ol-source-scope { flex: 1 1 100%; padding: 5px 7px; }.ol-source-scope select { flex: 1; max-width: none; } }
+.ol-nav { width: var(--ol-nav-width, 228px); }
+.ol-nav.ol-nav--small { width: 74px; }
+@media (max-width: 900px) { .ol-nav:not(.ol-nav--small) { width: 74px; } }
+@keyframes ol-reader-reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+.ol-page { animation: ol-reader-reveal 160ms ease-out both; }
+@media (prefers-reduced-motion: reduce) { .ol-page { animation: none; } }
