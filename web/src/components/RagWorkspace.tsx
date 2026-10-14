@@ -1,11 +1,10 @@
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useRef, useState } from 'react';
 import {
-  AlertTriangle,
   Check,
-  Clock,
   Copy,
   FileText,
   ArrowUpRight,
+  MessageSquareText,
   RefreshCw,
   Send,
 } from 'lucide-react';
@@ -32,8 +31,14 @@ const SAMPLE_QUERIES = [
   { label: 'Retry limits', query: 'What is the maximum number of self-healing retry cycles allowed?' },
 ];
 
-const NO_MODEL_TITLE =
-  'No upstream LLM call returned content for this request (greeting/bypass, refusal, generation failure, or empty completion)';
+interface ConversationTurn {
+  id: number;
+  question: string;
+  loading: boolean;
+  response?: QueryResponse;
+  retrieval?: RetrieveResponse;
+  error?: { message: string; status?: number };
+}
 
 interface Verdict {
   state: string;
@@ -95,17 +100,19 @@ const Readout: React.FC<{ value: string; unit: string }> = ({ value, unit }) => 
 
 export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   const [query, setQuery] = useState('');
-  const [topK, setTopK] = useState(3);
+  const [topK, setTopK] = useState(6);
   const [maxCycles, setMaxCycles] = useState(3);
   const [enforceGuardrails, setEnforceGuardrails] = useState(true);
   const [retrievalOnly, setRetrievalOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<QueryResponse | null>(null);
   const [retrievalResponse, setRetrievalResponse] = useState<RetrieveResponse | null>(null);
-  const [error, setError] = useState<{ message: string; status?: number } | null>(null);
+  const [turns, setTurns] = useState<ConversationTurn[]>([]);
+  const nextTurnId = useRef(0);
   const [copied, setCopied] = useState(false);
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
   const [recentDocuments, setRecentDocuments] = useState<DocumentSummary[]>([]);
+  const [totalDocuments, setTotalDocuments] = useState(0);
   const [recentDocumentsLoaded, setRecentDocumentsLoaded] = useState(false);
   const [recentDocumentsUnavailable, setRecentDocumentsUnavailable] = useState(false);
   const workbench = useWorkbench();
@@ -116,6 +123,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     setRecentDocumentsUnavailable(false);
     void api.getDocuments(tenantId).then((result) => {
       if (!active) return;
+      setTotalDocuments(result.total_documents);
       const recent = [...result.documents]
         .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
         .slice(0, 2);
@@ -123,6 +131,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     }).catch(() => {
       if (active) {
         setRecentDocuments([]);
+        setTotalDocuments(0);
         setRecentDocumentsUnavailable(true);
       }
     }).finally(() => {
@@ -135,14 +144,18 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     const textToSubmit = queryText || query;
     if (!textToSubmit.trim()) return;
 
+    const turnId = ++nextTurnId.current;
+    const useRetrievalOnly = retrievalOnly;
+    setTurns((current) => [...current, { id: turnId, question: textToSubmit.trim(), loading: true }]);
+    setQuery('');
     setLoading(true);
-    setError(null);
     setOpenChunkId(null);
     try {
-      if (retrievalOnly) {
+      if (useRetrievalOnly) {
         const result = await api.retrieve({ query: textToSubmit, top_k: topK }, tenantId);
         setRetrievalResponse(result);
         setResponse(null);
+        setTurns((current) => current.map((turn) => turn.id === turnId ? { ...turn, loading: false, retrieval: result } : turn));
         return;
       }
       setRetrievalResponse(null);
@@ -154,29 +167,16 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         enforce_guardrails: enforceGuardrails,
       });
       setResponse(res);
+      setTurns((current) => current.map((turn) => turn.id === turnId ? { ...turn, loading: false, response: res } : turn));
     } catch (err: unknown) {
       const status = err instanceof ApiError ? err.status : undefined;
       const message = err instanceof Error ? err.message : 'An error occurred during query execution';
-      setError({ message, status });
-      // Clear stale query response on error
       setResponse(null);
       setRetrievalResponse(null);
+      setTurns((current) => current.map((turn) => turn.id === turnId ? { ...turn, loading: false, error: { message, status } } : turn));
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleCopy = () => {
-    if (!response?.answer) return;
-    navigator.clipboard
-      .writeText(response.answer)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(() => {
-        // Silently catch clipboard failures
-      });
   };
 
   // An answer must be able to reach the source that produced it: the ranked row
@@ -193,9 +193,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         return { ...chunk, score, retrieval_method: 'HYBRID_RRF' };
       })
     : response?.source_chunks ?? [];
-  const openChunk = (index: number) => {
-    const chunk = chunks[index];
-    if (!chunk) return;
+  const openChunk = (chunk: SearchResult, index: number) => {
     setOpenChunkId(chunk.chunk_id || `chunk-${index}`);
     workbench?.openOverlay('corpus', {
       breadcrumb: `Ask · chunk ${index + 1}`,
@@ -204,12 +202,9 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     });
   };
 
-  const verdict = response ? verdictFor(response) : null;
-  const latency = formatLatency(response?.execution_time_ms ?? 0);
-
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6">
-      <div className="ask-page-heading">
+      <div className="ask-page-heading order-0">
         <div>
           <p className="label-section mb-2 text-muted">Your reference workspace</p>
           <h1>Ask Meridian</h1>
@@ -225,8 +220,11 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         </details>
       </div>
 
-      <section className="ask-composer" aria-label="Ask a question">
+      <section className="ask-composer order-2" aria-label="Ask a question">
         <label htmlFor="rag-query-input" className="ask-prompt-label">What would you like to know?</label>
+        <p className="mb-2 text-micro text-muted">
+          Search across {recentDocumentsLoaded && !recentDocumentsUnavailable && totalDocuments > 0 ? `${totalDocuments} indexed documents` : 'all indexed workspace documents'}. Name both files when asking how they relate; answers show which files supplied evidence.
+        </p>
         <textarea
           id="rag-query-input"
           aria-label="Question"
@@ -270,7 +268,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         </div>
       </section>
 
-      <section className="ask-recent" aria-labelledby="recent-sources-title">
+      {turns.length === 0 && <section className="ask-recent order-3" aria-labelledby="recent-sources-title">
         <div className="ask-recent-heading">
           <h2 id="recent-sources-title">Recently added</h2>
           <button type="button" onClick={() => workbench?.openOverlay('corpus')}>
@@ -290,147 +288,41 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         ) : (
           <div className="ask-recent-empty">{recentDocumentsUnavailable ? 'Recent sources are unavailable while the workspace is offline.' : 'No sources yet. Add a document to ground your answers.'}</div>
         ))}
-      </section>
+      </section>}
 
-      {/* Error Alert — distinct rendering based on HTTP status */}
-      {error && (
-        <div
-          role="alert"
-          aria-live="polite"
-          className={`flex items-start gap-2.5 rounded border p-3 ${
-            error.status === 429
-              ? 'border-hairline bg-warn-wash text-warn'
-              : 'border-hairline bg-fail-wash text-fail'
-          }`}
-        >
-          {error.status === 429 ? (
-            <Clock className="mt-0.5 size-4 shrink-0" />
-          ) : (
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          )}
-          <div className="min-w-0">
-            <p className="flex flex-wrap items-center gap-1.5 text-label font-bold">
-              <span>
-                {error.status === 429
-                  ? 'Rate Limit Exceeded'
-                  : error.status === 401
-                    ? 'Authentication Error'
-                    : error.status === 422
-                      ? 'Validation Error'
-                      : 'Query Intercepted / Failed'}
-              </span>
-              {error.status && (
-                <span className="num rounded-sm border border-hairline px-1.5 py-0.5 text-micro">
-                  HTTP {error.status}
-                </span>
-              )}
-            </p>
-            <p className="mt-0.5 text-body text-muted">
-              {error.status === 429
-                ? 'Too many requests in the current time window. Please wait a moment and try again.'
-                : error.message}
-            </p>
-          </div>
+      {turns.length > 0 && <section data-testid="query-result-region" aria-label="Conversation" aria-live="polite" aria-busy={loading} className="order-1 flex flex-col gap-5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-label font-semibold text-ink">Conversation</h2>
+          <button type="button" onClick={() => { setTurns([]); setResponse(null); setRetrievalResponse(null); setQuery(''); }} className="text-label font-semibold text-muted underline-offset-4 hover:text-accent-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">New conversation</button>
         </div>
-      )}
-
-      {(loading || response || retrievalResponse || error) && <div data-testid="query-result-region" aria-live="polite" aria-busy={loading} className={loading && !response ? 'min-h-[12rem]' : undefined}>
-        {/* Keep the previous answer mounted during a follow-up request; first-query
-            loading uses the same reserved result area so the canvas does not jump. */}
-        {loading && !response && (
-          <div role="status" className="min-h-[12rem] animate-pulse rounded border border-hairline bg-surface-raised p-4">
-            <div className="mb-3 flex items-center gap-3">
-              <RefreshCw className="size-5 animate-spin text-muted" />
-              <div className="h-3 w-1/3 rounded-sm bg-surface-sunken" />
+        {turns.map((turn, turnIndex) => {
+          const turnVerdict = turn.response ? verdictFor(turn.response) : null;
+          const turnChunks = turn.response?.source_chunks ?? [];
+          const sources = [...new Map(turnChunks.map((chunk) => [chunk.document_id, { chunk, label: chunk.title || chunk.filename || shortId(chunk.document_id) }])).values()];
+          const turnLatency = turn.response ? formatLatency(turn.response.execution_time_ms) : null;
+          return <article key={turn.id} className="flex flex-col gap-3" aria-label={`Question ${turnIndex + 1}`}>
+            <div className="ml-auto max-w-[88%] rounded-md bg-accent px-4 py-3 text-body text-white">{turn.question}</div>
+            <div className="w-full rounded-md border border-hairline bg-surface-raised p-4 sm:p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-hairline pb-3">
+                <div className="flex items-center gap-2 text-label font-semibold text-ink"><MessageSquareText className="size-4 text-accent" aria-hidden="true"/> Meridian</div>
+                {turn.response && turnVerdict && <div className="flex flex-wrap items-center gap-3"><StatusChip variant={turnVerdict.variant}>{turnVerdict.state}</StatusChip><Readout value={turnLatency!.value} unit={turnLatency!.unit}/>{turn.response.serving?.fresh && turn.response.serving.model && <span className="id-mono text-micro text-muted">{turn.response.serving.model}</span>}<button type="button" onClick={() => { void navigator.clipboard.writeText(turn.response!.answer).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => undefined); }} aria-label={`Copy answer ${turnIndex + 1}`} className="flex items-center gap-1 text-label text-muted hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">{copied ? <Check className="size-3.5 text-ok"/> : <Copy className="size-3.5"/>}<span>{copied ? 'Copied' : 'Copy'}</span></button></div>}
+              </div>
+              {turn.loading ? <div role="status" className="flex items-center gap-2 py-3 text-label text-muted"><RefreshCw className="size-4 animate-spin"/>Finding passages across your sources…</div> : turn.error ? <div role="alert" className="rounded-sm border border-fail/30 bg-fail-wash px-3 py-2 text-label text-fail"><strong>{turn.error.status === 429 ? 'Rate limit reached' : turn.error.status === 502 ? 'The answer service is unavailable' : 'Could not answer this question'}</strong><p className="mt-1 text-body">{turn.error.message}</p></div> : turn.response ? <>
+                {turn.response.degraded_reason && <p className="mb-2 text-label text-warn">{turn.response.degraded_reason}</p>}
+                {!turn.response.answer?.trim() ? <p className="answer-prose text-muted">No answer text was returned. Check the service status and try again.</p> : <Suspense fallback={<p className="answer-prose text-ink">{turn.response.answer}</p>}><MarkdownRenderer content={turn.response.answer}/></Suspense>}
+                <div className="mt-4 border-t border-hairline pt-3">
+                  <p className="mb-2 text-micro font-semibold text-muted">{sources.length ? `Evidence from ${sources.length} ${sources.length === 1 ? 'document' : 'documents'}` : 'No source passages were returned'}</p>
+                  {sources.length > 1 && <p className="mb-2 text-label text-muted">This answer connects evidence retrieved from multiple files.</p>}
+                  <div className="flex flex-wrap gap-2">{sources.map(({ chunk, label }, sourceIndex) => <button key={chunk.document_id} type="button" onClick={() => openChunk(chunk, sourceIndex)} className="inline-flex min-h-8 items-center gap-1.5 rounded-sm border border-hairline bg-surface px-2.5 py-1 text-left text-label text-accent-ink hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"><FileText className="size-3.5" aria-hidden="true"/><span className="max-w-[18rem] truncate">{label}</span><span className="text-micro text-muted">Open evidence</span></button>)}</div>
+                </div>
+              </> : turn.retrieval ? <div className="text-label text-muted">Found {turn.retrieval.chunks.length} passages. Ranked passages and scores appear below.</div> : null}
             </div>
-            <div className="space-y-2">
-              <div className="h-3 w-full rounded-sm bg-surface-sunken" />
-              <div className="h-3 w-5/6 rounded-sm bg-surface-sunken" />
-              <div className="h-3 w-2/3 rounded-sm bg-surface-sunken" />
-            </div>
-          </div>
-        )}
-
-      {/* §7 verdict bar + answer body */}
-      {response && verdict && (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded border border-hairline bg-surface-raised px-3 py-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-3">
-              <StatusChip variant={verdict.variant}>{verdict.state}</StatusChip>
-
-              {response.degraded_reason && (
-                <span
-                  className="min-w-0 truncate text-micro text-warn"
-                  title={response.degraded_reason}
-                >
-                  {response.degraded_reason}
-                </span>
-              )}
-
-              {/* Serving provenance (issue #35): when the backend reports
-                  `serving`, it is authoritative. `fresh: false` means no model
-                  answered, so the bar goes quiet rather than naming one. The
-                  deprecated config echo is never a fallback. */}
-              {response.serving ? (
-                response.serving.fresh && response.serving.model ? (
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="text-id text-muted">{response.serving.provider}</span>
-                    <span className="text-faint">·</span>
-                    <span className="id-mono truncate text-ink">{response.serving.model}</span>
-                  </span>
-                ) : (
-                  <span className="text-micro text-muted" title={NO_MODEL_TITLE}>
-                    — no model served
-                  </span>
-                )
-              ) : null}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-x-3">
-              <Readout value={`${response.cycle_count}/${maxCycles}`} unit="cycle" />
-              <Readout value={latency.value} unit={latency.unit} />
-              <Readout value={String(chunks.length)} unit="chunks" />
-              <Readout value={String(response.entities.length)} unit="entities" />
-              <button
-                onClick={handleCopy}
-                title="Copy Answer to Clipboard"
-                aria-label="Copy answer text"
-                className="flex items-center gap-1.5 rounded-sm border border-hairline px-2.5 py-1 text-label text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                {copied ? (
-                  <Check className="size-3.5 text-ok" />
-                ) : (
-                  <Copy className="size-3.5 text-muted" />
-                )}
-                <span>{copied ? 'Copied!' : 'Copy Answer'}</span>
-              </button>
-            </div>
-          </div>
-
-          <div data-testid="answer-card" className="min-h-[12rem] rounded border border-hairline bg-surface-raised p-4">
-            <p data-testid="answer-refresh-status" role="status" aria-live="polite" className="mb-2 min-h-4 text-micro font-semibold text-muted">
-              {loading ? 'Refreshing answer…' : null}
-            </p>
-            {!response.answer || !response.answer.trim() ? (
-              <p className="answer-prose text-muted">
-                The pipeline returned an empty answer on a degraded path
-                {response.degraded_reason ? `: ${response.degraded_reason}` : ' (generation_error/placeholder).'}
-              </p>
-            ) : (
-              <Suspense
-                fallback={<p className="answer-prose text-ink">{response.answer}</p>}
-              >
-                <MarkdownRenderer content={response.answer} />
-              </Suspense>
-            )}
-          </div>
-        </>
-      )}
-
-      </div>}
+          </article>;
+        })}
+      </section>}
 
       {/* §8 ranked chunk table */}
-      {chunks.length > 0 && <div className="rounded border border-hairline bg-surface-raised">
+      {chunks.length > 0 && <div className="order-4 rounded border border-hairline bg-surface-raised">
         <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
           <h3 className="label-section text-muted">Retrieved Chunks &amp; Citations</h3>
           {chunks.length > 0 && <span className="num text-micro text-faint">{chunks.length}</span>}
@@ -481,7 +373,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                         type="button"
                         aria-label={`Chunk ${idx + 1} • ${chunk.retrieval_method} · ${percent} · ${chunk.document_id} · ${chunk.chunk_id}`}
                         title={chunk.text}
-                        onClick={() => openChunk(idx)}
+                      onClick={() => openChunk(chunk, idx)}
                         className="num w-full text-left text-micro text-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
                       >
                         {idx + 1}
@@ -515,7 +407,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
       </div>}
 
       {/* Knowledge graph entities */}
-      {response && response.entities.length > 0 && <div className="rounded border border-hairline bg-surface-raised">
+      {response && response.entities.length > 0 && <div className="order-4 rounded border border-hairline bg-surface-raised">
         <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
           <h3 className="label-section text-muted">Knowledge Graph Entity Traversal</h3>
           {response && response.entities.length > 0 && (
