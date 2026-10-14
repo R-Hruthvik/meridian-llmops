@@ -96,7 +96,7 @@ export const App: React.FC = () => {
   const sectionTitle = route === '/ask' ? 'Ask' : route.startsWith('/sources') ? 'Sources' : operations ? 'Operations' : 'Settings';
   return (
     <WorkbenchContext.Provider value={workbench}>
-      <div className="workbench-shell" style={{ '--sidebar-width': collapsed ? '72px' : `${sidebarWidth}px` } as React.CSSProperties}>
+      <div className={`workbench-shell${collapsed ? ' sidebar-collapsed' : ''}`} style={{ '--sidebar-width': collapsed ? '72px' : `${sidebarWidth}px` } as React.CSSProperties}>
         <aside className={`workbench-sidebar${collapsed ? ' is-collapsed' : ''}`}>
           <a className="brand-mark" href="#/ask" onClick={(e) => { e.preventDefault(); navigate('/ask'); }} aria-label="Meridian home"><span className="brand-glyph">M</span><span className="brand-name">Meridian</span></a>
           <nav aria-label="Primary navigation" className="primary-nav">

@@ -1,7 +1,7 @@
 .workbench-shell {
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-columns: var(--sidebar-width) 4px minmax(0, 1fr);
   color: rgb(var(--text));
   background: rgb(var(--surface));
 }
@@ -32,6 +32,7 @@
 .is-collapsed .brand-mark, .is-collapsed .primary-nav a, .is-collapsed .sidebar-collapse { justify-content: center; padding-inline: 0; }
 .sidebar-resizer { width: 4px; margin-left: -2px; z-index: 2; cursor: col-resize; touch-action: none; outline: none; }
 .sidebar-resizer:hover, .sidebar-resizer:focus-visible { background: rgb(var(--accent)); }
+.workbench-shell.sidebar-collapsed { grid-template-columns: 72px minmax(0, 1fr); }
 .workbench-main { min-width: 0; display: flex; flex-direction: column; min-height: 100dvh; }
 .workbench-header { height: 70px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0 clamp(1rem, 3vw, 2.5rem); border-bottom: 1px solid rgb(var(--border)); background: rgba(255,255,255,.55); }
 .header-title { display: grid; gap: .1rem; }
@@ -44,10 +45,13 @@
 .section-nav { display: flex; gap: .3rem; padding: .75rem clamp(1rem, 3vw, 2.5rem) 0; }
 .section-nav a { padding: .5rem .75rem; border-radius: 6px; color: #77736b; font-size: 13px; text-decoration: none; }
 .section-nav a[aria-current="page"] { background: #e2ebe5; color: #234d42; font-weight: 600; }
-.workbench-content { min-width: 0; width: 100%; max-width: 1500px; margin-inline: auto; flex: 1; padding: clamp(1rem, 2.3vw, 2rem) clamp(1rem, 3vw, 2.5rem) 2.5rem; }
+.workbench-content { min-width: 0; width: 100%; max-width: none; margin-inline: auto; flex: 1; padding: clamp(1rem, 2.3vw, 2rem) clamp(1rem, 3vw, 2.5rem) 2.5rem; }
 .route-view[hidden] { display: none; }
 .mobile-nav { display: none; }
 .workbench-shell :focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 3px; }
+@media (min-width: 2000px) {
+  .workbench-content > .route-view > div:first-child { max-width: min(100%, 70vw); }
+}
 @media (max-width: 800px) {
   .workbench-shell { display: block; padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
   .workbench-sidebar, .sidebar-resizer { display: none; }
