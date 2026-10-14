@@ -25,10 +25,9 @@ interface RagWorkspaceProps {
 }
 
 const SAMPLE_QUERIES = [
-  'What storage engines does Meridian use for dual-memory retrieval?',
-  'How does Meridian protect against prompt injections at the gateway?',
-  'What is the maximum number of self-healing retry cycles allowed?',
-  'What is the secret formula for alchemical immortality?', // Tests refusal
+  { label: 'Dual-memory retrieval', query: 'What storage engines does Meridian use for dual-memory retrieval?' },
+  { label: 'Prompt injection controls', query: 'How does Meridian protect against prompt injections at the gateway?' },
+  { label: 'Retry limits', query: 'What is the maximum number of self-healing retry cycles allowed?' },
 ];
 
 const NO_MODEL_TITLE =
@@ -183,46 +182,25 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   const latency = formatLatency(response?.execution_time_ms ?? 0);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
       {/* Composer */}
-      <div className="rounded border border-hairline bg-surface-raised p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <label htmlFor="rag-query-input" className="label-section text-muted">
-            Ask Agentic RAG Pipeline
-          </label>
-          {/* A control, so it is named for what it does. "Guardrails Active"
-              read as a status readout — the same visual grammar as the verdict
-              bar's state chips — when the flag only shapes the next query. */}
-          <label
-            className={`flex cursor-pointer items-center gap-1.5 rounded-pill border px-3 py-1 text-label transition-colors ${
-              enforceGuardrails
-                ? 'border-hairline bg-accent-wash text-accent-ink'
-                : 'border-hairline text-muted'
-            }`}
-          >
+      <div className="rounded-lg border border-hairline bg-surface-raised p-4 sm:p-6">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="mr-auto text-xl font-semibold tracking-tight text-ink">Ask a question</h1>
+          <label className={`flex cursor-pointer items-center gap-2 rounded-full border px-3 py-2 text-label transition-colors ${enforceGuardrails ? 'border-hairline bg-accent-wash text-accent-ink' : 'border-hairline text-muted'}`}>
             <input
               type="checkbox"
               checked={enforceGuardrails}
-              onChange={(e) => setEnforceGuardrails(e.target.checked)}
+              onChange={(event) => setEnforceGuardrails(event.target.checked)}
               className="size-3 rounded-sm accent-accent"
             />
-            <span className={enforceGuardrails ? 'font-semibold' : ''}>
-              Enforce guardrails on this query
-            </span>
-          </label>
-          <label className="flex cursor-pointer items-center gap-1.5 rounded-pill border border-hairline px-3 py-1 text-label text-muted">
-            <input
-              type="checkbox"
-              checked={retrievalOnly}
-              onChange={(event) => setRetrievalOnly(event.target.checked)}
-              className="size-3 rounded-sm accent-accent"
-            />
-            <span>Retrieval only (no LLM)</span>
+            <span>Apply safety rules</span>
           </label>
         </div>
 
         <textarea
           id="rag-query-input"
+          aria-label="Question"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
@@ -231,32 +209,30 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
               handleQuery();
             }
           }}
-          placeholder="Type your question (e.g. 'What is the architecture of Meridian platform?')..."
-          className="h-24 w-full resize-none rounded-sm border border-hairline bg-surface p-3 text-body text-ink outline-none transition-colors placeholder:text-faint focus:border-hairline-strong focus:bg-surface-raised focus-visible:ring-2 focus-visible:ring-accent"
+          placeholder="Ask about your sources…"
+          className="min-h-28 w-full resize-none rounded-md border border-hairline bg-surface p-4 text-base text-ink outline-none transition-colors placeholder:text-faint focus:border-hairline-strong focus:bg-surface-raised focus-visible:ring-2 focus-visible:ring-accent"
         />
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {SAMPLE_QUERIES.map((q) => (
-            <button
-              key={q}
-              type="button"
-              disabled={loading}
-              onClick={() => {
-                setQuery(q);
-                handleQuery(q);
-              }}
-              className="flex items-center rounded-sm border border-hairline bg-surface px-2.5 py-1 text-left text-micro text-muted transition-colors hover:border-hairline-strong hover:bg-accent-wash hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span>{q}</span>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-micro text-muted">Try:</span>
+          {SAMPLE_QUERIES.map(({ label, query: sampleQuery }) => (
+            <button key={sampleQuery} type="button" disabled={loading} title={sampleQuery} onClick={() => { setQuery(sampleQuery); handleQuery(sampleQuery); }} className="rounded-full border border-hairline bg-surface px-3 py-1.5 text-left text-micro text-muted transition-colors hover:border-hairline-strong hover:bg-accent-wash hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50">
+              {label}
             </button>
           ))}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-hairline pt-3">
+        <details className="query-options mt-4 border-t border-hairline pt-3">
+          <summary className="w-fit cursor-pointer text-label font-medium text-muted hover:text-ink">Query options</summary>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-4">
+            <label className="flex cursor-pointer items-center gap-1.5 text-label text-muted">
+              <input type="checkbox" checked={retrievalOnly} onChange={(event) => setRetrievalOnly(event.target.checked)} className="size-3 rounded-sm accent-accent" />
+              <span>Retrieval only</span>
+            </label>
             <div className="flex items-center gap-2">
               <label htmlFor="top-k-input" className="text-label text-muted">
-                Top K Chunks:
+                Sources to retrieve:
               </label>
               <input
                 id="top-k-input"
@@ -270,7 +246,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
             </div>
             <div className="flex items-center gap-2">
               <label htmlFor="max-cycles-input" className="text-label text-muted">
-                Max Cycles:
+                Maximum answer cycles:
               </label>
               <input
                 id="max-cycles-input"
@@ -284,22 +260,12 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
             </div>
           </div>
 
-          <button
-            onClick={() => handleQuery()}
-            disabled={loading || !query.trim()}
-            className="flex items-center gap-2 rounded bg-accent px-5 py-2 text-label font-bold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? (
-              <>
-                <RefreshCw className="size-4 animate-spin" />
-                <span>Executing Graph...</span>
-              </>
-            ) : (
-              <>
-                <span>{retrievalOnly ? 'Run Retrieval' : 'Run Agent'}</span>
-                <Send className="size-3.5" />
-              </>
-            )}
+        </div>
+        </details>
+
+        <div className="mt-4 flex justify-end">
+          <button onClick={() => handleQuery()} disabled={loading || !query.trim()} className="flex min-h-11 items-center gap-2 rounded-md bg-[#234d42] px-5 py-2 text-label font-semibold text-white transition-colors hover:bg-[#193b32] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+            {loading ? <><RefreshCw className="size-4 animate-spin"/><span>Working…</span></> : <><span>{retrievalOnly ? 'Find sources' : 'Ask'}</span><Send className="size-3.5"/></>}
           </button>
         </div>
       </div>
@@ -346,7 +312,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         </div>
       )}
 
-      <div data-testid="query-result-region" aria-live="polite" aria-busy={loading} className="min-h-[12rem]">
+      {(loading || response || retrievalResponse || error) && <div data-testid="query-result-region" aria-live="polite" aria-busy={loading} className={loading && !response ? 'min-h-[12rem]' : undefined}>
         {/* Keep the previous answer mounted during a follow-up request; first-query
             loading uses the same reserved result area so the canvas does not jump. */}
         {loading && !response && (
@@ -439,30 +405,16 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         </>
       )}
 
-      {!loading && !response && !retrievalResponse && !error && (
-        <div className="min-h-[12rem] rounded border border-dashed border-hairline bg-surface-raised px-4 py-10 text-center">
-          <p className="text-body font-semibold text-ink">No answer yet</p>
-          <p className="mt-1 text-micro text-muted">Ask a question to see the answer and its evidence.</p>
-        </div>
-      )}
-      </div>
+      </div>}
 
       {/* §8 ranked chunk table */}
-      <div className="rounded border border-hairline bg-surface-raised">
+      {chunks.length > 0 && <div className="rounded border border-hairline bg-surface-raised">
         <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
           <h3 className="label-section text-muted">Retrieved Chunks &amp; Citations</h3>
           {chunks.length > 0 && <span className="num text-micro text-faint">{chunks.length}</span>}
         </div>
 
-        {chunks.length === 0 ? (
-          <div className="px-3 py-6 text-center">
-            <p className="text-body font-semibold text-ink">No query context retrieved yet</p>
-            <p className="mt-1 text-micro text-muted">
-              Run a query to inspect ranked passages from the vector and lexical stores.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto" tabIndex={0} aria-label="Retrieved chunks table; scroll horizontally to see all columns">
+        <div className="overflow-x-auto" tabIndex={0} aria-label="Retrieved chunks table; scroll horizontally to see all columns">
             <table className="w-full min-w-[640px] border-collapse text-left">
             <caption className="sr-only">Retrieved chunks, ranked by score</caption>
             <thead>
@@ -537,12 +489,11 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
               })}
             </tbody>
             </table>
-          </div>
-        )}
-      </div>
+        </div>
+      </div>}
 
       {/* Knowledge graph entities */}
-      <div className="rounded border border-hairline bg-surface-raised">
+      {response && response.entities.length > 0 && <div className="rounded border border-hairline bg-surface-raised">
         <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
           <h3 className="label-section text-muted">Knowledge Graph Entity Traversal</h3>
           {response && response.entities.length > 0 && (
@@ -553,15 +504,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
           )}
         </div>
 
-        {!response || response.entities.length === 0 ? (
-          <div className="px-3 py-4">
-            <p className="text-body font-semibold text-ink">No graph relations traversed yet</p>
-            <p className="mt-1 text-micro text-muted">
-              Extracted entities and Neo4j relationships appear here when a query executes.
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2 p-3">
+        <div className="flex flex-wrap gap-2 p-3">
             {response.entities.map((entity) => (
               <span
                 key={entity.name}
@@ -571,9 +514,8 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                 <span className="id-mono text-faint">{entity.entity_type}</span>
               </span>
             ))}
-          </div>
-        )}
-      </div>
+        </div>
+      </div>}
     </div>
   );
 };

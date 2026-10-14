@@ -96,14 +96,14 @@ describe('Meridian workbench navigation', () => {
   it('keeps the question and answer in memory when leaving Ask', async () => {
     const user = userEvent.setup();
     render(<App />);
-    const question = screen.getByPlaceholderText(/type your question/i);
+    const question = screen.getByPlaceholderText(/ask about your sources/i);
     await user.clear(question);
     await user.type(question, 'What storage engines does Meridian use?');
-    await user.click(screen.getByRole('button', { name: /run agent/i }));
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
     expect(await screen.findByText('Qdrant and Neo4j.')).toBeInTheDocument();
     await user.click(go('Sources'));
     await user.click(go('Ask'));
-    expect(screen.getByPlaceholderText(/type your question/i)).toHaveValue('What storage engines does Meridian use?');
+    expect(screen.getByPlaceholderText(/ask about your sources/i)).toHaveValue('What storage engines does Meridian use?');
     expect(screen.getByText('Qdrant and Neo4j.')).toBeInTheDocument();
   });
 
@@ -111,8 +111,8 @@ describe('Meridian workbench navigation', () => {
     const user = userEvent.setup();
     (api.getDocuments as ReturnType<typeof vi.fn>).mockResolvedValue({ total_documents: 1, total_chunks: 2, total_entities: 4, documents: [DOC] });
     render(<App />);
-    await user.type(screen.getByPlaceholderText(/type your question/i), 'What storage engines?');
-    await user.click(screen.getByRole('button', { name: /run agent/i }));
+    await user.type(screen.getByPlaceholderText(/ask about your sources/i), 'What storage engines?');
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
     await screen.findByText('Qdrant and Neo4j.');
     await user.click(screen.getByRole('button', { name: /chunk 1 • vector/i }));
     expect(window.location.hash).toBe('#/sources');

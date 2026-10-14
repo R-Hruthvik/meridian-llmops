@@ -43,8 +43,8 @@ const run = async (user: ReturnType<typeof userEvent.setup>, response: object) =
 
   renderCanvas();
 
-  await user.type(screen.getByPlaceholderText(/Type your question/i), 'test query');
-  await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+  await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'test query');
+  await user.click(screen.getByRole('button', { name: /Ask/i }));
 };
 
 describe('RagWorkspace', () => {
@@ -68,7 +68,11 @@ describe('RagWorkspace', () => {
 
   it('renders without crashing', () => {
     renderCanvas();
-    expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ask a question' })).toBeInTheDocument();
+    expect(screen.queryByText('Retrieved Chunks & Citations')).not.toBeInTheDocument();
+    expect(screen.queryByText('Knowledge Graph Entity Traversal')).not.toBeInTheDocument();
+    expect(screen.queryByText('No answer yet')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Question')).toHaveClass('resize-none');
   });
 
   it('opens a cited chunk with Enter from the keyboard', async () => {
@@ -76,8 +80,8 @@ describe('RagWorkspace', () => {
     (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockQueryResponse);
     renderCanvas();
 
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'test query');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'test query');
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
     const chunk = await screen.findByRole('button', { name: /Chunk 1/ });
     chunk.focus();
     await user.keyboard('{Enter}');
@@ -93,8 +97,8 @@ describe('RagWorkspace', () => {
     (api.query as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
     renderCanvas();
 
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'test query');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'test query');
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
 
     expect(screen.getByTestId('query-result-region')).toHaveClass('min-h-[12rem]');
     expect(screen.getByRole('status')).toBeInTheDocument();
@@ -107,9 +111,9 @@ describe('RagWorkspace', () => {
       .mockReturnValueOnce(new Promise(() => {}));
     renderCanvas();
 
-    const queryInput = screen.getByPlaceholderText(/Type your question/i);
+    const queryInput = screen.getByPlaceholderText(/Ask about your sources/i);
     await user.type(queryInput, 'first query');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
     expect(await screen.findByText('test answer')).toBeInTheDocument();
 
     const answerCard = screen.getByTestId('answer-card');
@@ -120,7 +124,7 @@ describe('RagWorkspace', () => {
 
     await user.clear(queryInput);
     await user.type(queryInput, 'follow-up query');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
 
     expect(screen.getByText('Refreshing answer…')).toBeInTheDocument();
     expect(screen.getByTestId('answer-card')).toHaveClass('min-h-[12rem]');
@@ -134,10 +138,10 @@ describe('RagWorkspace', () => {
 
     renderCanvas();
 
-    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    const textarea = screen.getByPlaceholderText(/Ask about your sources/i);
     await user.type(textarea, 'What is Meridian?');
 
-    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    const runButton = screen.getByRole('button', { name: /Ask/i });
     await user.click(runButton);
 
     await waitFor(() => {
@@ -157,10 +161,11 @@ describe('RagWorkspace', () => {
     (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockQueryResponse);
 
     renderCanvas();
-    await user.clear(screen.getByLabelText('Top K Chunks:'));
-    await user.type(screen.getByLabelText('Top K Chunks:'), '7');
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'What is Meridian?');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    await user.click(screen.getByText('Query options'));
+    await user.clear(screen.getByLabelText('Sources to retrieve:'));
+    await user.type(screen.getByLabelText('Sources to retrieve:'), '7');
+    await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'What is Meridian?');
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
 
     await waitFor(() => expect(api.query).toHaveBeenCalledWith(
       expect.objectContaining({ query: 'What is Meridian?', top_k: 7 }),
@@ -184,8 +189,8 @@ describe('RagWorkspace', () => {
     });
 
     renderCanvas();
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'What are the API key requirements?');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'What are the API key requirements?');
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
 
     expect(await screen.findByText('handbook.pdf')).toBeInTheDocument();
     expect(screen.getByText('Page 12')).toBeInTheDocument();
@@ -211,9 +216,10 @@ describe('RagWorkspace', () => {
     });
 
     renderCanvas();
+    await user.click(screen.getByText('Query options'));
     await user.click(screen.getByRole('checkbox', { name: /retrieval only/i }));
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'What is Meridian?');
-    await user.click(screen.getByRole('button', { name: /Run Retrieval/i }));
+    await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'What is Meridian?');
+    await user.click(screen.getByRole('button', { name: /Find sources/i }));
 
     await waitFor(() => expect(api.retrieve).toHaveBeenCalledWith(
       { query: 'What is Meridian?', top_k: 3 },
@@ -234,14 +240,14 @@ describe('RagWorkspace', () => {
 
     // A control that says what it will do, not a readout that says what is.
     // "Guardrails Active" read as a status; the flag only shapes the next query.
-    const toggle = screen.getByRole('checkbox', { name: /enforce guardrails on this query/i });
+    const toggle = screen.getByRole('checkbox', { name: /apply safety rules/i });
     expect(toggle).toBeChecked();
 
     await user.click(toggle);
     expect(toggle).not.toBeChecked();
 
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'What is Meridian?');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'What is Meridian?');
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
 
     await waitFor(() =>
       expect(api.query).toHaveBeenCalledWith(
@@ -261,10 +267,10 @@ describe('RagWorkspace', () => {
 
     renderCanvas();
 
-    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    const textarea = screen.getByPlaceholderText(/Ask about your sources/i);
     await user.type(textarea, 'test query');
 
-    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    const runButton = screen.getByRole('button', { name: /Ask/i });
     await user.click(runButton);
 
     await waitFor(() => {
@@ -283,10 +289,10 @@ describe('RagWorkspace', () => {
 
     renderCanvas();
 
-    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    const textarea = screen.getByPlaceholderText(/Ask about your sources/i);
     await user.type(textarea, 'test query');
 
-    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    const runButton = screen.getByRole('button', { name: /Ask/i });
     await user.click(runButton);
 
     await waitFor(() => {
@@ -305,10 +311,10 @@ describe('RagWorkspace', () => {
 
     renderCanvas();
 
-    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    const textarea = screen.getByPlaceholderText(/Ask about your sources/i);
     await user.type(textarea, 'test query');
 
-    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    const runButton = screen.getByRole('button', { name: /Ask/i });
     await user.click(runButton);
 
     await waitFor(() => {
@@ -320,7 +326,7 @@ describe('RagWorkspace', () => {
 
   it('disables Run button when query is empty', () => {
     renderCanvas();
-    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    const runButton = screen.getByRole('button', { name: /Ask/i });
     expect(runButton).toBeDisabled();
   });
 
@@ -335,10 +341,10 @@ describe('RagWorkspace', () => {
 
     renderCanvas();
 
-    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    const textarea = screen.getByPlaceholderText(/Ask about your sources/i);
     await user.type(textarea, 'test query');
 
-    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    const runButton = screen.getByRole('button', { name: /Ask/i });
     await user.click(runButton);
 
     await waitFor(() => {
@@ -357,10 +363,10 @@ describe('RagWorkspace', () => {
 
     renderCanvas();
 
-    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    const textarea = screen.getByPlaceholderText(/Ask about your sources/i);
     await user.type(textarea, 'test query');
 
-    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    const runButton = screen.getByRole('button', { name: /Ask/i });
     await user.click(runButton);
 
     await waitFor(() => {
@@ -380,10 +386,10 @@ describe('RagWorkspace', () => {
 
     renderCanvas();
 
-    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    const textarea = screen.getByPlaceholderText(/Ask about your sources/i);
     await user.type(textarea, 'test query');
 
-    const runButton = screen.getByRole('button', { name: /Run Agent/i });
+    const runButton = screen.getByRole('button', { name: /Ask/i });
     await user.click(runButton);
 
     await waitFor(() => {
@@ -411,9 +417,9 @@ describe('RagWorkspace', () => {
 
     renderCanvas();
 
-    const textarea = screen.getByPlaceholderText(/Type your question/i);
+    const textarea = screen.getByPlaceholderText(/Ask about your sources/i);
     await user.type(textarea, 'test query');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
 
     // Readable in the cell, complete on hover.
     await waitFor(() => {
@@ -866,6 +872,7 @@ describe('RagWorkspace chunk table', () => {
 
   it('keeps the chunk table usable when nothing has been retrieved', () => {
     renderCanvas();
-    expect(screen.getByText('No query context retrieved yet')).toBeInTheDocument();
+    expect(screen.queryByText('No query context retrieved yet')).not.toBeInTheDocument();
+    expect(screen.queryByText('Retrieved Chunks & Citations')).not.toBeInTheDocument();
   });
 });
