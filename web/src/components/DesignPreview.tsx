@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowUpRight, BookOpen, Check, ChevronDown, CircleHelp, Command, Database, FileText, Search, Settings2, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import './DesignPreview.css';
 
@@ -11,14 +11,29 @@ const destinations: { name: Section; icon: typeof BookOpen }[] = [
   { name: 'Settings', icon: Settings2 },
 ];
 
+const sectionFromHash = (): Section => {
+  const name = window.location.hash.slice(2).split('/')[0];
+  return destinations.find(({ name: section }) => section.toLowerCase() === name)?.name ?? 'Ask';
+};
+
 export function DesignPreview() {
-  const [section, setSection] = useState<Section>('Ask');
+  const [section, setSection] = useState<Section>(sectionFromHash);
   const [question, setQuestion] = useState('How does Meridian keep answers grounded in source documents?');
   const [answered, setAnswered] = useState(false);
 
+  useEffect(() => {
+    const followHistory = () => setSection(sectionFromHash());
+    window.addEventListener('popstate', followHistory);
+    window.addEventListener('hashchange', followHistory);
+    return () => {
+      window.removeEventListener('popstate', followHistory);
+      window.removeEventListener('hashchange', followHistory);
+    };
+  }, []);
+
   const navigate = (next: Section) => {
     setSection(next);
-    window.history.replaceState(null, '', `?design-preview=1#/${next.toLowerCase()}`);
+    window.history.pushState(null, '', `?design-preview=1#/${next.toLowerCase()}`);
   };
 
   return (

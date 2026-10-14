@@ -9,6 +9,11 @@ describe('DesignPreview', () => {
     render(<DesignPreview />);
 
     expect(screen.getByRole('heading', { name: 'Ask Meridian' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Ask question/ }));
+    expect(screen.getByRole('heading', { name: /Answers are tied back/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Retrieval overview/ }));
+    expect(screen.getByRole('heading', { name: 'Sources' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^Sources/ })).toHaveAttribute('aria-current', 'page');
     await user.click(screen.getByRole('link', { name: /^Sources/ }));
     expect(screen.getByRole('heading', { name: 'Sources' })).toBeInTheDocument();
     expect(screen.getByText('Product handbook')).toBeInTheDocument();
