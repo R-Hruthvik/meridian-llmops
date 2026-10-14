@@ -207,6 +207,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleTestAndFetchModels = async () => {
     setTesting(true);
     setTestResult(null);
+    setPingResult(null);
     try {
       const res = await api.testAndFetchModels({
         provider,
@@ -248,6 +249,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleCheckSavedConfig = async () => {
     setPinging(true);
     setPingResult(null);
+    setTestResult(null);
     try {
       const res = await api.testLLMConnection();
       const success = res.status === 'success';

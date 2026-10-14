@@ -709,6 +709,30 @@ describe('SettingsModal - connection actions, footer, platform key (H1-H4)', () 
     expect(await screen.findByText(/Successfully connected.*87 ms/)).toBeInTheDocument();
   });
 
+  it('replaces an old endpoint error when the saved-provider check runs', async () => {
+    const user = userEvent.setup();
+    (api.testAndFetchModels as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      message: 'Field required',
+      latency_ms: 0,
+      models: [],
+    });
+    (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'error',
+      message: 'Provider URL is not allowed',
+      latency_ms: 0,
+    });
+
+    await openModal();
+    await user.click(screen.getByRole('button', { name: /validate endpoint & load models/i }));
+    expect(await screen.findByText('Field required')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /test saved provider/i }));
+
+    expect(await screen.findByText('Local endpoint blocked')).toBeInTheDocument();
+    expect(screen.queryByText('Field required')).toBeNull();
+  });
+
   it('H3: the fixed footer carries exactly Cancel and Save & Apply', async () => {
     await openModal();
 
