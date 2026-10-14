@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   ChevronDown,
   Key,
-  Layers,
   Radio,
   RefreshCw,
   X,
@@ -15,7 +14,7 @@ import {
 import { StatusChip } from './StatusChip';
 import { api, ApiError } from '../services/api';
 import { PROVIDER_DEFAULT_BASE_URLS, PROVIDER_MODELS } from '../constants/providerModels';
-import type { MaskedKeyStatus, ProviderInfo, ProvidersResponse, UpdateLLMSettingsPayload } from '../types/api';
+import type { MaskedKeyStatus, ProvidersResponse, UpdateLLMSettingsPayload } from '../types/api';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -31,7 +30,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onGenerationTestResult,
 }) => {
   const [mounted, setMounted] = useState(false);
-  const [provider, setProvider] = useState<string>('openai');
+  const [provider, setProvider] = useState<string>('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [openaiOrgId, setOpenaiOrgId] = useState('');
   const [openaiProjId, setOpenaiProjId] = useState('');
@@ -39,18 +38,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [customKey, setCustomKey] = useState('');
   const [customBaseUrl, setCustomBaseUrl] = useState('https://api.groq.com/openai/v1');
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState('http://localhost:11434');
-  const [defaultModel, setDefaultModel] = useState('gpt-4o-mini');
-  const [modelList, setModelList] = useState<string[]>([
-    'gpt-4o-mini',
-    'gpt-4o',
-    'o3-mini',
-    'o1',
-    'claude-3-7-sonnet-20250219',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-5-haiku-20241022',
-    'llama-3.3-70b-versatile',
-    'deepseek-chat',
-  ]);
+  const [defaultModel, setDefaultModel] = useState('');
+  const [modelList, setModelList] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -106,8 +95,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
 
       if (settings) {
-        const activeProvider = settings.active_provider || 'openai';
-        if (settings.active_provider) setProvider(activeProvider);
+        const activeProvider = settings.active_provider || provs?.active_provider || '';
+        if (activeProvider) setProvider(activeProvider);
         if (settings.default_model) setDefaultModel(settings.default_model);
         const savedBaseUrl = settings.base_url || settings.custom_base_url;
         if (savedBaseUrl && ['groq', 'openrouter', 'deepseek', 'custom'].includes(activeProvider)) {
@@ -386,11 +375,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  const handleSelectProviderCard = (p: ProviderInfo) => {
-    setProvider(p.id);
-    handleProviderChange(p.id);
-  };
-
   // Per-provider "Configured •••ab12" badge from providers_configured / POST hint.
   // Rendered as a StatusChip: the state word and the masked hint both ride the
   // chip's mono label, so the hint reads as a readout rather than prose.
@@ -469,53 +453,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
           {settingsLoaded && <>
-          {/* Configured providers quick-selector */}
-          {providersData && providersData.providers.length > 0 && (
-            <div className="space-y-2.5 rounded-sm border border-hairline bg-surface-sunken p-3">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="label-section flex items-center gap-1.5 text-ink">
-                  <Layers className="size-3.5 text-accent" aria-hidden="true" />
-                  <span>Configured providers</span>
-                </h3>
-                <span className="num text-readout font-semibold text-accent-ink">
-                  {providersData.providers.filter((p) => p.configured).length} ready
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
-                {providersData.providers.map((p) => {
-                  const isSelected = provider === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handleSelectProviderCard(p)}
-                      aria-pressed={isSelected}
-                      className={`flex flex-col items-start justify-between gap-1.5 rounded-sm border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                        isSelected
-                          ? 'border-accent bg-accent-wash'
-                          : p.configured
-                            ? 'border-hairline bg-surface-raised hover:border-hairline-strong'
-                            : 'border-hairline bg-surface-raised opacity-70 hover:opacity-100'
-                      }`}
-                    >
-                      <span className="w-full truncate text-label font-semibold text-ink">
-                        {p.name.split(' ')[0]}
-                      </span>
-                      <StatusChip variant={p.is_active ? 'accent' : p.configured ? 'ok' : 'faint'}>
-                        {p.is_active ? 'Active' : p.configured ? 'Configured' : 'Unconfigured'}
-                      </StatusChip>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* 1 · Provider selection */}
+          {/* Provider selection */}
           <div>
             <label htmlFor="provider-select" className="label-section mb-1.5 block text-muted">
-              1 · Foundation LLM provider
+              Provider
             </label>
             <div className="relative">
               <select
@@ -524,13 +465,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(e) => handleProviderChange(e.target.value)}
                 className="w-full cursor-pointer rounded-sm border border-hairline bg-surface-raised px-3 py-2 text-body text-ink outline-none transition-colors focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
               >
-                <option value="openai">OpenAI (GPT-4o, GPT-4o-mini, o1, o3-mini)</option>
-                <option value="anthropic">Anthropic (Claude 3.7 Sonnet, Claude 3.5)</option>
-                <option value="groq">Groq Cloud (Fast Llama 3.3, Mixtral)</option>
-                <option value="openrouter">OpenRouter (Multi-Model Router)</option>
-                <option value="deepseek">DeepSeek (DeepSeek V3, DeepSeek R1)</option>
-                <option value="ollama">Ollama (Local Offline Models)</option>
-                <option value="custom">Custom OpenAI-Compatible / Local vLLM</option>
+                {provider && !providersData?.providers.some((item) => item.id === provider) && <option value={provider}>{provider}</option>}
+                {providersData?.providers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </div>
           </div>
@@ -762,48 +698,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          {/* 2 · Target model */}
           <div>
-            <div className="mb-1.5 flex items-baseline justify-between gap-3">
-              <label htmlFor="model-select" className="label-section text-muted">
-                2 · Active target model
-              </label>
-              <span className="flex items-baseline gap-1.5">
-                <span className="num text-readout font-semibold text-accent-ink">{modelList.length}</span>
-                <span className="text-micro text-faint">models listed</span>
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              <div className="relative">
-                <select
-                  id="model-select"
-                  value={defaultModel}
-                  onChange={(e) => setDefaultModel(e.target.value)}
-                  className="w-full cursor-pointer rounded-sm border border-hairline bg-surface-raised px-3 py-2 id-mono text-ink outline-none transition-colors focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  {modelList.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={defaultModel}
-                  onChange={(e) => setDefaultModel(e.target.value)}
-                  placeholder="Or enter any custom model name..."
-                  aria-label="Custom Model Name"
-                  className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
-                />
-              </div>
-            </div>
+            <label htmlFor="model-select" className="label-section mb-1.5 block text-muted">Model</label>
+            <input id="model-select" list="provider-model-options" value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder="Choose a configured model" className="w-full rounded-sm border border-hairline bg-surface-raised px-3 py-2 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent" />
+            <datalist id="provider-model-options">{modelList.map((model) => <option key={model} value={model}/>)}</datalist>
 
             <p className="mt-1.5 text-micro text-muted">
-              Pick one of the listed models, or type any model name the endpoint accepts.
+              Choose a listed model or enter a custom model name.
             </p>
           </div>
 

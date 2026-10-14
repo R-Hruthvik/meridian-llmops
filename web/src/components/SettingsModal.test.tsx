@@ -20,6 +20,11 @@ vi.mock('../services/api', () => ({
   },
 }));
 
+const mockProviders = ['openai', 'anthropic', 'groq', 'openrouter', 'deepseek', 'ollama', 'custom'].map((id) => ({
+  id, name: id, description: '', configured: true, is_active: id === 'openai',
+  base_url: '', current_model: '', models: [], type: 'cloud' as const,
+}));
+
 describe('SettingsModal - Security: No API keys in localStorage', () => {
   const mockSettings = {
     active_provider: 'openai',
@@ -28,13 +33,12 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
     openai_org_id: 'org-test',
     openai_proj_id: 'proj-test',
   };
-
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
     (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
-    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: mockProviders });
   });
 
   it('can render as a full Settings page without dialog semantics', async () => {
@@ -67,8 +71,9 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByLabelText('1 · Foundation LLM provider')).toHaveValue('custom'));
-    expect(screen.getByLabelText('Custom Model Name')).toHaveValue('workspace-model');
+    await waitFor(() => expect(screen.getByLabelText('Provider')).toHaveValue('custom'));
+    expect(screen.getByLabelText('Model')).toHaveValue('workspace-model');
+    expect(screen.queryByText('Configured providers')).not.toBeInTheDocument();
     expect(screen.getByLabelText('API base endpoint URL')).toHaveValue('https://llm.example.test/v1');
   });
 
@@ -84,8 +89,8 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Saved provider settings could not be loaded');
-    expect(screen.queryByLabelText('1 · Foundation LLM provider')).toBeNull();
-    expect(screen.queryByLabelText('Custom Model Name')).toBeNull();
+    expect(screen.queryByLabelText('Provider')).toBeNull();
+    expect(screen.queryByLabelText('Model')).toBeNull();
   });
 
   it('keeps page settings open and ready for another save after success', async () => {
@@ -349,7 +354,7 @@ describe('SettingsModal - masked settings contract (F1/F2/F3/F5)', () => {
     localStorage.clear();
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
     (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
-    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: mockProviders });
   });
 
   it('F1: save payload drops openai_proj_id and litellm_base_url', async () => {
@@ -401,7 +406,7 @@ describe('SettingsModal - masked settings contract (F1/F2/F3/F5)', () => {
     vi.clearAllMocks();
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
     (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
-    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: mockProviders });
     // Success state disables Save for 600ms — wait for re-enable before re-saving
     await waitFor(() => expect(saveButton).not.toBeDisabled(), { timeout: 2000 });
     const providerSelect = screen.getAllByRole('combobox')[0];
@@ -490,7 +495,7 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
     localStorage.clear();
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
     (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
-    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
+    (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: mockProviders });
     (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
       status: 'success',
       message: 'Successfully connected to gpt-4o-mini via openai',
@@ -634,7 +639,7 @@ describe('SettingsModal - connection actions, footer, platform key (H1-H4)', () 
     (api.updateLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockGet);
     (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
       active_provider: 'openai',
-      providers: [],
+      providers: mockProviders,
     });
     (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
       status: 'success',
