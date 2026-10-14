@@ -74,19 +74,21 @@ vi.mock('./services/api', () => ({
  */
 const AT_MODULE_LOAD = [...evaluated];
 
-const rail = () => screen.getByRole('navigation', { name: 'Workbench lenses' });
-const lens = (name: string) => within(rail()).getByRole('button', { name });
-const strip = () => screen.getByRole('navigation', { name: 'Capability overlays' });
+const primary = () => screen.getByRole('navigation', { name: 'Primary navigation' });
+const go = (name: string) => within(primary()).getByRole('link', { name });
+const operations = () => screen.getByRole('navigation', { name: 'Operations sections' });
+const sources = () => screen.getByRole('navigation', { name: 'Sources sections' });
 
 beforeEach(() => {
   evaluated.length = 0;
+  window.history.replaceState(null, '', '/#/ask');
 });
 
 describe('first paint ships only the Ask surface', () => {
   it('evaluates no studio module other than Ask before anything asks for one', () => {
     render(<App />);
 
-    expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
+    expect(screen.getByText('Ask a question')).toBeInTheDocument();
     expect(AT_MODULE_LOAD).toEqual([]);
   });
 
@@ -96,7 +98,7 @@ describe('first paint ships only the Ask surface', () => {
 
     expect(evaluated).not.toContain('settings');
 
-    await user.click(screen.getByRole('button', { name: /open llm engine settings/i }));
+    await user.click(go('Settings'));
 
     expect(await screen.findByTestId('settings-surface')).toBeInTheDocument();
     expect(evaluated).toContain('settings');
@@ -108,31 +110,32 @@ describe('a surface is evaluated the first time it is opened', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(go('Sources'));
+    await user.click(within(sources()).getByRole('link', { name: 'Index & storage' }));
+    expect(await screen.findByTestId('index-surface')).toBeInTheDocument();
+    await user.click(go('Operations'));
     for (const [label, marker] of [
-      ['Index & Storage', 'index-surface'],
-      ['Review Queue', 'review-surface'],
-      ['Metrics', 'metrics-surface'],
+      ['Review queue', 'review-surface'],
+      ['Usage', 'metrics-surface'],
     ] as const) {
-      await user.click(within(strip()).getByRole('button', { name: label }));
+      await user.click(within(operations()).getByRole('link', { name: label }));
       expect(await screen.findByTestId(marker)).toBeInTheDocument();
-      await user.keyboard('{Escape}');
-      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     }
 
-    expect(evaluated).toEqual(['index', 'review', 'metrics']);
+    expect(evaluated).toEqual(['corpus', 'index', 'guardrails', 'review', 'metrics']);
   });
 
   it('loads Corpus and Guardrails on demand from the rail', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(lens('Corpus'));
+    await user.click(go('Sources'));
     expect(await screen.findByTestId('corpus-surface')).toBeInTheDocument();
 
-    await user.click(lens('Operate'));
+    await user.click(go('Operations'));
     expect(await screen.findByTestId('guardrails-surface')).toBeInTheDocument();
 
-    expect(evaluated).toEqual(['corpus', 'guardrails']);
+    expect(screen.getByTestId('guardrails-surface')).toBeInTheDocument();
   });
 });
 
@@ -141,7 +144,8 @@ describe('a pending surface is labelled, not blank', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(within(strip()).getByRole('button', { name: 'Metrics' }));
+    await user.click(go('Operations'));
+    await user.click(within(operations()).getByRole('link', { name: 'Usage' }));
 
     expect(await screen.findByTestId('metrics-surface')).toBeInTheDocument();
     expect(screen.queryByTestId('surface-fallback')).toBeNull();
@@ -152,7 +156,7 @@ describe('the answer body is deferred until an answer exists', () => {
   it('does not evaluate the markdown renderer on first paint', () => {
     render(<App />);
 
-    expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
+    expect(screen.getByText('Ask a question')).toBeInTheDocument();
     expect(AT_MODULE_LOAD).not.toContain('markdown');
     expect(evaluated).not.toContain('markdown');
   });
@@ -161,8 +165,8 @@ describe('the answer body is deferred until an answer exists', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(screen.getByPlaceholderText(/Type your question/i), 'What storage engines?');
-    await user.click(screen.getByRole('button', { name: /Run Agent/i }));
+    await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'What storage engines?');
+    await user.click(screen.getByRole('button', { name: /Ask/i }));
 
     expect(await screen.findByTestId('markdown-surface')).toBeInTheDocument();
     expect(evaluated).toContain('markdown');

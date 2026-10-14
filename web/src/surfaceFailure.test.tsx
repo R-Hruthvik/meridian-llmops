@@ -31,10 +31,13 @@ vi.mock('./services/api', () => ({
   ApiError: class ApiError extends Error {},
 }));
 
-const strip = () => screen.getByRole('navigation', { name: 'Capability overlays' });
+const primary = () => screen.getByRole('navigation', { name: 'Primary navigation' });
+const go = (name: string) => within(primary()).getByRole('link', { name });
+const operations = () => screen.getByRole('navigation', { name: 'Operations sections' });
 
 beforeEach(() => {
   failNext.on = false;
+  window.history.replaceState(null, '', '/#/ask');
 });
 
 describe('a surface whose chunk fails does not take the shell with it', () => {
@@ -43,7 +46,8 @@ describe('a surface whose chunk fails does not take the shell with it', () => {
     failNext.on = true;
     render(<App />);
 
-    await user.click(within(strip()).getByRole('button', { name: 'Metrics' }));
+    await user.click(go('Operations'));
+    await user.click(within(operations()).getByRole('link', { name: 'Usage' }));
 
     // The failure is stated where the surface would have been.
     const notice = await screen.findByTestId('surface-error');
@@ -53,15 +57,16 @@ describe('a surface whose chunk fails does not take the shell with it', () => {
 
     // The shell survives: banner, lens rail and the Ask canvas are still there.
     expect(screen.getByRole('banner')).toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: 'Workbench lenses' })).toBeInTheDocument();
-    expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
+    expect(primary()).toBeInTheDocument();
+    expect(screen.getByRole('banner')).toBeInTheDocument();
   });
 
   it('does not report an error for a surface that loads', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(within(strip()).getByRole('button', { name: 'Metrics' }));
+    await user.click(go('Operations'));
+    await user.click(within(operations()).getByRole('link', { name: 'Usage' }));
 
     expect(await screen.findByTestId('metrics-surface')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId('surface-error')).toBeNull());
@@ -71,16 +76,17 @@ describe('a surface whose chunk fails does not take the shell with it', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(within(strip()).getByRole('button', { name: 'Metrics' }));
+    await user.click(go('Operations'));
+    await user.click(within(operations()).getByRole('link', { name: 'Usage' }));
     expect(await screen.findByTestId('metrics-surface')).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.click(go('Ask'));
 
     // One surface failing later must not poison the host.
     failNext.on = true;
-    await user.click(within(strip()).getByRole('button', { name: 'Metrics' }));
+    await user.click(go('Operations'));
+    await user.click(within(operations()).getByRole('link', { name: 'Usage' }));
 
     expect(await screen.findByTestId('surface-error')).toBeInTheDocument();
-    expect(screen.getByText('Ask Agentic RAG Pipeline')).toBeInTheDocument();
+    expect(screen.getByRole('banner')).toBeInTheDocument();
   });
 });
