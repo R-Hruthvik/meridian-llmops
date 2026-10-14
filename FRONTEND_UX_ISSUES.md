@@ -18,10 +18,10 @@
 12. **The top-left workspace kicker repeated context and consumed attention.** Removed from the real shell header; the current section title is sufficient.
 13. **Meridian’s wordmark had weak contrast and inherited an unintended style.** The wordmark now has explicit dark pine color, Geist type, and normal style.
 14. **Navigation labels need to match destinations.** The shell keeps four primary destinations—Ask, Sources, Operations, Settings—with labeled section navigation within Sources and Operations. The Operations safety destination now uses `rules` in its URL.
-15. **Clearing Sources data could not be completed.** The UI’s clear action is wired to the document deletion API, but the API at `localhost:8000` did not respond. No backend data was deleted during this review.
+15. **Sources data was requested to be cleared.** Cleared the app catalog and index using the same `IngestionPipeline.clear_all()` operation called by the document DELETE route. Before: 8 metadata records, 8 chunk files, and 128 vector points. After: 0, 0, and 0. The API initially failed startup on an existing disk/Qdrant count mismatch; after clearing, it started successfully and authenticated `GET /v1/documents` returned an empty list with HTTP 200. `/health/ready` also returned HTTP 200. No repository sample files were deleted.
 
 ## Design and review record
 
 The adopted palette and hierarchy are documented in `DESIGN.md`; product constraints and intended users are documented in `PRODUCT.md`. The implementation preserves tenant-aware API calls, existing document and question workflows, masked credentials, lazy-loaded secondary views, and truthful service status.
 
-Automated verification on the latest commit: **282 tests passed across 19 files** and `npm run build` succeeded. Browser Harness could not make a new capture because no Chrome process was running and its daemon failed to start. Existing screenshots under `.impeccable/review/` show the prior reviewed responsive preview.
+Automated verification on the latest UI commit: **282 tests passed across 19 files** and `npm run build` succeeded. Browser Harness verified the live Operations route `#/operations/rules`, its section links, the simplified header, and the wordmark color. Current captures are saved under `.impeccable/review/`; the browser measured the desktop at 1536×900 and the narrow layout at 780×437.
