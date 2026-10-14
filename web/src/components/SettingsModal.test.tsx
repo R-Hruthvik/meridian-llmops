@@ -37,6 +37,83 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
     (api.getProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ active_provider: 'openai', providers: [] });
   });
 
+  it('can render as a full Settings page without dialog semantics', async () => {
+    render(
+      <SettingsModal
+        isOpen
+        presentation="page"
+        onClose={vi.fn()}
+        platformApiKey=""
+        onSavePlatformApiKey={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByTestId('overlay-scrim')).toBeNull();
+  });
+
+  it('hydrates the selected provider, model, and generic endpoint from saved settings', async () => {
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...mockSettings,
+      active_provider: 'custom',
+      default_model: 'workspace-model',
+      base_url: 'https://llm.example.test/v1',
+    });
+
+    render(
+      <SettingsModal
+        isOpen
+        presentation="page"
+        onClose={vi.fn()}
+        platformApiKey=""
+        onSavePlatformApiKey={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('1 · Foundation LLM provider')).toHaveValue('custom'));
+    expect(screen.getByLabelText('Custom Model Name')).toHaveValue('workspace-model');
+    expect(screen.getByLabelText('API base endpoint URL')).toHaveValue('https://llm.example.test/v1');
+  });
+
+  it('does not present frontend defaults as saved when settings cannot be loaded', async () => {
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('settings unavailable'));
+
+    render(
+      <SettingsModal
+        isOpen
+        presentation="page"
+        onClose={vi.fn()}
+        platformApiKey=""
+        onSavePlatformApiKey={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Saved provider settings could not be loaded');
+    expect(screen.queryByLabelText('1 · Foundation LLM provider')).toBeNull();
+    expect(screen.queryByLabelText('Custom Model Name')).toBeNull();
+  });
+
+  it('keeps page settings open and ready for another save after success', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <SettingsModal
+        isOpen
+        presentation="page"
+        onClose={onClose}
+        platformApiKey=""
+        onSavePlatformApiKey={vi.fn()}
+      />,
+    );
+
+    const saveButton = await screen.findByRole('button', { name: /Save & Apply/i });
+    await user.click(saveButton);
+    await waitFor(() => expect(screen.getByText('Settings and active model saved successfully!')).toBeInTheDocument());
+    await waitFor(() => expect(saveButton).not.toBeDisabled(), { timeout: 1500 });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('shows the saved-settings loading and failure states', async () => {
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
     (api.getProviders as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));

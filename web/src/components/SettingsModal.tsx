@@ -20,6 +20,7 @@ import type { MaskedKeyStatus, ProviderInfo, ProvidersResponse, UpdateLLMSetting
 
 interface SettingsModalProps {
   isOpen: boolean;
+  presentation?: 'modal' | 'page';
   onClose: () => void;
   platformApiKey: string;
   onSavePlatformApiKey: (key: string) => void;
@@ -28,6 +29,7 @@ interface SettingsModalProps {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
+  presentation = 'modal',
   onClose,
   platformApiKey,
   onSavePlatformApiKey,
@@ -57,6 +59,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   ]);
   const [loading, setLoading] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsLoadError, setSettingsLoadError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -103,6 +106,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setSettingsLoadError('Saved provider settings could not be loaded completely. Retry to refresh them.');
       }
 
+      setSettingsLoaded(Boolean(settings));
+
       if (provs) {
         setProvidersData(provs);
       }
@@ -111,7 +116,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         const activeProvider = settings.active_provider || 'openai';
         if (settings.active_provider) setProvider(activeProvider);
         if (settings.default_model) setDefaultModel(settings.default_model);
-        if (settings.custom_base_url) setCustomBaseUrl(settings.custom_base_url);
+        const savedBaseUrl = settings.base_url || settings.custom_base_url;
+        if (savedBaseUrl && ['groq', 'openrouter', 'deepseek', 'custom'].includes(activeProvider)) {
+          setCustomBaseUrl(savedBaseUrl);
+        }
+        if (savedBaseUrl && activeProvider === 'ollama') setOllamaBaseUrl(savedBaseUrl);
 
         // Per-provider configured flags (booleans only — no key material).
         // Password inputs are intentionally never populated from the server.
@@ -134,6 +143,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setModelList(list);
       }
     } catch {
+      setSettingsLoaded(false);
       setSettingsLoadError('Saved provider settings could not be loaded. Retry to try again.');
     } finally {
       setSettingsLoading(false);
@@ -142,28 +152,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
+      if (presentation === 'modal') document.body.style.overflow = 'hidden';
       pipelineSnapshot.current = { timeoutSeconds: '', maxCycles: '', enforceGuardrails: true };
       setTimeoutSeconds('');
       setMaxCycles('');
       setEnforceGuardrails(true);
       loadAllSettings();
     } else {
-      document.body.style.overflow = 'unset';
+      if (presentation === 'modal') document.body.style.overflow = 'unset';
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape' && isOpen && presentation === 'modal') {
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.body.style.overflow = 'unset';
+      if (presentation === 'modal') document.body.style.overflow = 'unset';
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, presentation]);
 
   if (!mounted || !isOpen) return null;
 
@@ -375,7 +385,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       await loadAllSettings();
       setTimeout(() => {
         setSaveSuccess(false);
-        onClose();
+        if (presentation === 'modal') onClose();
       }, 600);
     } catch (err: unknown) {
       // Surface validation (422) and server errors inline — never swallow.
@@ -410,17 +420,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden p-3 sm:p-4">
+    <div className={presentation === 'page' ? 'w-full' : 'fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden p-3 sm:p-4'}>
       {/* Scrim — token-backed, same layer as the shared overlay shell. */}
-      <div className="overlay-scrim backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      {presentation === 'modal' && <div data-testid="overlay-scrim" className="overlay-scrim backdrop-blur-sm" onClick={onClose} aria-hidden="true" />}
 
       {/* Centered modal surface */}
       <div
-        role="dialog"
-        aria-modal="true"
+        role={presentation === 'modal' ? 'dialog' : undefined}
+        aria-modal={presentation === 'modal' ? true : undefined}
         aria-labelledby="settings-modal-title"
         aria-busy={settingsLoading}
-        className="relative z-50 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded border border-hairline bg-surface-raised shadow-overlay"
+        className={presentation === 'page'
+          ? 'flex w-full flex-col overflow-hidden rounded border border-hairline bg-surface-raised'
+          : 'relative z-50 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded border border-hairline bg-surface-raised shadow-overlay'}
       >
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-hairline bg-surface-raised px-5 py-3.5">
@@ -429,21 +441,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <Key className="size-4 text-accent-ink" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <h3 id="settings-modal-title" className="text-readout font-bold text-ink">
-                LLM Provider &amp; Platform Key Studio
-              </h3>
+              {presentation === 'page' ? (
+                <h1 id="settings-modal-title" className="text-readout font-bold text-ink">
+                  Settings
+                </h1>
+              ) : (
+                <h3 id="settings-modal-title" className="text-readout font-bold text-ink">
+                  LLM Provider &amp; Platform Key Studio
+                </h3>
+              )}
               <p className="text-micro text-muted">
-                Select provider, enter credentials, and test connection to auto-fetch models.
+                {presentation === 'page' ? 'LLM provider and platform key' : 'Select provider, enter credentials, and test connection to auto-fetch models.'}
               </p>
             </div>
           </div>
-          <button
+          {presentation === 'modal' && <button
             onClick={onClose}
             aria-label="Close settings modal"
             className="shrink-0 rounded-sm p-1.5 text-muted transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <X className="size-5" aria-hidden="true" />
-          </button>
+          </button>}
         </div>
 
         {/* Body */}
@@ -465,6 +483,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
           )}
+          {settingsLoaded && <>
           {/* Configured providers quick-selector */}
           {providersData && providersData.providers.length > 0 && (
             <div className="space-y-2.5 rounded-sm border border-hairline bg-surface-sunken p-3">
@@ -922,11 +941,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             )}
           </div>
+          </>}
         </div>
 
         {/* Footer — Cancel and Save & Apply only. The connection checks live
             with the fields they read, not here. */}
-        <div
+        {settingsLoaded && <div
           data-testid="settings-modal-footer"
           className="flex shrink-0 items-center justify-end gap-2 border-t border-hairline bg-surface px-5 py-3"
         >
@@ -954,10 +974,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>Save &amp; Apply</span>
             )}
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );
 
-  return createPortal(modalContent, document.body);
+  return presentation === 'page' ? modalContent : createPortal(modalContent, document.body);
 };

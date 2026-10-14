@@ -212,6 +212,8 @@ export interface MaskedKeyStatus {
 export interface LLMSettingsGet {
   active_provider: string;
   default_model: string;
+  /** Resolved endpoint for the active provider. */
+  base_url?: string;
   litellm_base_url?: string;
   custom_base_url?: string;
   provider_models?: Record<string, string>;
