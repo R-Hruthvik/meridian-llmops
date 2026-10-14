@@ -1,258 +1,134 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChartNoAxesColumn, Database, FileText, ListChecks, ShieldAlert } from 'lucide-react';
-import { LensRail, TopBar, type LensId } from './components/Navbar';
-import { Overlay } from './components/Overlay';
+import { BookOpen, ChevronLeft, ChevronRight, CircleHelp, Settings2, ShieldCheck } from 'lucide-react';
 import { RagWorkspace } from './components/RagWorkspace';
 import { LazySurface } from './components/LazySurface';
 import { WorkbenchContext, type OpenOverlayOptions, type OverlayTarget } from './WorkbenchContext';
 import { api } from './services/api';
 import { UnlockScreen } from './components/UnlockScreen';
-import { ApiErrorNotice } from './components/ApiErrorNotice';
+import { StatusChip } from './components/StatusChip';
+import './WorkbenchShell.css';
 
-// Only the Ask canvas ships with the first paint. Every other surface is
-// reachable, but not by default: each is a separate chunk fetched the first time
-// it is opened, so the initial bundle carries the lens the user lands on and
-// nothing else.
-const IngestionStudio = React.lazy(() =>
-  import('./components/IngestionStudio').then((m) => ({ default: m.IngestionStudio })),
-);
-const GuardrailsStudio = React.lazy(() =>
-  import('./components/GuardrailsStudio').then((m) => ({ default: m.GuardrailsStudio })),
-);
-const IndexStorageStudio = React.lazy(() =>
-  import('./components/IndexStorageStudio').then((m) => ({ default: m.IndexStorageStudio })),
-);
-const ReviewQueue = React.lazy(() =>
-  import('./components/ReviewQueue').then((m) => ({ default: m.ReviewQueue })),
-);
-const MetricsDashboard = React.lazy(() =>
-  import('./components/MetricsDashboard').then((m) => ({ default: m.MetricsDashboard })),
-);
+const IngestionStudio = React.lazy(() => import('./components/IngestionStudio').then((m) => ({ default: m.IngestionStudio })));
+const GuardrailsStudio = React.lazy(() => import('./components/GuardrailsStudio').then((m) => ({ default: m.GuardrailsStudio })));
+const IndexStorageStudio = React.lazy(() => import('./components/IndexStorageStudio').then((m) => ({ default: m.IndexStorageStudio })));
+const ReviewQueue = React.lazy(() => import('./components/ReviewQueue').then((m) => ({ default: m.ReviewQueue })));
+const MetricsDashboard = React.lazy(() => import('./components/MetricsDashboard').then((m) => ({ default: m.MetricsDashboard })));
+const SettingsModal = React.lazy(() => import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal })));
 
+type Route = '/ask' | '/sources' | '/sources/index' | '/operations/safety' | '/operations/review' | '/operations/usage' | '/settings';
 export type BackendHealth = 'online' | 'degraded' | 'offline' | 'unknown';
-
-/** Every non-lens capability, and where it is reachable from. */
-const CAPABILITIES: readonly { target: OverlayTarget; label: string; icon: React.ElementType }[] = [
-  { target: 'corpus', label: 'Corpus', icon: FileText },
-  { target: 'index', label: 'Index & Storage', icon: Database },
-  { target: 'guardrails', label: 'Guardrails', icon: ShieldAlert },
-  { target: 'review', label: 'Review Queue', icon: ListChecks },
-  { target: 'metrics', label: 'Metrics', icon: ChartNoAxesColumn },
+const NAV = [
+  { label: 'Ask', path: '/ask' as Route, Icon: CircleHelp },
+  { label: 'Sources', path: '/sources' as Route, Icon: BookOpen },
+  { label: 'Operations', path: '/operations/safety' as Route, Icon: ShieldCheck },
+  { label: 'Settings', path: '/settings' as Route, Icon: Settings2 },
 ];
-
-/** The dialog's accessible name for each destination. */
-const OVERLAY_TITLE: Record<OverlayTarget, string> = {
-  corpus: 'Corpus',
-  index: 'Index & Storage',
-  guardrails: 'Guardrails',
-  review: 'Review Queue',
-  metrics: 'Metrics',
-  settings: 'Settings',
+const parseRoute = (): Route => {
+  const path = window.location.hash.replace(/^#/, '');
+  const valid: Route[] = ['/ask', '/sources', '/sources/index', '/operations/safety', '/operations/review', '/operations/usage', '/settings'];
+  return valid.includes(path as Route) ? path as Route : '/ask';
+};
+const TARGET_ROUTE: Record<OverlayTarget, Route> = {
+  corpus: '/sources', index: '/sources/index', guardrails: '/operations/safety',
+  review: '/operations/review', metrics: '/operations/usage', settings: '/settings',
 };
 
-/** Breadcrumb used when an overlay is opened without naming its origin. */
-const LENS_LABEL: Record<LensId, string> = { ask: 'ASK', corpus: 'CORPUS', operate: 'OPERATE' };
-
 export const App: React.FC = () => {
-  const [activeLens, setActiveLens] = useState<LensId>('ask');
-  const [activeOverlay, setActiveOverlay] = useState<OverlayTarget | null>(null);
-  const [overlayOpts, setOverlayOpts] = useState<OpenOverlayOptions>({});
-  const [focusedDocumentId, setFocusedDocumentId] = useState<string | null>(null);
-  const [focusedChunkId, setFocusedChunkId] = useState<string | null>(null);
+  const [route, setRoute] = useState<Route>(parseRoute);
   const [tenantId, setTenantId] = useState('default');
   const [apiKey, setApiKey] = useState(api.getApiKey());
-  const [backendHealth, setBackendHealth] = useState<BackendHealth>('offline');
-  const [generationTestStatus, setGenerationTestStatus] = useState<'untested' | 'passed' | 'failed'>('untested');
+  const [health, setHealth] = useState<BackendHealth>('offline');
+  const [sidebarWidth, setSidebarWidth] = useState(248);
+  const [collapsed, setCollapsed] = useState(false);
+  const [focus, setFocus] = useState<OpenOverlayOptions>({});
 
-  // Readiness is public, so the shell can report it before API-key unlock.
   useEffect(() => {
+    const sync = () => setRoute(parseRoute());
+    window.addEventListener('popstate', sync);
+    window.addEventListener('hashchange', sync);
+    if (!window.location.hash) window.history.replaceState(null, '', '#/ask');
+    return () => { window.removeEventListener('popstate', sync); window.removeEventListener('hashchange', sync); };
+  }, []);
+
+  useEffect(() => {
+    let live = true;
     const check = async () => {
-      try {
-        const h = await api.checkHealth();
-        if (typeof h.ready !== 'boolean') {
-          setBackendHealth('unknown');
-          return;
-        }
-        setBackendHealth(h.ready ? 'online' : 'degraded');
-      } catch {
-        setBackendHealth('offline');
-      }
+      try { const result = await api.checkHealth(); if (live) setHealth(typeof result.ready !== 'boolean' ? 'unknown' : result.ready ? 'online' : 'degraded'); }
+      catch { if (live) setHealth('offline'); }
     };
-
-    check();
-    const interval = setInterval(check, 15000);
-    return () => clearInterval(interval);
+    void check();
+    const timer = window.setInterval(check, 15000);
+    return () => { live = false; window.clearInterval(timer); };
   }, []);
 
-  const handleSetApiKey = (key: string) => {
-    setApiKey(key);
-    api.setApiKey(key);
-  };
-
-  const clearCitationFocus = useCallback(() => {
-    setFocusedDocumentId(null);
-    setFocusedChunkId(null);
+  const navigate = useCallback((next: Route, replace = false) => {
+    if (replace) window.history.replaceState(null, '', `#${next}`);
+    else if (window.location.hash !== `#${next}`) window.history.pushState(null, '', `#${next}`);
+    setRoute(next);
   }, []);
-
   const openOverlay = useCallback((target: OverlayTarget, opts?: OpenOverlayOptions) => {
-    if (opts?.documentId !== undefined) setFocusedDocumentId(opts.documentId);
-    if (opts?.chunkId !== undefined) setFocusedChunkId(opts.chunkId);
-    setOverlayOpts(opts ?? {});
-    setActiveOverlay(target);
-  }, []);
+    setFocus(opts ?? {});
+    navigate(TARGET_ROUTE[target]);
+  }, [navigate]);
+  const closeOverlay = useCallback(() => { setFocus({}); navigate('/ask'); }, [navigate]);
+  const activeTarget: OverlayTarget | null = route === '/sources' ? 'corpus' : route === '/sources/index' ? 'index' : route === '/operations/safety' ? 'guardrails' : route === '/operations/review' ? 'review' : route === '/operations/usage' ? 'metrics' : route === '/settings' ? 'settings' : null;
+  const workbench = useMemo(() => ({ openOverlay, closeOverlay, activeOverlay: activeTarget }), [openOverlay, closeOverlay, activeTarget]);
+  const saveApiKey = (key: string) => { setApiKey(key); api.setApiKey(key); };
 
-  const closeOverlay = useCallback(() => {
-    setActiveOverlay(null);
-    setOverlayOpts({});
-    clearCitationFocus();
-  }, [clearCitationFocus]);
+  if (import.meta.env.PROD && !apiKey) return <UnlockScreen onUnlock={saveApiKey} />;
 
-  const workbench = useMemo(
-    () => ({ openOverlay, closeOverlay, activeOverlay }),
-    [openOverlay, closeOverlay, activeOverlay],
-  );
-
-  if (import.meta.env.PROD && !apiKey) {
-    return <UnlockScreen onUnlock={handleSetApiKey} />;
-  }
-
-  // Changing lens dismisses the overlay: the two hosts share a canvas, and
-  // leaving the surface underneath would mount it twice.
-  const selectLens = (lens: LensId) => {
-    setActiveLens(lens);
-    closeOverlay();
+  const onResizeKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowRight') setSidebarWidth((width) => Math.min(320, width + 16));
+    else if (event.key === 'ArrowLeft') setSidebarWidth((width) => Math.max(200, width - 16));
+    else if (event.key === 'Home') setSidebarWidth(200);
+    else if (event.key === 'End') setSidebarWidth(320);
+    else return;
+    event.preventDefault();
+  };
+  const onResizePointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.setPointerCapture) event.currentTarget.setPointerCapture(event.pointerId);
+    const move = (e: PointerEvent) => setSidebarWidth(Math.max(200, Math.min(320, e.clientX)));
+    const stop = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop, { once: true });
   };
 
-  // A citation is a jump, not a screen change: the canvas asks for the Corpus
-  // overlay and the canvas stays where it is underneath it.
-  const openCapability = (target: OverlayTarget) =>
-    openOverlay(target, { breadcrumb: LENS_LABEL[activeLens] });
-
-  // B5: only the active lens's studio is mounted, so inactive studios never
-  // fetch and their DOM is genuinely gone. Each one is also a lazy chunk, so
-  // "not mounted" also means "not downloaded". Same rule for the overlay host.
-  const canvas = (() => {
-    switch (activeLens) {
-      case 'corpus':
-        return (
-          <LazySurface key="corpus" label="Corpus">
-            <IngestionStudio
-              tenantId={tenantId}
-              focusedDocumentId={focusedDocumentId}
-              focusedChunkId={focusedChunkId}
-              onDismissFocus={clearCitationFocus}
-            />
-          </LazySurface>
-        );
-      case 'operate':
-        return (
-          <LazySurface key="guardrails" label="Guardrails">
-            <GuardrailsStudio tenantId={tenantId} />
-          </LazySurface>
-        );
-      case 'ask':
-      default:
-        // The canvas drives the overlay through WorkbenchContext itself; the
-        // shell only hosts the surface it asks for.
-        return <RagWorkspace tenantId={tenantId} />;
-    }
-  })();
-
-  const overlaySurface = (() => {
-    if (!activeOverlay) return null;
-    switch (activeOverlay) {
-      case 'corpus':
-        return (
-          <LazySurface key="corpus" label="Corpus">
-            <IngestionStudio
-              tenantId={tenantId}
-              focusedDocumentId={focusedDocumentId}
-              focusedChunkId={focusedChunkId}
-              onDismissFocus={clearCitationFocus}
-            />
-          </LazySurface>
-        );
-      case 'index':
-        return (
-          <LazySurface key="index" label="Index & Storage">
-            <IndexStorageStudio tenantId={tenantId} />
-          </LazySurface>
-        );
-      case 'guardrails':
-        return (
-          <LazySurface key="guardrails" label="Guardrails">
-            <GuardrailsStudio tenantId={tenantId} />
-          </LazySurface>
-        );
-      case 'review':
-        return (
-          <LazySurface key="review" label="Review Queue">
-            <ReviewQueue tenantId={tenantId} />
-          </LazySurface>
-        );
-      case 'metrics':
-        return (
-          <LazySurface key="metrics" label="Metrics">
-            <MetricsDashboard tenantId={tenantId} />
-          </LazySurface>
-        );
-      default:
-        return null;
-    }
-  })();
-
+  const operations = route.startsWith('/operations');
+  const sectionTitle = route === '/ask' ? 'Ask' : route.startsWith('/sources') ? 'Sources' : operations ? 'Operations' : 'Settings';
   return (
     <WorkbenchContext.Provider value={workbench}>
-      <div className="flex min-h-screen flex-col bg-surface text-ink">
-        <ApiErrorNotice />
-        <TopBar
-          tenantId={tenantId}
-          setTenantId={setTenantId}
-          backendHealth={backendHealth}
-          generationTestStatus={generationTestStatus}
-          onGenerationTestResult={(success) =>
-            setGenerationTestStatus(success === null ? 'untested' : success ? 'passed' : 'failed')
-          }
-          apiKey={apiKey}
-          setApiKey={handleSetApiKey}
-        />
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
-          <LensRail activeLens={activeLens} onSelectLens={selectLens} />
-
-          <main className="min-w-0 flex-1 overflow-y-auto bg-surface p-4 md:p-6">
-            {/* Capability destinations. These are the rail's second tier: the
-                lenses change the canvas, these slide a surface over it. */}
-            <nav
-              aria-label="Capability overlays"
-              className="mb-4 flex flex-wrap items-center gap-1.5 border-b border-hairline pb-3"
-            >
-              {CAPABILITIES.map(({ target, label, icon: Icon }) => (
-                <button
-                  key={target}
-                  type="button"
-                  onClick={() => openCapability(target)}
-                  className="label-section flex items-center gap-1.5 rounded-sm border border-hairline px-2 py-1 text-muted transition-colors hover:border-hairline-strong hover:bg-accent-wash hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  <Icon className="size-3.5" aria-hidden="true" />
-                  {label}
-                </button>
-              ))}
-            </nav>
-
-            {canvas}
+      <div className="workbench-shell" style={{ '--sidebar-width': collapsed ? '72px' : `${sidebarWidth}px` } as React.CSSProperties}>
+        <aside className={`workbench-sidebar${collapsed ? ' is-collapsed' : ''}`}>
+          <a className="brand-mark" href="#/ask" onClick={(e) => { e.preventDefault(); navigate('/ask'); }} aria-label="Meridian home"><span className="brand-glyph">M</span><span className="brand-name">Meridian</span></a>
+          <nav aria-label="Primary navigation" className="primary-nav">
+            {NAV.map(({ label, path, Icon }) => <a key={label} href={`#${path}`} aria-current={(label === 'Operations' ? operations : route === path || (label === 'Sources' && route === '/sources/index')) ? 'page' : undefined} title={collapsed ? label : undefined} onClick={(e) => { e.preventDefault(); navigate(path); }}><Icon aria-hidden="true"/><span>{label}</span></a>)}
+          </nav>
+          <button className="sidebar-collapse" type="button" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setCollapsed(!collapsed)}>{collapsed ? <ChevronRight/> : <ChevronLeft/>}<span>{collapsed ? 'Expand' : 'Collapse'}</span></button>
+        </aside>
+        {!collapsed && <div className="sidebar-resizer" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin={200} aria-valuemax={320} aria-valuenow={sidebarWidth} tabIndex={0} onKeyDown={onResizeKey} onPointerDown={onResizePointer} />}
+        <div className="workbench-main">
+          <header className="workbench-header">
+            <div className="header-title"><span className="eyebrow">WORKSPACE</span><strong>{sectionTitle}</strong></div>
+            <div className="header-tools"><label>Tenant <input aria-label="Tenant Identifier" value={tenantId} onChange={(event) => setTenantId(event.target.value)} /></label><StatusChip variant={health === 'online' ? 'ok' : health === 'degraded' ? 'warn' : 'fail'}>{health === 'online' ? 'Online' : health === 'degraded' ? 'Degraded' : health === 'unknown' ? 'Unknown' : 'Offline'}</StatusChip></div>
+          </header>
+          {operations && <nav className="section-nav" aria-label="Operations sections">
+            {[['Safety rules', '/operations/safety'], ['Review queue', '/operations/review'], ['Usage', '/operations/usage']].map(([label, path]) => <a key={path} href={`#${path}`} aria-current={route === path ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(path as Route); }}>{label}</a>)}
+          </nav>}
+          {route.startsWith('/sources') && <nav className="section-nav" aria-label="Sources sections">
+            {[['Catalog', '/sources'], ['Index & storage', '/sources/index']].map(([label, path]) => <a key={path} href={`#${path}`} aria-current={route === path ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(path as Route); }}>{label}</a>)}
+          </nav>}
+          <main className="workbench-content">
+            <div className="route-view" hidden={route !== '/ask'}><RagWorkspace tenantId={tenantId}/></div>
+            {route === '/sources' && <LazySurface label="Sources"><IngestionStudio tenantId={tenantId} focusedDocumentId={focus.documentId ?? null} focusedChunkId={focus.chunkId ?? null} onDismissFocus={() => setFocus({})}/></LazySurface>}
+            {route === '/sources/index' && <LazySurface label="Index and storage"><IndexStorageStudio tenantId={tenantId}/></LazySurface>}
+            {route === '/operations/safety' && <LazySurface label="Safety rules"><GuardrailsStudio tenantId={tenantId}/></LazySurface>}
+            {route === '/operations/review' && <LazySurface label="Review queue"><ReviewQueue tenantId={tenantId}/></LazySurface>}
+            {route === '/operations/usage' && <LazySurface label="Usage"><MetricsDashboard tenantId={tenantId}/></LazySurface>}
+            {route === '/settings' && <LazySurface label="Settings"><SettingsModal isOpen presentation="page" onClose={closeOverlay} platformApiKey={apiKey} onSavePlatformApiKey={saveApiKey}/></LazySurface>}
           </main>
+          <nav className="mobile-nav" aria-label="Primary navigation">
+            {NAV.map(({ label, path, Icon }) => <a key={label} href={`#${path}`} aria-current={(label === 'Operations' ? operations : route === path || (label === 'Sources' && route === '/sources/index')) ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(path); }}><Icon aria-hidden="true"/><span>{label}</span></a>)}
+          </nav>
         </div>
-
-        {/* The single overlay host: one sheet at a time, over the canvas. */}
-        <Overlay
-          open={activeOverlay !== null}
-          onClose={closeOverlay}
-          title={activeOverlay ? OVERLAY_TITLE[activeOverlay] : ''}
-          breadcrumb={overlayOpts.breadcrumb ?? (activeOverlay ? LENS_LABEL[activeLens] : undefined)}
-        >
-          {overlaySurface}
-        </Overlay>
       </div>
     </WorkbenchContext.Provider>
   );
