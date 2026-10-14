@@ -75,7 +75,7 @@ export const App: React.FC = () => {
   const workbench = useMemo(() => ({ openOverlay, closeOverlay, activeOverlay: activeTarget }), [openOverlay, closeOverlay, activeTarget]);
   const saveApiKey = (key: string) => { setApiKey(key); api.setApiKey(key); };
 
-  if (import.meta.env.PROD && !apiKey) return <UnlockScreen onUnlock={saveApiKey} />;
+  if (!apiKey) return <UnlockScreen onUnlock={saveApiKey} />;
 
   const onResizeKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'ArrowRight') setSidebarWidth((width) => Math.min(320, width + 16));

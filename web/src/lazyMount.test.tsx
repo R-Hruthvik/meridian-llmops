@@ -54,7 +54,7 @@ const ANSWER = {
 
 vi.mock('./services/api', () => ({
   api: {
-    getApiKey: vi.fn(() => ''),
+    getApiKey: vi.fn(() => 'test-session-key'),
     setApiKey: vi.fn(),
     checkHealth: vi.fn(async () => ({ ready: true })),
     getLLMSettings: vi.fn(async () => ({ active_provider: 'openai', default_model: 'gpt-4o-mini' })),

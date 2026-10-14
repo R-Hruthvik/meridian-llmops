@@ -5,7 +5,7 @@ import { App } from './App';
 
 vi.mock('./services/api', () => ({
   api: {
-    getApiKey: vi.fn(() => ''), setApiKey: vi.fn(), checkHealth: vi.fn(),
+    getApiKey: vi.fn(() => 'test-session-key'), setApiKey: vi.fn(), checkHealth: vi.fn(),
     getLLMSettings: vi.fn(), updateLLMSettings: vi.fn(), testLLMConnection: vi.fn(),
     query: vi.fn(), getDocuments: vi.fn(), getDocument: vi.fn(), deleteDocument: vi.fn(),
     clearAllDocuments: vi.fn(), seedSampleDocuments: vi.fn(), uploadDocuments: vi.fn(),
@@ -51,6 +51,7 @@ const go = (name: string) => within(nav()).getByRole('link', { name });
 beforeEach(() => {
   window.history.replaceState(null, '', '/');
   vi.clearAllMocks();
+  (api.getApiKey as ReturnType<typeof vi.fn>).mockReturnValue('test-session-key');
   (api.checkHealth as ReturnType<typeof vi.fn>).mockResolvedValue({ ready: true });
   (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
     active_provider: 'custom', default_model: 'kilo-auto/free',
@@ -68,6 +69,20 @@ beforeEach(() => {
 });
 
 describe('Meridian workbench navigation', () => {
+  it('requires an API key before opening protected workspaces in development', async () => {
+    const user = userEvent.setup();
+    (api.getApiKey as ReturnType<typeof vi.fn>).mockReturnValue('');
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: 'Unlock Meridian' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Primary navigation' })).toBeNull();
+    await user.type(screen.getByLabelText('API key'), 'local-admin-key');
+    await user.click(screen.getByRole('button', { name: 'Unlock' }));
+
+    expect(api.setApiKey).toHaveBeenCalledWith('local-admin-key');
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
+  });
+
   it('shows four labeled destinations and opens Sources at its own route', async () => {
     const user = userEvent.setup();
     render(<App />);

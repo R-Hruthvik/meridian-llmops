@@ -18,7 +18,7 @@ vi.mock('./components/MetricsDashboard', () => ({
 vi.mock('./components/SettingsModal', () => ({ SettingsModal: () => <div data-testid="settings-surface" /> }));
 vi.mock('./services/api', () => ({
   api: {
-    getApiKey: vi.fn(() => ''),
+    getApiKey: vi.fn(() => 'test-session-key'),
     setApiKey: vi.fn(),
     checkHealth: vi.fn(async () => ({ ready: true })),
     getLLMSettings: vi.fn(async () => ({ active_provider: 'openai', default_model: 'gpt-4o-mini' })),
