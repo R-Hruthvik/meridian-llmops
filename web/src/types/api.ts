@@ -186,6 +186,8 @@ export interface TenantMetrics {
   };
   recent_requests: Array<{
     query: string;
+    recorded_at: string;
+    error: boolean;
     duration_ms: number;
     timings_ms: Record<string, number>;
   }>;

@@ -208,3 +208,15 @@
 @media (prefers-reduced-motion: reduce) {
   .rm-app *, .rm-app *::before, .rm-app *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* The Route Map rail is an adjustable track; the drag edge is also keyboard accessible. */
+.rm-app { grid-template-columns: var(--rm-nav-width, 244px) 6px minmax(0, 1fr); }
+.rm-collapsed { grid-template-columns: 70px 0 minmax(0, 1fr); }
+.rm-nav-resizer { grid-column: 2; grid-row: 1; z-index: 3; width: 6px; cursor: col-resize; touch-action: none; background: transparent; }
+.rm-nav-resizer:hover, .rm-nav-resizer:focus-visible { background: #7099aa; outline: none; }
+.rm-copy-answer { border: 1px solid var(--rm-line); border-radius: 5px; background: #fff; padding: 5px 9px; color: var(--rm-muted); font-size: 11px; cursor: pointer; }
+@media (max-width: 940px) { .rm-app { grid-template-columns: var(--rm-nav-width, 205px) 6px minmax(0, 1fr); } }
+@media (max-width: 760px) { .rm-app, .rm-collapsed { grid-template-columns: minmax(0, 1fr); } .rm-nav-resizer { display: none; } }
+.rm-scope select { border: 0; max-width: 230px; color: #293b45; background: transparent; font-weight: 600; cursor: pointer; }
+.rm-answer-copy small { display: block; margin-top: 12px; color: var(--rm-muted); font-size: 11px; }
+@media (max-width: 760px) { .rm-evidence { position: fixed; z-index: 10; right: 10px; bottom: 66px; left: 10px; max-height: min(72vh, 620px); overflow: auto; border: 1px solid #cad6d0; border-radius: 12px; background: var(--rm-paper); box-shadow: 0 14px 42px #14263b33; } }
