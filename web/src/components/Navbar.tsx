@@ -182,8 +182,6 @@ export const TopBar: React.FC<TopBarProps> = ({
               setShowSettingsModal(false);
               fetchSettings();
             }}
-            platformApiKey={apiKey}
-            onSavePlatformApiKey={setApiKey}
             onGenerationTestResult={onGenerationTestResult}
           />
         </LazySurface>

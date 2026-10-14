@@ -76,7 +76,7 @@ const AT_MODULE_LOAD = [...evaluated];
 
 const primary = () => screen.getByRole('navigation', { name: 'Primary navigation' });
 const go = (name: string) => within(primary()).getByRole('link', { name });
-const operations = () => screen.getByRole('navigation', { name: 'Operations sections' });
+const operations = () => screen.getByRole('navigation', { name: 'Monitor sections' });
 const sources = () => screen.getByRole('navigation', { name: 'Sources sections' });
 
 beforeEach(() => {
@@ -106,23 +106,21 @@ describe('first paint ships only the Ask surface', () => {
 });
 
 describe('a surface is evaluated the first time it is opened', () => {
-  it('loads Index & Storage, Review Queue and Metrics on demand', async () => {
+  it('loads Index & Storage, Safety checks, Review Queue and Metrics on demand', async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(go('Sources'));
     await user.click(within(sources()).getByRole('link', { name: 'Index & storage' }));
     expect(await screen.findByTestId('index-surface')).toBeInTheDocument();
-    await user.click(go('Operations'));
-    for (const [label, marker] of [
-      ['Review queue', 'review-surface'],
-      ['Usage', 'metrics-surface'],
-    ] as const) {
-      await user.click(within(operations()).getByRole('link', { name: label }));
-      expect(await screen.findByTestId(marker)).toBeInTheDocument();
-    }
+    await user.click(go('Monitor'));
+    expect(await screen.findByTestId('metrics-surface')).toBeInTheDocument();
+    await user.click(within(operations()).getByRole('link', { name: 'Safety checks' }));
+    expect(await screen.findByTestId('guardrails-surface')).toBeInTheDocument();
+    await user.click(within(operations()).getByRole('link', { name: 'Review queue' }));
+    expect(await screen.findByTestId('review-surface')).toBeInTheDocument();
 
-    expect(evaluated).toEqual(['corpus', 'index', 'guardrails', 'review', 'metrics']);
+    expect(evaluated).toEqual(['corpus', 'index', 'metrics', 'guardrails', 'review']);
   });
 
   it('loads Corpus and Guardrails on demand from the rail', async () => {
@@ -132,7 +130,8 @@ describe('a surface is evaluated the first time it is opened', () => {
     await user.click(go('Sources'));
     expect(await screen.findByTestId('corpus-surface')).toBeInTheDocument();
 
-    await user.click(go('Operations'));
+    await user.click(go('Monitor'));
+    await user.click(within(operations()).getByRole('link', { name: 'Safety checks' }));
     expect(await screen.findByTestId('guardrails-surface')).toBeInTheDocument();
 
     expect(screen.getByTestId('guardrails-surface')).toBeInTheDocument();
@@ -144,7 +143,7 @@ describe('a pending surface is labelled, not blank', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(go('Operations'));
+    await user.click(go('Monitor'));
     await user.click(within(operations()).getByRole('link', { name: 'Usage' }));
 
     expect(await screen.findByTestId('metrics-surface')).toBeInTheDocument();

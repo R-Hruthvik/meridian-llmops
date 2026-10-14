@@ -12,7 +12,8 @@ const projectRoot = fileURLToPath(new URL('..', import.meta.url))
 
 function readLocalProxyEnv(): Record<string, string> {
   try {
-    const contents = readFileSync(`${projectRoot}/.env.local`, 'utf8')
+    const sharedEnvPath = fileURLToPath(new URL('../../llm/.env', import.meta.url))
+    const contents = readFileSync(sharedEnvPath, 'utf8')
     const values: Record<string, string> = {}
     for (const line of contents.split(/\r?\n/)) {
       const match = line.match(/^(API_KEYS|ADMIN_API_KEY)=(.*)$/)

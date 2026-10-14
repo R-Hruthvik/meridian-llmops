@@ -69,24 +69,18 @@ beforeEach(() => {
 });
 
 describe('Meridian workbench navigation', () => {
-  it('requires an API key before opening protected workspaces in development', async () => {
-    const user = userEvent.setup();
+  it('opens the workspace without an in-app unlock gate', async () => {
     (api.getApiKey as ReturnType<typeof vi.fn>).mockReturnValue('');
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: 'Unlock Meridian' })).toBeInTheDocument();
-    expect(screen.queryByRole('navigation', { name: 'Primary navigation' })).toBeNull();
-    await user.type(screen.getByLabelText('API key'), 'local-admin-key');
-    await user.click(screen.getByRole('button', { name: 'Unlock' }));
-
-    expect(api.setApiKey).toHaveBeenCalledWith('local-admin-key');
     expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Unlock Meridian' })).toBeNull();
   });
 
   it('shows four labeled destinations and opens Sources at its own route', async () => {
     const user = userEvent.setup();
     render(<App />);
-    expect(within(nav()).getAllByRole('link').map((link) => link.textContent?.trim())).toEqual(['Ask', 'Sources', 'Operations', 'Settings']);
+    expect(within(nav()).getAllByRole('link').map((link) => link.textContent?.trim())).toEqual(['Ask', 'Sources', 'Monitor', 'Settings']);
     await user.click(go('Sources'));
     expect(window.location.hash).toBe('#/sources');
     expect(go('Sources')).toHaveAttribute('aria-current', 'page');
@@ -94,10 +88,10 @@ describe('Meridian workbench navigation', () => {
     await waitFor(() => expect(api.getDocuments).toHaveBeenCalledWith('default'));
   });
 
-  it('opens an Operations sub-section from a direct hash route', async () => {
+  it('opens a Monitor sub-section from a direct hash route', async () => {
     window.history.replaceState(null, '', '/#/operations/review');
     render(<App />);
-    expect(go('Operations')).toHaveAttribute('aria-current', 'page');
+    expect(go('Monitor')).toHaveAttribute('aria-current', 'page');
     expect(await screen.findByRole('heading', { name: /review queue/i })).toBeInTheDocument();
     await waitFor(() => expect(api.listReviewItems).toHaveBeenCalled());
   });
@@ -116,13 +110,13 @@ describe('Meridian workbench navigation', () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(go('Sources'));
-    await user.click(go('Operations'));
+    await user.click(go('Monitor'));
     window.history.back();
     await waitFor(() => expect(window.location.hash).toBe('#/sources'));
     expect(go('Sources')).toHaveAttribute('aria-current', 'page');
     window.history.forward();
-    await waitFor(() => expect(window.location.hash).toBe('#/operations/rules'));
-    expect(go('Operations')).toHaveAttribute('aria-current', 'page');
+    await waitFor(() => expect(window.location.hash).toBe('#/operations/usage'));
+    expect(go('Monitor')).toHaveAttribute('aria-current', 'page');
   });
 
   it('keeps the question and answer in memory when leaving Ask', async () => {
@@ -153,12 +147,12 @@ describe('Meridian workbench navigation', () => {
     expect(document.querySelector('[data-focused-chunk="chunk-b"]')).toBeInTheDocument();
   });
 
-  it('maps Operations tabs to real views, with no invented all-good status', async () => {
+  it('maps Monitor tabs to real views, with no invented all-good status', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(go('Operations'));
-    const operations = screen.getByRole('navigation', { name: 'Operations sections' });
-    expect(within(operations).getByRole('link', { name: 'Safety rules' })).toBeInTheDocument();
+    await user.click(go('Monitor'));
+    const operations = screen.getByRole('navigation', { name: 'Monitor sections' });
+    expect(within(operations).getByRole('link', { name: 'Safety checks' })).toBeInTheDocument();
     expect(within(operations).getByRole('link', { name: 'Review queue' })).toBeInTheDocument();
     expect(within(operations).getByRole('link', { name: 'Usage' })).toBeInTheDocument();
     expect(screen.queryByText(/everything is in good shape|all systems ready/i)).toBeNull();
@@ -191,7 +185,7 @@ describe('Meridian workbench navigation', () => {
 
   it('keeps tenant and actual service health in the compact header', async () => {
     render(<App />);
-    expect(screen.getByLabelText('Tenant Identifier')).toBeInTheDocument();
+    expect(screen.getByLabelText('Workspace identifier')).toBeInTheDocument();
     expect(await screen.findByText('Online')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /profile/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /search anything/i })).toBeNull();

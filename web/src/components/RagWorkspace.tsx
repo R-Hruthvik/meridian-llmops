@@ -264,7 +264,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
         </details>
 
         <div className="mt-4 flex justify-end">
-          <button onClick={() => handleQuery()} disabled={loading || !query.trim()} className="flex min-h-11 items-center gap-2 rounded-md bg-[#234d42] px-5 py-2 text-label font-semibold text-white transition-colors hover:bg-[#193b32] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => handleQuery()} disabled={loading || !query.trim()} className="flex min-h-11 items-center gap-2 rounded-md bg-accent px-5 py-2 text-label font-semibold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
             {loading ? <><RefreshCw className="size-4 animate-spin"/><span>Working…</span></> : <><span>{retrievalOnly ? 'Find sources' : 'Ask'}</span><Send className="size-3.5"/></>}
           </button>
         </div>

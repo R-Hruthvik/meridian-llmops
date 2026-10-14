@@ -5,7 +5,6 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronDown,
-  HelpCircle,
   Key,
   Layers,
   Radio,
@@ -22,8 +21,6 @@ interface SettingsModalProps {
   isOpen: boolean;
   presentation?: 'modal' | 'page';
   onClose: () => void;
-  platformApiKey: string;
-  onSavePlatformApiKey: (key: string) => void;
   onGenerationTestResult?: (success: boolean | null) => void;
 }
 
@@ -31,12 +28,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   presentation = 'modal',
   onClose,
-  platformApiKey,
-  onSavePlatformApiKey,
   onGenerationTestResult,
 }) => {
   const [mounted, setMounted] = useState(false);
-  const [platformKey, setPlatformKey] = useState(platformApiKey);
   const [provider, setProvider] = useState<string>('openai');
   const [openaiKey, setOpenaiKey] = useState('');
   const [openaiOrgId, setOpenaiOrgId] = useState('');
@@ -65,7 +59,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   // Pipeline execution tuning (UpdateLLMSettingsRequest: timeout 1-300s,
   // max_cycles 1-10, enforce_guardrails bool). Blank numeric inputs are
   // omitted so saved values are preserved server-side.
@@ -225,10 +218,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleTestAndFetchModels = async () => {
     setTesting(true);
     setTestResult(null);
-    if (platformKey) {
-      api.setApiKey(platformKey);
-      onSavePlatformApiKey(platformKey);
-    }
     try {
       const res = await api.testAndFetchModels({
         provider,
@@ -293,10 +282,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setLoading(true);
     setSaveSuccess(false);
     setSaveError(null);
-    if (platformKey) {
-      onSavePlatformApiKey(platformKey);
-      api.setApiKey(platformKey);
-    }
 
     const targetProvider = switchProvider || provider;
     const targetModel = switchModel || defaultModel;
@@ -447,11 +432,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </h1>
               ) : (
                 <h3 id="settings-modal-title" className="text-readout font-bold text-ink">
-                  LLM Provider &amp; Platform Key Studio
+                  Language model settings
                 </h3>
               )}
               <p className="text-micro text-muted">
-                {presentation === 'page' ? 'LLM provider and platform key' : 'Select provider, enter credentials, and test connection to auto-fetch models.'}
+                {presentation === 'page' ? 'Choose the provider and model Meridian uses for answers.' : 'Select a provider, configure access, and test the connection.'}
               </p>
             </div>
           </div>
@@ -908,39 +893,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* Platform key — the disclosure is the field's single title. */}
-          <div className="border-t border-hairline pt-4">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              aria-expanded={showAdvanced}
-              className="flex w-full cursor-pointer items-center justify-between gap-2 py-1 text-label font-bold text-accent-ink transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              <span className="flex items-center gap-1.5">
-                <HelpCircle className="size-3.5 text-accent" aria-hidden="true" />
-                <span>What is the Meridian Platform Key?</span>
-              </span>
-              <ChevronDown className={`size-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} aria-hidden="true" />
-            </button>
-
-            {showAdvanced && (
-              <div data-testid="platform-key-panel" className="mt-3 rounded-sm border border-hairline bg-surface-sunken p-4">
-                <p className="text-label leading-relaxed text-muted">
-                  Internal security token that authenticates client requests against Meridian
-                  platform endpoints. Sent as the <code className="id-mono text-ink">X-API-Key</code> header.
-                </p>
-                <input
-                  id="platform-key-input"
-                  type="password"
-                  value={platformKey}
-                  onChange={(e) => setPlatformKey(e.target.value)}
-                  placeholder="Enter API key"
-                  aria-label="Meridian Platform Key"
-                  className="mt-2.5 w-full rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 id-mono text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
-                />
-              </div>
-            )}
-          </div>
           </>}
         </div>
 

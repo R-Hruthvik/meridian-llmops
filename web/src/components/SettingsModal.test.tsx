@@ -43,8 +43,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
         isOpen
         presentation="page"
         onClose={vi.fn()}
-        platformApiKey=""
-        onSavePlatformApiKey={vi.fn()}
       />,
     );
 
@@ -66,8 +64,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
         isOpen
         presentation="page"
         onClose={vi.fn()}
-        platformApiKey=""
-        onSavePlatformApiKey={vi.fn()}
       />,
     );
 
@@ -84,8 +80,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
         isOpen
         presentation="page"
         onClose={vi.fn()}
-        platformApiKey=""
-        onSavePlatformApiKey={vi.fn()}
       />,
     );
 
@@ -102,8 +96,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
         isOpen
         presentation="page"
         onClose={onClose}
-        platformApiKey=""
-        onSavePlatformApiKey={vi.fn()}
       />,
     );
 
@@ -118,7 +110,7 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
     (api.getProviders as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(() => {}));
     const { rerender } = render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     expect(screen.getByText('Loading saved provider settings…')).toHaveAttribute('role', 'status');
@@ -126,10 +118,10 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('settings unavailable'));
     (api.getProviders as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('providers unavailable'));
     rerender(
-      <SettingsModal isOpen={false} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={false} onClose={vi.fn()} />,
     );
     rerender(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Saved provider settings could not be loaded');
@@ -144,8 +136,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
       <SettingsModal
         isOpen={true}
         onClose={vi.fn()}
-        platformApiKey=""
-        onSavePlatformApiKey={onSave}
       />,
     );
 
@@ -183,8 +173,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
       <SettingsModal
         isOpen={true}
         onClose={vi.fn()}
-        platformApiKey=""
-        onSavePlatformApiKey={vi.fn()}
       />,
     );
 
@@ -219,8 +207,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
       <SettingsModal
         isOpen={true}
         onClose={vi.fn()}
-        platformApiKey=""
-        onSavePlatformApiKey={vi.fn()}
       />,
     );
 
@@ -240,8 +226,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
       <SettingsModal
         isOpen={true}
         onClose={vi.fn()}
-        platformApiKey=""
-        onSavePlatformApiKey={vi.fn()}
       />,
     );
 
@@ -289,8 +273,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
       <SettingsModal
         isOpen={true}
         onClose={vi.fn()}
-        platformApiKey=""
-        onSavePlatformApiKey={vi.fn()}
       />,
     );
 
@@ -315,8 +297,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
       <SettingsModal
         isOpen={true}
         onClose={vi.fn()}
-        platformApiKey=""
-        onSavePlatformApiKey={vi.fn()}
       />,
     );
 
@@ -339,8 +319,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
       <SettingsModal
         isOpen={true}
         onClose={mockOnClose}
-        platformApiKey=""
-        onSavePlatformApiKey={vi.fn()}
       />,
     );
 
@@ -377,7 +355,7 @@ describe('SettingsModal - masked settings contract (F1/F2/F3/F5)', () => {
   it('F1: save payload drops openai_proj_id and litellm_base_url', async () => {
     const user = userEvent.setup();
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -402,7 +380,7 @@ describe('SettingsModal - masked settings contract (F1/F2/F3/F5)', () => {
   it('F2: custom_api_key/custom_base_url only for the OpenAI-compatible family', async () => {
     const user = userEvent.setup();
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -442,7 +420,7 @@ describe('SettingsModal - masked settings contract (F1/F2/F3/F5)', () => {
   it('F2: ollama sends custom_base_url but never a key', async () => {
     const user = userEvent.setup();
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -463,7 +441,7 @@ describe('SettingsModal - masked settings contract (F1/F2/F3/F5)', () => {
 
   it('F3: shows per-provider Configured status without filling password inputs', async () => {
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -487,7 +465,7 @@ describe('SettingsModal - masked settings contract (F1/F2/F3/F5)', () => {
     );
 
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -523,7 +501,7 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
   it('G4: advanced collapsible wires timeout/max_cycles/guardrails into the save payload', async () => {
     const user = userEvent.setup();
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -550,7 +528,7 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
   it('G4: blank advanced fields are omitted from the save payload', async () => {
     const user = userEvent.setup();
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -571,7 +549,7 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
   it('G4: default save omits enforce_guardrails while interacted Advanced includes it', async () => {
     const user = userEvent.setup();
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -602,7 +580,7 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
   it('G4: expand Advanced without editing omits all pipeline fields on save', async () => {
     const user = userEvent.setup();
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -626,7 +604,7 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
   it('G5: the saved-config check calls testLLMConnection and shows latency inline', async () => {
     const user = userEvent.setup();
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -667,7 +645,7 @@ describe('SettingsModal - connection actions, footer, platform key (H1-H4)', () 
 
   const openModal = async () => {
     render(
-      <SettingsModal isOpen={true} onClose={vi.fn()} platformApiKey="" onSavePlatformApiKey={vi.fn()} />,
+      <SettingsModal isOpen={true} onClose={vi.fn()} />,
     );
     await waitFor(() => {
       expect(api.getLLMSettings).toHaveBeenCalled();
@@ -733,21 +711,11 @@ describe('SettingsModal - connection actions, footer, platform key (H1-H4)', () 
     expect(screen.getByRole('button', { name: /validate typed values/i })).toBeInTheDocument();
   });
 
-  it('H4: the platform key field carries a single title', async () => {
-    const user = userEvent.setup();
-
+  it('keeps platform API keys out of the Settings page', async () => {
     await openModal();
-    await user.click(screen.getByRole('button', { name: /What is the Meridian Platform Key/i }));
 
-    const panel = screen.getByTestId('platform-key-panel');
-    // One title for one control: the disclosure above it, never a second
-    // heading or a second visible label inside the panel.
-    expect(within(panel).queryByRole('heading')).toBeNull();
-    expect(within(panel).queryByText('Meridian Platform Key (X-API-Key)')).toBeNull();
-    expect(within(panel).queryByText('Platform key')).toBeNull();
-
-    // The explanation and the field itself are untouched.
-    expect(within(panel).getByText(/Internal security token/)).toBeInTheDocument();
-    expect(within(panel).getByLabelText('Meridian Platform Key')).toBeInTheDocument();
+    expect(screen.queryByText(/Meridian Platform Key/i)).toBeNull();
+    expect(screen.queryByLabelText('API key')).toBeNull();
+    expect(screen.queryByTestId('platform-key-panel')).toBeNull();
   });
 });

@@ -33,7 +33,7 @@ vi.mock('./services/api', () => ({
 
 const primary = () => screen.getByRole('navigation', { name: 'Primary navigation' });
 const go = (name: string) => within(primary()).getByRole('link', { name });
-const operations = () => screen.getByRole('navigation', { name: 'Operations sections' });
+const operations = () => screen.getByRole('navigation', { name: 'Monitor sections' });
 
 beforeEach(() => {
   failNext.on = false;
@@ -46,7 +46,7 @@ describe('a surface whose chunk fails does not take the shell with it', () => {
     failNext.on = true;
     render(<App />);
 
-    await user.click(go('Operations'));
+    await user.click(go('Monitor'));
     await user.click(within(operations()).getByRole('link', { name: 'Usage' }));
 
     // The failure is stated where the surface would have been.
@@ -65,7 +65,7 @@ describe('a surface whose chunk fails does not take the shell with it', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(go('Operations'));
+    await user.click(go('Monitor'));
     await user.click(within(operations()).getByRole('link', { name: 'Usage' }));
 
     expect(await screen.findByTestId('metrics-surface')).toBeInTheDocument();
@@ -76,14 +76,14 @@ describe('a surface whose chunk fails does not take the shell with it', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(go('Operations'));
+    await user.click(go('Monitor'));
     await user.click(within(operations()).getByRole('link', { name: 'Usage' }));
     expect(await screen.findByTestId('metrics-surface')).toBeInTheDocument();
     await user.click(go('Ask'));
 
     // One surface failing later must not poison the host.
     failNext.on = true;
-    await user.click(go('Operations'));
+    await user.click(go('Monitor'));
     await user.click(within(operations()).getByRole('link', { name: 'Usage' }));
 
     expect(await screen.findByTestId('surface-error')).toBeInTheDocument();
