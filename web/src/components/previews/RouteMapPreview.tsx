@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Activity, ArrowRight, BookOpen, Check, ChevronDown, FileText, Gauge, LibraryBig, MessageSquareText, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings2, Waypoints, X } from 'lucide-react';
+import { PREVIEW_ANSWER, PREVIEW_QUESTION, PREVIEW_SOURCES } from './previewData';
 import './RouteMapPreview.css';
 
 type Page = 'Ask' | 'Sources' | 'Monitor' | 'Settings';
@@ -12,9 +13,9 @@ const navigation: { label: Page; icon: typeof MessageSquareText }[] = [
 ];
 
 const evidence = [
-  { id: 1, color: 'blue', file: 'rag-survey-2024.pdf', page: 'p. 8 · § 3.2', quote: 'Retrieval augmented generation combines a parametric model with a non-parametric memory…' },
-  { id: 2, color: 'red', file: 'vector-search-notes.pdf', page: 'p. 3 · § 1.4', quote: 'Retrieved passages are inserted into the prompt as contextual evidence before generation.' },
-  { id: 3, color: 'amber', file: 'rag-survey-2024.pdf', page: 'p. 11 · § 4.1', quote: 'The retriever selects relevant passages; the generator uses them to construct a response.' },
+  { id: 1, color: 'blue', ...PREVIEW_SOURCES[0], page: PREVIEW_SOURCES[0].locator, quote: PREVIEW_SOURCES[0].excerpt },
+  { id: 2, color: 'red', ...PREVIEW_SOURCES[1], page: PREVIEW_SOURCES[1].locator, quote: PREVIEW_SOURCES[1].excerpt },
+  { id: 3, color: 'amber', ...PREVIEW_SOURCES[2], page: PREVIEW_SOURCES[2].locator, quote: PREVIEW_SOURCES[2].excerpt },
 ];
 
 export default function RouteMapPreview() {
@@ -22,7 +23,7 @@ export default function RouteMapPreview() {
   const [collapsed, setCollapsed] = useState(false);
   const [selected, setSelected] = useState(1);
   const [evidenceOpen, setEvidenceOpen] = useState(true);
-  const [question, setQuestion] = useState('How do retrieval and generation work together across these papers?');
+  const [question, setQuestion] = useState(PREVIEW_QUESTION);
   const [reply, setReply] = useState('');
   const [sourceQuery, setSourceQuery] = useState('');
   const [saved, setSaved] = useState(false);
@@ -51,13 +52,13 @@ export default function RouteMapPreview() {
         <header className="rm-topbar"><div className="rm-breadcrumb">Meridian <span>/</span> {page}</div><span className="rm-preview-label"><i /> Interactive preview · sample data</span></header>
         {page === 'Ask' && <div className={`rm-work-area${!evidenceOpen ? ' rm-evidence-hidden' : ''}`}>
           <section className="rm-content">
-            <div className="rm-page-heading"><h1>Ask</h1></div>
+            <div className="rm-page-heading"><h1>Ask your sources</h1></div>
             <div className="rm-scope"><BookOpen size={15} /><span>Searching</span><strong>All 3 sample sources</strong><ChevronDown size={14} /></div>
             <div className="rm-composer"><label htmlFor="rm-question">Your question</label><textarea id="rm-question" rows={2} value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); ask(); } }} /><div className="rm-compose-foot"><span>Enter to ask · Shift + Enter for a new line</span><button onClick={ask} type="button"><Send size={15} /> Ask</button></div></div>
 
             <article className="rm-answer">
               <div className="rm-answer-head"><div className="rm-answer-title"><span className="rm-answer-mark"><Waypoints size={17} /></span><strong>Answer</strong><span className="rm-answer-tag">Preview sample</span></div><div className="rm-answer-meta">Retrieved in <b>0.82s</b></div></div>
-              <div className="rm-answer-copy"><p>{reply ? `For “${reply}” — ` : ''}Retrieval finds relevant passages in the indexed documents; generation uses those passages as context to compose an answer. The two stages work together: retrieval supplies evidence, then the language model synthesizes it into a response.</p><p>In this sample, the survey explains the retrieval stage while the search notes describe how retrieved text reaches the generator.</p></div>
+              <div className="rm-answer-copy"><p>{reply ? `For “${reply}” ` : ''}{PREVIEW_ANSWER}</p></div>
               <div className="rm-citations" aria-label="Answer citations">
                 {evidence.slice(0, 2).map((item) => <button key={item.id} type="button" className={`rm-citation ${item.color}${selected === item.id ? ' selected' : ''}`} onClick={() => { setSelected(item.id); setEvidenceOpen(true); }}><span>{item.id}</span>{item.file}<ArrowRight size={13} /></button>)}
               </div>
@@ -79,7 +80,7 @@ export default function RouteMapPreview() {
           </aside>}
         </div>}
 
-        {page === 'Sources' && <section className="rm-generic-page"><div className="rm-page-heading"><h1>Sources</h1></div><div className="rm-source-actions"><label><Search size={16} /><span className="rm-sr-only">Search sources</span><input aria-label="Search sources" placeholder="Search sources" value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} /></label><button type="button" onClick={() => setNotice('Add source is available in the full app. This preview uses sample documents.')}><Plus size={16} /> Add source</button></div><div className="rm-source-list">{['rag-survey-2024.pdf', 'vector-search-notes.pdf', 'grounded-generation-review.pdf'].filter((name) => name.includes(sourceQuery.toLowerCase())).map((name, index) => <button key={name} type="button" onClick={() => { setPage('Ask'); setSelected(index + 1); setEvidenceOpen(true); }}><FileText size={20} /><span><strong>{name}</strong><small>PDF · Sample source · {index === 1 ? '6' : '12'} passages</small></span><span className="rm-indexed">Sample indexed</span><ArrowRight size={16} /></button>)}</div>{notice && <p role="status" className="rm-notice">{notice}</p>}</section>}
+        {page === 'Sources' && <section className="rm-generic-page"><div className="rm-page-heading"><h1>Sources</h1></div><div className="rm-source-actions"><label><Search size={16} /><span className="rm-sr-only">Search sources</span><input aria-label="Search sources" placeholder="Search sources" value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} /></label><button type="button" onClick={() => setNotice('Choose a file to add it to this local preview. Nothing is uploaded.')}><Plus size={16} /> Add source</button></div><div className="rm-source-list">{PREVIEW_SOURCES.filter(({ file, title }) => `${file} ${title}`.toLowerCase().includes(sourceQuery.toLowerCase())).map((source, index) => <button key={source.id} type="button" onClick={() => { setPage('Ask'); setSelected(index + 1); setEvidenceOpen(true); }}><FileText size={20} /><span><strong>{source.file}</strong><small>{source.type} · {source.chunks} sample passages</small></span><span className="rm-indexed">Preview sample</span><ArrowRight size={16} /></button>)}</div>{notice && <p role="status" className="rm-notice">{notice}</p>}</section>}
 
         {page === 'Monitor' && <section className="rm-generic-page"><div className="rm-page-heading rm-heading-inline"><div><h1>Monitor</h1><p>Request timing and activity · illustrative sample</p></div><label className="rm-range">Time range<select value={range} onChange={(event) => setRange(event.target.value)}><option>24 hours</option><option>7 days</option><option>30 days</option></select></label></div><div className="rm-monitor-state"><Gauge size={18} /><div><strong>Sample telemetry</strong><span>This chart is illustrative and is not live service data.</span></div></div><div className="rm-monitor-chart"><div><h2>Answer latency</h2><span>Seconds · {range}</span></div><svg viewBox="0 0 680 190" role="img" aria-label="Illustrative answer latency chart"><path d="M30 145 C95 130 98 78 157 92 S227 137 278 104 S340 41 390 65 S445 125 500 90 S584 106 650 35" fill="none" stroke="#367bba" strokeWidth="3"/><path d="M30 160H650M30 115H650M30 70H650M30 25H650" stroke="#dbe2e4" strokeWidth="1"/><text x="30" y="182">00:00</text><text x="304" y="182">12:00</text><text x="610" y="182">24:00</text></svg><div className="rm-legend"><span><i className="blue" />Retrieval</span><span><i className="amber" />Generation</span></div></div><div className="rm-monitor-events"><h2>Recent activity</h2><p>No live events in this preview. Sample query above shows an illustrative retrieval time.</p></div></section>}
 

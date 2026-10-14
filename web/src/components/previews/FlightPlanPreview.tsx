@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Activity, ArrowRight, BookOpen, Check, ChevronRight, FileText, MessageSquareText, Settings2 } from 'lucide-react';
+import { PREVIEW_ANSWER, PREVIEW_QUESTION, PREVIEW_SOURCES } from './previewData';
 import './FlightPlanPreview.css';
 
 const nav = [['Ask', MessageSquareText], ['Sources', BookOpen], ['Monitor', Activity], ['Settings', Settings2]] as const;
@@ -8,10 +9,11 @@ export default function FlightPlanPreview() {
   const [section, setSection] = useState('Ask');
   const [sent, setSent] = useState(true);
   const [focus, setFocus] = useState(0);
+  const [question, setQuestion] = useState(PREVIEW_QUESTION);
   return <div className="fp-preview">
     <header className="fp-header"><a onClick={() => setSection('Ask')}><span>m</span> Meridian</a><nav aria-label="Preview navigation">{nav.map(([name, Icon]) => <button key={name} className={section === name ? 'is-active' : ''} onClick={() => setSection(name)}><Icon size={16}/>{name}</button>)}</nav><span className="fp-workspace">Workspace <strong>default</strong></span></header>
-    {section === 'Ask' ? <main className="fp-content"><div className="fp-title"><h1>Ask</h1><span>Preview sample</span></div><section className="fp-composer"><label htmlFor="fp-query">Question</label><div><textarea id="fp-query" rows={2} defaultValue="How does retrieval connect search results to a grounded answer?"/><button onClick={() => setSent(true)} aria-label="Ask question"><ArrowRight size={18}/></button></div><small>Scope: all indexed sources</small></section>
-      {sent && <section className="fp-answer"><div className="fp-answer-head"><span><Check size={15}/> Answer</span><small>Preview sample · 2 sources</small></div><h2>Retrieval supplies evidence before the model writes.</h2><p>The system searches indexed passages for relevant material, then includes those passages in the model’s context. The research paper describes the retrieval and generation stages; Meridian’s ingestion notes explain how source files become searchable chunks.</p>
+    {section === 'Ask' ? <main className="fp-content"><div className="fp-title"><h1>Ask</h1><span>Preview sample</span></div><section className="fp-composer"><label htmlFor="fp-query">Question</label><div><textarea id="fp-query" rows={2} value={question} onChange={(e) => setQuestion(e.target.value)}/><button onClick={() => setSent(true)} aria-label="Ask question"><ArrowRight size={18}/></button></div><small>Scope: all indexed sources</small></section>
+      {sent && <section className="fp-answer"><div className="fp-answer-head"><span><Check size={15}/> Answer</span><small>Preview sample · 2 sources</small></div><h2>Retrieval supplies evidence before the model writes.</h2><p>{PREVIEW_ANSWER}</p>
         <div className="fp-flow" aria-label="Evidence path">{[['01','Research paper','Retrieval finds relevant passages','p. 6 · passage 04'],['02','Ingestion notes','Documents become indexed chunks','§ Passage sizing'],['03','Grounded response','Evidence is used in the prompt','2 supporting passages']].map(([n,title,desc,meta],i)=><button key={n} className={`fp-step${focus===i?' is-selected':''}`} onClick={()=>setFocus(i)}><span className="fp-step-num">{n}</span><span className="fp-step-copy"><strong>{title}</strong><small>{desc}</small><em>{meta}</em></span>{i<2&&<ChevronRight className="fp-chevron" size={16}/>}</button>)}</div>
         <div className="fp-detail"><FileText size={17}/><div><strong>{focus===0?'Research paper':focus===1?'Ingestion notes':'Answer construction'}</strong><p>{focus===0?'“The retrieved documents are then used to condition the language model.”':focus===1?'“Each source is split into passages that can be retrieved independently.”':'Both source passages support the answer above. Select a source step to inspect its contribution.'}</p></div><button onClick={()=>setSection('Sources')}>Open source <ArrowRight size={14}/></button></div>
       </section>}
@@ -24,8 +26,8 @@ export default function FlightPlanPreview() {
 function FlightPlanSources({onAsk}:{onAsk:()=>void}) {
   const [query,setQuery]=useState('');
   const [notice,setNotice]=useState('');
-  const docs=['Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks','Meridian ingestion and chunking notes','Vector and graph retrieval design'].filter((item)=>item.toLowerCase().includes(query.toLowerCase()));
-  return <section className="fp-library"><div className="fp-library-toolbar"><label><span className="fp-sr-only">Search sources</span><input aria-label="Search sources" placeholder="Search sources" value={query} onChange={(e)=>setQuery(e.target.value)}/></label><button onClick={()=>setNotice('Add source is available in the connected app. These documents are preview samples.')}>Add source <ArrowRight size={14}/></button></div>{notice&&<p role="status" className="fp-notice">{notice}</p>}<p className="fp-library-count">{docs.length} sample documents</p>{docs.map((doc,i)=><article className="fp-document" key={doc}><FileText size={18}/><div><strong>{doc}</strong><small>{i===0?'PDF · 12 pages':i===1?'Markdown · 8 pages':'PDF · 16 pages'}</small></div><span>Preview sample</span><button aria-label={`Ask about ${doc}`} onClick={onAsk}><ArrowRight size={15}/></button></article>)}</section>;
+  const docs=PREVIEW_SOURCES.filter((source)=>`${source.file} ${source.title}`.toLowerCase().includes(query.toLowerCase()));
+  return <section className="fp-library"><div className="fp-library-toolbar"><label><span className="fp-sr-only">Search sources</span><input aria-label="Search sources" placeholder="Search sources" value={query} onChange={(e)=>setQuery(e.target.value)}/></label><button onClick={()=>setNotice('Choose a file to add it to this local preview. Nothing is uploaded.')}>Add source <ArrowRight size={14}/></button></div>{notice&&<p role="status" className="fp-notice">{notice}</p>}<p className="fp-library-count">{docs.length} preview sample documents</p>{docs.map((source)=><article className="fp-document" key={source.id}><FileText size={18}/><div><strong>{source.file}</strong><small>{source.type} · {source.chunks} sample chunks</small></div><span>Preview sample</span><button aria-label={`Ask about ${source.file}`} onClick={onAsk}><ArrowRight size={15}/></button></article>)}</section>;
 }
 
 function FlightPlanMonitor() {

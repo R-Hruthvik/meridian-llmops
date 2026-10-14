@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Activity, ArrowDownToLine, ArrowUpRight, BookOpenText, Check, ChevronDown, Clock3, FileText, LibraryBig, MessageSquareText, Plus, Search, Settings2, Sparkles, X } from 'lucide-react';
+import { PREVIEW_QUESTION, PREVIEW_SOURCES } from './previewData';
 import './EvidenceJournalPreview.css';
 
 type Page = 'Ask' | 'Sources' | 'Monitor' | 'Settings';
@@ -11,16 +12,17 @@ const nav: { label: Page; icon: typeof MessageSquareText }[] = [
   { label: 'Settings', icon: Settings2 },
 ];
 
-const documents = [
-  { name: 'Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks', type: 'PDF · 11 pages', indexed: 'Indexed 4 min ago', status: 'Ready' },
-  { name: 'Vector Search Operations Guide', type: 'Markdown · 8 pages', indexed: 'Indexed yesterday', status: 'Ready' },
-  { name: 'Evaluation Notes — October', type: 'PDF · 6 pages', indexed: 'Indexed Oct 12', status: 'Ready' },
-];
+const documents = PREVIEW_SOURCES.map((source) => ({
+  name: source.file,
+  type: `${source.type} · ${source.chunks} sample chunks`,
+  indexed: 'Preview sample',
+  status: 'Sample',
+}));
 
 export default function EvidenceJournalPreview() {
   const [page, setPage] = useState<Page>('Ask');
   const [activeCitation, setActiveCitation] = useState(1);
-  const [question, setQuestion] = useState('How does retrieval improve factual answers, and what are its limits?');
+  const [question, setQuestion] = useState(PREVIEW_QUESTION);
   const [query, setQuery] = useState('');
   const [notice, setNotice] = useState('');
   const [range, setRange] = useState('24 hours');
