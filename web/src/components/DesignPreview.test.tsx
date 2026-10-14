@@ -1,3 +1,4 @@
+import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DesignPreview } from './DesignPreview';
@@ -8,7 +9,7 @@ describe('DesignPreview', () => {
     render(<DesignPreview />);
 
     expect(screen.getByRole('heading', { name: 'Ask Meridian' })).toBeInTheDocument();
-    await user.click(screen.getByRole('link', { name: 'Sources' }));
+    await user.click(screen.getByRole('link', { name: /^Sources/ }));
     expect(screen.getByRole('heading', { name: 'Sources' })).toBeInTheDocument();
     expect(screen.getByText('Product handbook')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument();
