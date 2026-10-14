@@ -65,11 +65,17 @@
 .ej-evidence-intro { margin: 7px 0 11px; color: var(--ej-muted); font-size: 12px; }
 .ej-source-note { width: 100%; display: grid; grid-template-columns: 28px minmax(0, 1fr) 15px; gap: 8px; align-items: start; padding: 12px 7px; border: 0; border-top: 1px solid var(--ej-rule); text-align: left; background: transparent; cursor: pointer; transition: background 140ms ease; }
 .ej-source-note:hover, .ej-source-note.selected { background: #f0f3f6; }
+.ej-source-note.selected { box-shadow: inset 2px 0 var(--ej-blue); }
 .ej-note-index { color: var(--ej-blue); font: 600 12px 'Geist Mono', monospace; }
 .ej-source-note strong { display: block; font-size: 12px; line-height: 1.4; font-weight: 600; }
 .ej-source-note small { display: block; margin-top: 4px; color: var(--ej-muted); font-size: 11px; }
 .ej-source-note em { display: block; margin-top: 7px; color: #47515a; font: italic 13px/1.45 Georgia, serif; }
 .ej-source-note > svg { margin-top: 2px; color: var(--ej-muted); }
+.ej-selected-passage { margin-top: 13px; padding: 13px 14px; border-left: 2px solid var(--ej-ochre); background: var(--ej-soft); }
+.ej-selected-passage > span { display: block; color: var(--ej-muted); font: 600 10px 'Geist Mono', monospace; letter-spacing: .05em; }
+.ej-selected-passage > strong { display: block; margin-top: 7px; font-size: 13px; }
+.ej-selected-passage blockquote, .ej-source-detail blockquote { margin: 8px 0; color: #36414a; font: italic 14px/1.5 Georgia, serif; }
+.ej-selected-passage small { color: var(--ej-muted); font-size: 11px; }
 .ej-crossref { display: flex; gap: 11px; padding-top: 17px; color: var(--ej-muted); font-size: 12px; }
 .ej-crossref-line { width: 2px; align-self: stretch; background: var(--ej-ochre); }
 .ej-crossref strong { color: var(--ej-ink); font-size: 12px; }
@@ -86,6 +92,7 @@
 .ej-library-row { width: 100%; display: grid; grid-template-columns: 38px minmax(0, 1fr) 115px 145px 17px; gap: 14px; align-items: center; min-height: 78px; padding: 12px 9px; border: 0; border-bottom: 1px solid var(--ej-rule); background: transparent; text-align: left; cursor: pointer; }
 .ej-library-row:last-child { border-bottom: 0; }
 .ej-library-row:hover { background: #f0f3f6; }
+.ej-library-row.selected { background: var(--ej-blue-wash); box-shadow: inset 3px 0 var(--ej-blue); }
 .ej-file-icon { width: 34px; height: 38px; display: grid; place-items: center; color: var(--ej-blue); border: 1px solid var(--ej-rule); background: var(--ej-white); }
 .ej-library-name strong, .ej-library-name small { display: block; }
 .ej-library-name strong { font-size: 13px; font-weight: 600; }
@@ -95,6 +102,12 @@
 .ej-library-row > svg { color: var(--ej-muted); }
 .ej-data-note { margin: 16px 0; color: var(--ej-muted); font-size: 12px; }
 .ej-empty { padding: 30px 16px; border-bottom: 1px solid var(--ej-rule); color: var(--ej-muted); }
+.ej-source-detail { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(0, 1.3fr); gap: 24px; margin-top: 18px; padding: 18px; border: 1px solid var(--ej-rule); background: var(--ej-white); }
+.ej-source-detail h2 { margin: 8px 0 4px; font: 400 22px/1.2 Georgia, serif; }
+.ej-source-detail p { margin: 0; color: var(--ej-muted); font-size: 12px; }
+.ej-source-detail > div + div { padding-left: 20px; border-left: 1px solid var(--ej-rule); }
+.ej-source-detail > div + div > strong { font-size: 13px; }
+.ej-source-detail blockquote { font-size: 15px; }
 .ej-range-label { display: grid; gap: 5px; color: var(--ej-muted); font-size: 11px; }
 .ej-range-label select, .ej-setting-fields input, .ej-setting-fields select { min-height: 40px; padding: 7px 10px; border: 1px solid var(--ej-rule); border-radius: 3px; background: var(--ej-white); color: var(--ej-ink); }
 .ej-range-label select { min-width: 130px; }
@@ -183,6 +196,8 @@
   .ej-evidence { padding: 18px 0 0; border: 0; border-top: 1px solid var(--ej-rule); }
   .ej-source-note { grid-template-columns: 29px minmax(0, 1fr) 15px; }
   .ej-library-row { grid-template-columns: 32px minmax(0, 1fr) 16px; min-height: 72px; padding-inline: 2px; }
+  .ej-source-detail { grid-template-columns: 1fr; gap: 14px; padding: 14px; }
+  .ej-source-detail > div + div { padding: 13px 0 0; border-left: 0; border-top: 1px solid var(--ej-rule); }
   .ej-library-status { display: none; }
   .ej-library-name strong { line-height: 1.35; }
   .ej-source-toolbar { align-items: stretch; flex-direction: column; }
