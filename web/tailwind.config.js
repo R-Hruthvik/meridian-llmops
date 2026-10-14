@@ -9,9 +9,7 @@
  */
 const token = (name) => `rgb(var(--${name}) / <alpha-value>)`
 
-// Legacy Tailwind scales that the redesign retires (§10). They are remapped onto
-// the instrument neutrals so any component that has not been migrated yet reads
-// grey rather than violet. Use the semantic tokens instead.
+// Keep retired hue utilities neutral and map the product palette through shared tokens.
 const DE_VIOLET = {
   50: token('surface-sunken'),
   100: token('surface-sunken'),
@@ -34,7 +32,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // §4 palette
+        // Shared Meridian palette
         surface: {
           DEFAULT: token('surface'),
           raised: token('surface-raised'),
@@ -59,8 +57,7 @@ export default {
         // §6 width band for the shared overlay shell (520–680px).
         'overlay-w': '600px',
 
-        // Bridge: the pre-redesign `meridian` scale, repointed at the instrument
-        // tokens so unmigrated components stop resolving to purple.
+        // Bridge for older components, mapped to the shared palette.
         meridian: {
           primary: token('accent-ink'),
           primaryHover: token('accent'),
@@ -79,7 +76,7 @@ export default {
           textMuted: token('text-muted'),
         },
 
-        // Retired hue scales (§10) — flattened to instrument neutrals.
+        // Retired hue scales — flattened to the shared neutrals.
         purple: DE_VIOLET,
         indigo: DE_VIOLET,
         rose: DE_VIOLET,
@@ -109,14 +106,14 @@ export default {
         ],
       },
       fontSize: {
-        // §5 type scale
+        // Product type scale
         micro: ['11px', { lineHeight: '1.45' }],
-        label: ['11px', { lineHeight: '1.3' }],
+        label: ['13px', { lineHeight: '1.4' }],
         id: ['12px', { lineHeight: '1.5' }],
-        body: ['14px', { lineHeight: '1.65' }],
+        body: ['15px', { lineHeight: '1.65' }],
         verdict: ['13px', { lineHeight: '1.3' }],
         readout: ['15px', { lineHeight: '1.4' }],
-        display: ['28px', { lineHeight: '1.15' }],
+        display: ['32px', { lineHeight: '1.12' }],
       },
       borderRadius: {
         // §9 6px flat, 4px for inputs and wells, full-pill for status chips.

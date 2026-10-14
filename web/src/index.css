@@ -71,19 +71,20 @@
      modifier expands to `<color>/<alpha-value>`; a bare `var(--fail)` yields
      the invalid `var(--fail)/0.3` and the whole rule is silently dropped. The
      config reads these as `rgb(var(--x) / <alpha-value>)` so `/30` works. */
-  --surface: 247 247 245;         /* #F7F7F5 */
-  --surface-raised: 255 255 255;  /* #FFFFFF */
-  --surface-sunken: 239 238 236;  /* #EFEEEC */
-  --border: 222 221 217;          /* #DEDDD9 */
-  --border-strong: 196 195 190;   /* #C4C3BE */
-  --text: 22 21 15;               /* #16150F */
-  --text-muted: 107 106 99;       /* #6B6A63 */
-  --text-faint: 154 153 146;      /* #9A9992 */
+  --surface: 246 243 235;         /* #F6F3EB — paper */
+  --surface-raised: 255 254 250;  /* #FFFEFA — paper raised */
+  --surface-sunken: 236 233 224;  /* #ECE9E0 — paper muted */
+  --border: 222 217 206;          /* #DED9CE — rule */
+  --border-strong: 193 188 176;
+  --text: 37 45 40;               /* #252D28 — ink */
+  --text-muted: 98 108 101;       /* #626C65 — quiet ink */
+  --text-faint: 126 130 120;
 
-  /* Accent — the only accent, app-wide */
-  --accent: 232 89 12;            /* #E8590C */
-  --accent-ink: 179 71 8;         /* #B34708 */
-  --accent-wash: 255 241 232;     /* #FFF1E8 */
+  /* Pine is the primary action and navigation color. */
+  --accent: 40 92 74;             /* #285C4A */
+  --accent-ink: 30 77 61;
+  --accent-wash: 229 238 232;     /* #E5EEE8 */
+  --copper: 166 83 55;            /* #A65337 — citation references */
 
   /* Status — real state only, never decorative */
   --ok: 31 122 77;                /* #1F7A4D */
@@ -130,10 +131,9 @@ body {
 }
 
 @layer components {
-  /* §5 section label — 11px / 700 / uppercase / 0.12em. Colour is the caller's. */
+  /* Shared section labels stay readable and sentence case by default. */
   .label-section {
-    @apply text-[11px] font-bold uppercase;
-    letter-spacing: 0.12em;
+    @apply text-xs font-semibold;
   }
 
   /* §5 verdict state — 13px / 700 / mono / uppercase / 0.08em. Colour is the caller's. */
