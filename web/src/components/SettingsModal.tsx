@@ -51,7 +51,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Pipeline execution tuning (UpdateLLMSettingsRequest: timeout 1-300s,
   // max_cycles 1-10, enforce_guardrails bool). Blank numeric inputs are
   // omitted so saved values are preserved server-side.
-  const [showPipelineSettings, setShowPipelineSettings] = useState(false);
+  const [showPipelineSettings, setShowPipelineSettings] = useState(presentation === 'page');
   const [timeoutSeconds, setTimeoutSeconds] = useState('');
   const [maxCycles, setMaxCycles] = useState('');
   const [enforceGuardrails, setEnforceGuardrails] = useState(true);
@@ -642,11 +642,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ) : (
                     <Radio className="size-3.5 text-accent" aria-hidden="true" />
                   )}
-                  <span>Check saved config</span>
+                  <span>Test saved provider</span>
                 </button>
                 <p className="text-micro text-muted">
-                  Reads the configuration already stored on the server and pings it. Ignores the
-                  values you just typed.
+                  Sends one short request using the saved provider and model. It does not save
+                  changes in this form.
                 </p>
               </div>
 
@@ -662,11 +662,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ) : (
                     <Zap className="size-3.5" aria-hidden="true" />
                   )}
-                  <span>Validate typed values &amp; load models</span>
+                  <span>Validate endpoint &amp; load models</span>
                 </button>
                 <p className="text-micro text-muted">
-                  Tests the values you just typed against the endpoint and replaces the model list
-                  with what that endpoint returns.
+                  Checks the endpoint and key entered here, then lists the models it returns. It
+                  does not save these values.
                 </p>
               </div>
             </div>
@@ -678,9 +678,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 className="flex items-start gap-2 border-t border-hairline pt-3"
               >
                 <StatusChip variant={pingResult.success ? 'ok' : 'fail'}>
-                  {pingResult.success ? 'Reachable' : 'Unreachable'}
+                  {pingResult.success
+                    ? 'Connected'
+                    : pingResult.message.toLowerCase().includes('provider url is not allowed')
+                      ? 'Local endpoint blocked'
+                      : pingResult.message.toLowerCase().includes('invalid completion response')
+                        ? 'Unexpected response format'
+                        : 'Connection failed'}
                 </StatusChip>
-                <span className="text-label text-muted">{pingResult.message}</span>
+                <div className="space-y-1">
+                  <span className="text-label text-muted">{pingResult.message}</span>
+                  {!pingResult.success && pingResult.message.toLowerCase().includes('provider url is not allowed') && (
+                    <p className="text-micro text-muted">
+                      To use a trusted local or private provider, set ALLOW_PRIVATE_PROVIDER_URLS=true in the API environment and restart the API.
+                    </p>
+                  )}
+                  {!pingResult.success && pingResult.message.toLowerCase().includes('invalid completion response') && (
+                    <p className="text-micro text-muted">
+                      The endpoint replied, but Meridian could not read its response. Check that it supports the OpenAI-compatible /v1/chat/completions format and that the selected model is valid.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -718,7 +736,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             >
               <span className="flex items-center gap-1.5">
                 <Zap className="size-3.5 text-accent" aria-hidden="true" />
-                <span>Advanced: timeout, guardrails &amp; agent cycles</span>
+                <span>{presentation === 'page' ? 'Answer behavior' : 'Advanced: timeout, guardrails &amp; agent cycles'}</span>
               </span>
               <ChevronDown className={`size-4 transition-transform ${showPipelineSettings ? 'rotate-180' : ''}`} aria-hidden="true" />
             </button>

@@ -55,6 +55,15 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
     expect(screen.queryByTestId('overlay-scrim')).toBeNull();
   });
 
+  it('shows answer behavior controls directly on the full Settings page', async () => {
+    render(<SettingsModal isOpen presentation="page" onClose={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: 'Answer behavior' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText(/Timeout \(seconds/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Max cycles/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Enforce guardrails')).toBeInTheDocument();
+  });
+
   it('hydrates the selected provider, model, and generic endpoint from saved settings', async () => {
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
       ...mockSettings,
@@ -616,7 +625,7 @@ describe('SettingsModal - advanced settings + quick ping (G4/G5)', () => {
       expect(api.getLLMSettings).toHaveBeenCalled();
     });
 
-    await user.click(screen.getByRole('button', { name: /check saved config/i }));
+    await user.click(screen.getByRole('button', { name: /test saved provider/i }));
 
     await waitFor(() => {
       expect(api.testLLMConnection).toHaveBeenCalledTimes(1);
@@ -662,14 +671,14 @@ describe('SettingsModal - connection actions, footer, platform key (H1-H4)', () 
 
     const group = screen.getByTestId('connection-group');
 
-    const savedCheck = within(group).getByRole('button', { name: /check saved config/i });
-    const typedCheck = within(group).getByRole('button', { name: /validate typed values/i });
+    const savedCheck = within(group).getByRole('button', { name: /test saved provider/i });
+    const typedCheck = within(group).getByRole('button', { name: /validate endpoint & load models/i });
 
     // Each action's own block says what that action reads and what it does.
-    expect(savedCheck.closest('div')).toHaveTextContent(/already stored on the server/i);
-    expect(savedCheck.closest('div')).toHaveTextContent(/ignores the values you just typed/i);
-    expect(typedCheck.closest('div')).toHaveTextContent(/values you just typed/i);
-    expect(typedCheck.closest('div')).toHaveTextContent(/model list/i);
+    expect(savedCheck.closest('div')).toHaveTextContent(/sends one short request/i);
+    expect(savedCheck.closest('div')).toHaveTextContent(/saved provider and model/i);
+    expect(typedCheck.closest('div')).toHaveTextContent(/checks the endpoint and key entered here/i);
+    expect(typedCheck.closest('div')).toHaveTextContent(/lists the models it returns/i);
 
     // No tip anywhere that points at a control in another part of the modal.
     expect(screen.queryByText(/💡/)).toBeNull();
@@ -685,7 +694,7 @@ describe('SettingsModal - connection actions, footer, platform key (H1-H4)', () 
     });
 
     await openModal();
-    await user.click(screen.getByRole('button', { name: /check saved config/i }));
+    await user.click(screen.getByRole('button', { name: /test saved provider/i }));
 
     expect(await screen.findByText(/Missing API Key/i)).toBeInTheDocument();
     expect(screen.queryByText(/\(\d+\s*ms\)/)).toBeNull();
@@ -695,7 +704,7 @@ describe('SettingsModal - connection actions, footer, platform key (H1-H4)', () 
     const user = userEvent.setup();
 
     await openModal();
-    await user.click(screen.getByRole('button', { name: /check saved config/i }));
+    await user.click(screen.getByRole('button', { name: /test saved provider/i }));
 
     expect(await screen.findByText(/Successfully connected.*87 ms/)).toBeInTheDocument();
   });
@@ -710,10 +719,40 @@ describe('SettingsModal - connection actions, footer, platform key (H1-H4)', () 
     expect(labels).toEqual(['Cancel', 'Save & Apply']);
 
     // Neither connection check competes for the footer — both live in the body.
-    expect(within(footer).queryByRole('button', { name: /check saved config/i })).toBeNull();
-    expect(within(footer).queryByRole('button', { name: /validate typed values/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /check saved config/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /validate typed values/i })).toBeInTheDocument();
+    expect(within(footer).queryByRole('button', { name: /test saved provider/i })).toBeNull();
+    expect(within(footer).queryByRole('button', { name: /validate endpoint & load models/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /test saved provider/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /validate endpoint & load models/i })).toBeInTheDocument();
+  });
+
+  it('identifies a provider response that Meridian cannot read', async () => {
+    const user = userEvent.setup();
+    (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'error',
+      message: 'Provider custom returned an invalid completion response',
+      latency_ms: 41,
+    });
+
+    await openModal();
+    await user.click(screen.getByRole('button', { name: /test saved provider/i }));
+
+    expect(await screen.findByText('Unexpected response format')).toBeInTheDocument();
+    expect(screen.getByText(/endpoint replied, but Meridian could not read its response/i)).toBeInTheDocument();
+  });
+
+  it('explains how to connect a trusted local provider URL', async () => {
+    const user = userEvent.setup();
+    (api.testLLMConnection as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'error',
+      message: 'Provider URL is not allowed.',
+      latency_ms: 0,
+    });
+
+    await openModal();
+    await user.click(screen.getByRole('button', { name: /test saved provider/i }));
+
+    expect(await screen.findByText('Local endpoint blocked')).toBeInTheDocument();
+    expect(screen.getByText(/set ALLOW_PRIVATE_PROVIDER_URLS=true in the API environment/i)).toBeInTheDocument();
   });
 
   it('keeps platform API keys out of the Settings page', async () => {
