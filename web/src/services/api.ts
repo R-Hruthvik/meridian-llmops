@@ -71,7 +71,7 @@ class MeridianApiClient {
   private baseUrl: string;
 
   constructor() {
-    // Keep the API key in memory so refreshes require a fresh unlock.
+    // Keep the API key in memory for the current browser session.
     this.apiKey = '';
     this.baseUrl = '';
   }
