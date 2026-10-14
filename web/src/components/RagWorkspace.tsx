@@ -4,13 +4,15 @@ import {
   Check,
   Clock,
   Copy,
+  FileText,
+  ArrowUpRight,
   RefreshCw,
   Send,
 } from 'lucide-react';
 import { api, ApiError } from '../services/api';
 import { StatusChip, type StatusChipVariant } from './StatusChip';
 import { useWorkbench } from '../WorkbenchContext';
-import type { QueryResponse, RetrieveResponse, SearchResult } from '../types/api';
+import type { DocumentSummary, QueryResponse, RetrieveResponse, SearchResult } from '../types/api';
 
 // The markdown parser is the single heaviest dependency in the app and there is
 // nothing to parse until an answer exists. Deferring it keeps it out of first
@@ -103,7 +105,31 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   const [error, setError] = useState<{ message: string; status?: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
+  const [recentDocuments, setRecentDocuments] = useState<DocumentSummary[]>([]);
+  const [recentDocumentsLoaded, setRecentDocumentsLoaded] = useState(false);
+  const [recentDocumentsUnavailable, setRecentDocumentsUnavailable] = useState(false);
   const workbench = useWorkbench();
+
+  React.useEffect(() => {
+    let active = true;
+    setRecentDocumentsLoaded(false);
+    setRecentDocumentsUnavailable(false);
+    void api.getDocuments(tenantId).then((result) => {
+      if (!active) return;
+      const recent = [...result.documents]
+        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+        .slice(0, 2);
+      setRecentDocuments(recent);
+    }).catch(() => {
+      if (active) {
+        setRecentDocuments([]);
+        setRecentDocumentsUnavailable(true);
+      }
+    }).finally(() => {
+      if (active) setRecentDocumentsLoaded(true);
+    });
+    return () => { active = false; };
+  }, [tenantId]);
 
   const handleQuery = async (queryText?: string) => {
     const textToSubmit = queryText || query;
@@ -182,22 +208,25 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   const latency = formatLatency(response?.execution_time_ms ?? 0);
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-      {/* Composer */}
-      <div className="rounded-lg border border-hairline bg-surface-raised p-4 sm:p-6">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="mr-auto text-xl font-semibold tracking-tight text-ink">Ask a question</h1>
-          <label className={`flex cursor-pointer items-center gap-2 rounded-full border px-3 py-2 text-label transition-colors ${enforceGuardrails ? 'border-hairline bg-accent-wash text-accent-ink' : 'border-hairline text-muted'}`}>
-            <input
-              type="checkbox"
-              checked={enforceGuardrails}
-              onChange={(event) => setEnforceGuardrails(event.target.checked)}
-              className="size-3 rounded-sm accent-accent"
-            />
-            <span>Apply safety rules</span>
-          </label>
+    <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6">
+      <div className="ask-page-heading">
+        <div>
+          <p className="label-section mb-2 text-muted">Your reference workspace</p>
+          <h1>Ask Meridian</h1>
+          <p className="mt-2 text-label text-muted">Clear answers, grounded in the documents you trust.</p>
         </div>
+        <details className="ask-shortcuts">
+          <summary>Shortcuts</summary>
+          <div className="ask-shortcut-list">
+            {SAMPLE_QUERIES.map(({ label, query: sampleQuery }) => (
+              <button key={sampleQuery} type="button" disabled={loading} title={sampleQuery} onClick={() => setQuery(sampleQuery)}>{label}</button>
+            ))}
+          </div>
+        </details>
+      </div>
 
+      <section className="ask-composer" aria-label="Ask a question">
+        <label htmlFor="rag-query-input" className="ask-prompt-label">What would you like to know?</label>
         <textarea
           id="rag-query-input"
           aria-label="Question"
@@ -210,65 +239,58 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
             }
           }}
           placeholder="Ask about your sources…"
-          className="min-h-28 w-full resize-none rounded-md border border-hairline bg-surface p-4 text-base text-ink outline-none transition-colors placeholder:text-faint focus:border-hairline-strong focus:bg-surface-raised focus-visible:ring-2 focus-visible:ring-accent"
+          className="ask-question-input w-full resize-none text-base text-ink outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-accent"
         />
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="mr-1 text-micro text-muted">Try:</span>
-          {SAMPLE_QUERIES.map(({ label, query: sampleQuery }) => (
-            <button key={sampleQuery} type="button" disabled={loading} title={sampleQuery} onClick={() => { setQuery(sampleQuery); handleQuery(sampleQuery); }} className="rounded-full border border-hairline bg-surface px-3 py-1.5 text-left text-micro text-muted transition-colors hover:border-hairline-strong hover:bg-accent-wash hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50">
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <details className="query-options mt-4 border-t border-hairline pt-3">
-          <summary className="w-fit cursor-pointer text-label font-medium text-muted hover:text-ink">Query options</summary>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="flex cursor-pointer items-center gap-1.5 text-label text-muted">
-              <input type="checkbox" checked={retrievalOnly} onChange={(event) => setRetrievalOnly(event.target.checked)} className="size-3 rounded-sm accent-accent" />
-              <span>Retrieval only</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <label htmlFor="top-k-input" className="text-label text-muted">
-                Sources to retrieve:
+        <div className="ask-composer-footer">
+          <details className="query-options">
+            <summary>Answer settings</summary>
+            <div className="query-option-list">
+              <label className="flex cursor-pointer items-center gap-1.5 text-label text-muted">
+                <input type="checkbox" checked={enforceGuardrails} onChange={(event) => setEnforceGuardrails(event.target.checked)} className="size-3 rounded-sm accent-accent" />
+                <span>Apply safety checks</span>
               </label>
-              <input
-                id="top-k-input"
-                type="number"
-                min={1}
-                max={10}
-                value={topK}
-                onChange={(e) => setTopK(Number(e.target.value))}
-                className="num w-14 rounded-sm border border-hairline bg-surface px-2 py-1 text-center text-body font-semibold text-ink outline-none focus:border-hairline-strong focus-visible:ring-2 focus-visible:ring-accent"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label htmlFor="max-cycles-input" className="text-label text-muted">
-                Maximum answer cycles:
+              <label className="flex cursor-pointer items-center gap-1.5 text-label text-muted">
+                <input type="checkbox" checked={retrievalOnly} onChange={(event) => setRetrievalOnly(event.target.checked)} className="size-3 rounded-sm accent-accent" />
+                <span>Retrieval only</span>
               </label>
-              <input
-                id="max-cycles-input"
-                type="number"
-                min={1}
-                max={5}
-                value={maxCycles}
-                onChange={(e) => setMaxCycles(Number(e.target.value))}
-                className="num w-14 rounded-sm border border-hairline bg-surface px-2 py-1 text-center text-body font-semibold text-ink outline-none focus:border-hairline-strong focus-visible:ring-2 focus-visible:ring-accent"
-              />
+              <div className="flex items-center gap-2">
+                <label htmlFor="top-k-input" className="text-label text-muted">Sources to retrieve:</label>
+                <input id="top-k-input" type="number" min={1} max={10} value={topK} onChange={(e) => setTopK(Number(e.target.value))} className="num w-14 rounded-sm border border-hairline bg-surface px-2 py-1 text-center text-body font-semibold text-ink outline-none focus:border-hairline-strong focus-visible:ring-2 focus-visible:ring-accent" />
+              </div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="max-cycles-input" className="text-label text-muted">Maximum answer cycles:</label>
+                <input id="max-cycles-input" type="number" min={1} max={5} value={maxCycles} onChange={(e) => setMaxCycles(Number(e.target.value))} className="num w-14 rounded-sm border border-hairline bg-surface px-2 py-1 text-center text-body font-semibold text-ink outline-none focus:border-hairline-strong focus-visible:ring-2 focus-visible:ring-accent" />
+              </div>
             </div>
-          </div>
-
-        </div>
-        </details>
-
-        <div className="mt-4 flex justify-end">
+          </details>
           <button onClick={() => handleQuery()} disabled={loading || !query.trim()} className="flex min-h-11 items-center gap-2 rounded-md bg-accent px-5 py-2 text-label font-semibold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-            {loading ? <><RefreshCw className="size-4 animate-spin"/><span>Working…</span></> : <><span>{retrievalOnly ? 'Find sources' : 'Ask'}</span><Send className="size-3.5"/></>}
+            {loading ? <><RefreshCw className="size-4 animate-spin"/><span>Working…</span></> : <><span>{retrievalOnly ? 'Find sources' : 'Ask question'}</span><Send className="size-3.5"/></>}
           </button>
         </div>
-      </div>
+      </section>
+
+      <section className="ask-recent" aria-labelledby="recent-sources-title">
+        <div className="ask-recent-heading">
+          <h2 id="recent-sources-title">Recently added</h2>
+          <button type="button" onClick={() => workbench?.openOverlay('corpus')}>
+            Browse sources <ArrowUpRight aria-hidden="true"/>
+          </button>
+        </div>
+        {recentDocumentsLoaded && (recentDocuments.length > 0 ? (
+          <div className="ask-recent-list">
+            {recentDocuments.map((document) => (
+              <button key={document.id} type="button" onClick={() => workbench?.openOverlay('corpus', { documentId: document.id, breadcrumb: document.title })}>
+                <span className="ask-recent-icon"><FileText aria-hidden="true"/></span>
+                <span className="ask-recent-copy"><strong>{document.title}</strong><span>{document.format} · {new Date(document.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {document.chunk_count} passages</span></span>
+                <span className="ask-recent-count">{document.chunk_count}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="ask-recent-empty">{recentDocumentsUnavailable ? 'Recent sources are unavailable while the workspace is offline.' : 'No sources yet. Add a document to ground your answers.'}</div>
+        ))}
+      </section>
 
       {/* Error Alert — distinct rendering based on HTTP status */}
       {error && (

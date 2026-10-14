@@ -8,6 +8,7 @@ import { WorkbenchContext } from '../WorkbenchContext';
 // Mock the api module
 vi.mock('../services/api', () => ({
   api: {
+    getDocuments: vi.fn(),
     getLLMSettings: vi.fn(),
     query: vi.fn(),
     retrieve: vi.fn(),
@@ -63,16 +64,41 @@ describe('RagWorkspace', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (api.getDocuments as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
     (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
   });
 
   it('renders without crashing', () => {
     renderCanvas();
-    expect(screen.getByRole('heading', { name: 'Ask a question' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ask Meridian' })).toBeInTheDocument();
     expect(screen.queryByText('Retrieved Chunks & Citations')).not.toBeInTheDocument();
     expect(screen.queryByText('Knowledge Graph Entity Traversal')).not.toBeInTheDocument();
     expect(screen.queryByText('No answer yet')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Question')).toHaveClass('resize-none');
+  });
+
+  it('keeps example questions optional and fills the composer without submitting', async () => {
+    const user = userEvent.setup();
+    renderCanvas();
+
+    await user.click(screen.getByText('Shortcuts'));
+    await user.click(screen.getByRole('button', { name: 'Dual-memory retrieval' }));
+
+    expect(screen.getByLabelText('Question')).toHaveValue('What storage engines does Meridian use for dual-memory retrieval?');
+    expect(api.query).not.toHaveBeenCalled();
+  });
+
+  it('shows recent documents from the selected workspace and opens the source catalog', async () => {
+    const user = userEvent.setup();
+    (api.getDocuments as ReturnType<typeof vi.fn>).mockResolvedValue({
+      documents: [{ id: 'doc-recent', title: 'Product handbook', format: 'PDF', source: 'upload', created_at: '2026-10-14T08:00:00Z', char_count: 1200, chunk_count: 18, entities_count: 0, relationships_count: 0 }],
+      total_documents: 1, total_chunks: 18, total_entities: 0,
+    });
+    renderCanvas();
+
+    expect(await screen.findByText('Product handbook')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Browse sources/i }));
+    expect(openOverlay).toHaveBeenCalledWith('corpus');
   });
 
   it('opens a cited chunk with Enter from the keyboard', async () => {
@@ -161,7 +187,7 @@ describe('RagWorkspace', () => {
     (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockQueryResponse);
 
     renderCanvas();
-    await user.click(screen.getByText('Query options'));
+    await user.click(screen.getByText('Answer settings'));
     await user.clear(screen.getByLabelText('Sources to retrieve:'));
     await user.type(screen.getByLabelText('Sources to retrieve:'), '7');
     await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'What is Meridian?');
@@ -216,7 +242,7 @@ describe('RagWorkspace', () => {
     });
 
     renderCanvas();
-    await user.click(screen.getByText('Query options'));
+    await user.click(screen.getByText('Answer settings'));
     await user.click(screen.getByRole('checkbox', { name: /retrieval only/i }));
     await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'What is Meridian?');
     await user.click(screen.getByRole('button', { name: /Find sources/i }));
@@ -240,7 +266,8 @@ describe('RagWorkspace', () => {
 
     // A control that says what it will do, not a readout that says what is.
     // "Guardrails Active" read as a status; the flag only shapes the next query.
-    const toggle = screen.getByRole('checkbox', { name: /apply safety rules/i });
+    await user.click(screen.getByText('Answer settings'));
+    const toggle = screen.getByRole('checkbox', { name: /apply safety checks/i });
     expect(toggle).toBeChecked();
 
     await user.click(toggle);

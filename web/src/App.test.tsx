@@ -75,6 +75,7 @@ describe('Meridian workbench navigation', () => {
 
     expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Unlock Meridian' })).toBeNull();
+    await waitFor(() => expect(screen.getByText('Online')).toBeInTheDocument());
   });
 
   it('shows four labeled destinations and opens Sources at its own route', async () => {

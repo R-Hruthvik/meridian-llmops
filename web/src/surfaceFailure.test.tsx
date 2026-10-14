@@ -20,10 +20,10 @@ vi.mock('./services/api', () => ({
   api: {
     getApiKey: vi.fn(() => 'test-session-key'),
     setApiKey: vi.fn(),
-    checkHealth: vi.fn(async () => ({ ready: true })),
+    checkHealth: vi.fn(() => new Promise(() => {})),
     getLLMSettings: vi.fn(async () => ({ active_provider: 'openai', default_model: 'gpt-4o-mini' })),
     query: vi.fn(),
-    getDocuments: vi.fn(),
+    getDocuments: vi.fn(() => new Promise(() => {})),
     getMetrics: vi.fn(),
     getIndexStatus: vi.fn(),
     listReviewItems: vi.fn(),

@@ -56,10 +56,10 @@ vi.mock('./services/api', () => ({
   api: {
     getApiKey: vi.fn(() => 'test-session-key'),
     setApiKey: vi.fn(),
-    checkHealth: vi.fn(async () => ({ ready: true })),
+    checkHealth: vi.fn(() => new Promise(() => {})),
     getLLMSettings: vi.fn(async () => ({ active_provider: 'openai', default_model: 'gpt-4o-mini' })),
     query: vi.fn(async () => ANSWER),
-    getDocuments: vi.fn(),
+    getDocuments: vi.fn(() => new Promise(() => {})),
     getMetrics: vi.fn(),
     getIndexStatus: vi.fn(),
     listReviewItems: vi.fn(),
@@ -88,7 +88,7 @@ describe('first paint ships only the Ask surface', () => {
   it('evaluates no studio module other than Ask before anything asks for one', () => {
     render(<App />);
 
-    expect(screen.getByText('Ask a question')).toBeInTheDocument();
+    expect(screen.getByText('Ask Meridian')).toBeInTheDocument();
     expect(AT_MODULE_LOAD).toEqual([]);
   });
 
@@ -155,7 +155,7 @@ describe('the answer body is deferred until an answer exists', () => {
   it('does not evaluate the markdown renderer on first paint', () => {
     render(<App />);
 
-    expect(screen.getByText('Ask a question')).toBeInTheDocument();
+    expect(screen.getByText('Ask Meridian')).toBeInTheDocument();
     expect(AT_MODULE_LOAD).not.toContain('markdown');
     expect(evaluated).not.toContain('markdown');
   });

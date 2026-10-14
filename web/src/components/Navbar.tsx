@@ -41,8 +41,6 @@ interface TopBarProps {
   backendHealth: BackendHealth;
   generationTestStatus: 'untested' | 'passed' | 'failed';
   onGenerationTestResult: (success: boolean | null) => void;
-  apiKey: string;
-  setApiKey: (key: string) => void;
 }
 
 /**
@@ -56,8 +54,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   backendHealth,
   generationTestStatus,
   onGenerationTestResult,
-  apiKey,
-  setApiKey,
 }) => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
