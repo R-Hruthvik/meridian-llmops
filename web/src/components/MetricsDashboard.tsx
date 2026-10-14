@@ -85,17 +85,65 @@ const formatLatency = (milliseconds: number | null | undefined) =>
   milliseconds == null ? '—' : `${milliseconds.toFixed(1)} ms`;
 
 const KPIS: Array<{ key: string; label: string; unit: string; hint: string; icon: typeof Zap; accent: boolean }> = [
-  { key: 'total-requests', label: 'Total requests', unit: 'req', hint: 'Recorded in Langfuse telemetry', icon: Zap, accent: false },
-  { key: 'total-tokens', label: 'Token volume', unit: 'tok', hint: 'Prompt + completion tokens', icon: Layers, accent: true },
-  { key: 'cost', label: 'Est. cost', unit: 'USD', hint: 'Aggregated upstream model charges', icon: Coins, accent: false },
+  { key: 'total-requests', label: 'Total requests', unit: 'req', hint: 'Current API process', icon: Zap, accent: false },
+  { key: 'total-tokens', label: 'Token volume', unit: 'tok', hint: 'Observed and estimated usage', icon: Layers, accent: true },
+  { key: 'cost', label: 'Est. cost', unit: 'USD', hint: 'Current API process', icon: Coins, accent: false },
 ];
+
+const LatencyChart: React.FC<{ requests: TenantMetrics['recent_requests'] }> = ({ requests }) => {
+  const ordered = [...requests].reverse();
+  if (!ordered.length) return null;
+
+  const left = 58;
+  const right = 628;
+  const top = 16;
+  const bottom = 174;
+  const max = Math.max(100, Math.ceil(Math.max(...ordered.map(({ duration_ms }) => duration_ms)) / 100) * 100);
+  const points = ordered.map((request, index) => {
+    const x = ordered.length === 1 ? (left + right) / 2 : left + index * (right - left) / (ordered.length - 1);
+    const y = bottom - (request.duration_ms / max) * (bottom - top);
+    return { x, y, request };
+  });
+  const line = points.map(({ x, y }) => `${x},${y}`).join(' ');
+
+  return <div className="min-w-0">
+    <h4 className="mb-1 text-label font-semibold text-ink">Request latency · last {ordered.length}</h4>
+    <svg viewBox="0 0 640 210" role="img" aria-label={`Latency chart for the last ${ordered.length} requests, from earlier to latest`} className="h-48 w-full overflow-visible text-muted">
+      {[0, 0.5, 1].map((ratio) => {
+        const y = bottom - ratio * (bottom - top);
+        return <g key={ratio}><line x1={left} y1={y} x2={right} y2={y} stroke="currentColor" strokeOpacity=".18"/><text x={left - 8} y={y + 4} textAnchor="end" fontSize="11" fill="currentColor">{Math.round(max * ratio)} ms</text></g>;
+      })}
+      {points.length > 1 && <polyline points={line} fill="none" stroke="rgb(var(--accent))" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>}
+      {points.map(({ x, y, request }, index) => <circle key={`${request.query}-${index}`} cx={x} cy={y} r="4" fill="rgb(var(--accent))"><title>{`${request.duration_ms.toFixed(1)} ms · ${request.query}`}</title></circle>)}
+      <text x={left} y="202" fontSize="11" fill="currentColor">Earlier</text>
+      <text x={right} y="202" textAnchor="end" fontSize="11" fill="currentColor">Latest</text>
+    </svg>
+  </div>;
+};
+
+const StageDurations: React.FC<{ request: TenantMetrics['recent_requests'][number] | undefined }> = ({ request }) => {
+  const stages = Object.entries(request?.timings_ms ?? {}).filter(([, duration]) => duration > 0).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  if (!stages.length) return null;
+  const max = Math.max(...stages.map(([, duration]) => duration));
+
+  return <div className="flex flex-col gap-2">
+    <div><h4 className="text-label font-semibold text-ink">Latest request · stage timings</h4><p className="text-micro text-muted">Span durations can overlap; these bars do not add up to total time.</p></div>
+    {stages.map(([name, duration]) => <div key={name} className="grid grid-cols-[minmax(5rem,9rem)_1fr_auto] items-center gap-2">
+      <span className="truncate text-micro text-muted" title={name}>{name}</span>
+      <span className="h-2 overflow-hidden rounded-full bg-surface-sunken"><span className="block h-full rounded-full bg-accent" style={{ width: `${Math.max(2, duration / max * 100)}%` }}/></span>
+      <span className="num text-micro text-ink">{formatLatency(duration)}</span>
+    </div>)}
+  </div>;
+};
 
 export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) => {
   const [metrics, setMetrics] = useState<TenantMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorTenantId, setErrorTenantId] = useState<string | null>(null);
+  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const metricsRequestId = useRef(0);
+  const metricsRequestBusy = useRef(false);
   const currentTenantId = useRef(tenantId);
   currentTenantId.current = tenantId;
   // Public readiness is the only health signal available without credentials.
@@ -108,11 +156,15 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
   const [retrievalLoading, setRetrievalLoading] = useState(false);
   const [retrievalError, setRetrievalError] = useState<string | null>(null);
 
-  const fetchMetrics = async (requestedTenantId: string = tenantId) => {
+  const fetchMetrics = async (requestedTenantId: string = tenantId, showLoading = true) => {
+    if (!showLoading && metricsRequestBusy.current) return;
+    metricsRequestBusy.current = true;
     const requestId = ++metricsRequestId.current;
-    setLoading(true);
-    setError(null);
-    setErrorTenantId(null);
+    if (showLoading) setLoading(true);
+    if (showLoading) {
+      setError(null);
+      setErrorTenantId(null);
+    }
     try {
       const res = await api.getMetrics(requestedTenantId);
       if (requestId !== metricsRequestId.current || requestedTenantId !== currentTenantId.current) return;
@@ -123,6 +175,9 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
         return;
       }
       setMetrics(res);
+      setRefreshedAt(new Date());
+      setError(null);
+      setErrorTenantId(null);
     } catch (err: unknown) {
       if (requestId !== metricsRequestId.current || requestedTenantId !== currentTenantId.current) return;
       const msg = err instanceof Error ? err.message : 'Failed to load telemetry metrics';
@@ -131,14 +186,21 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
       // Clear stale metrics on error
       setMetrics(null);
     } finally {
-      if (requestId === metricsRequestId.current && requestedTenantId === currentTenantId.current) {
-        setLoading(false);
+      if (requestId === metricsRequestId.current) {
+        metricsRequestBusy.current = false;
+        if (requestedTenantId === currentTenantId.current) setLoading(false);
       }
     }
   };
 
   useEffect(() => {
-    fetchMetrics();
+    setMetrics(null);
+    setRefreshedAt(null);
+    void fetchMetrics(tenantId);
+    const interval = window.setInterval(() => {
+      if (!document.hidden) void fetchMetrics(tenantId, false);
+    }, 5000);
+    return () => { window.clearInterval(interval); metricsRequestId.current += 1; metricsRequestBusy.current = false; };
   }, [tenantId]);
 
   const currentMetrics = metrics?.tenant_id === tenantId ? metrics : null;
@@ -208,13 +270,13 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
             <Gauge className="size-3.5 text-accent" aria-hidden="true" />
             <span>LLMOps observability</span>
           </h2>
-          <p className="mt-1 text-micro text-muted">
-            Tenant <span className="id-mono text-accent-ink">{tenantId}</span>
-          </p>
+          <p className="mt-1 text-micro text-muted">Auto-refreshes every 5 seconds · process-local telemetry</p>
         </div>
 
+        <div className="flex items-center gap-3">
+        {refreshedAt && <span className="text-micro text-muted">Updated {refreshedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}
         <button
-          onClick={() => fetchMetrics()}
+          onClick={() => void fetchMetrics()}
           disabled={loading}
           aria-label="Refresh telemetry metrics"
           className="flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label font-semibold text-muted transition-colors hover:border-accent hover:text-accent-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -222,6 +284,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
           <RefreshCw className={`size-3.5 ${loading ? 'animate-spin text-accent' : ''}`} aria-hidden="true" />
           <span>Refresh</span>
         </button>
+        </div>
       </div>
 
       {currentError && (
@@ -267,12 +330,16 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
 
       <section aria-labelledby="request-telemetry-title" className="flex flex-col gap-3 rounded-sm border border-hairline bg-surface-raised p-3">
         <div>
-          <h3 id="request-telemetry-title" className="label-section text-ink">Request telemetry</h3>
-          <p className="mt-1 text-micro text-muted">Recent queries and retrieval timing recorded for this tenant.</p>
+          <h3 id="request-telemetry-title" className="label-section text-ink">Live request feed</h3>
+          <p className="mt-1 text-micro text-muted">Latest 20 requests captured by this running API process.</p>
         </div>
 
         {currentMetrics ? (
           <>
+            {currentMetrics.recent_requests?.length ? <div className="grid gap-5 border-b border-hairline pb-3 lg:grid-cols-2">
+              <LatencyChart requests={currentMetrics.recent_requests.slice(0, 20)}/>
+              <StageDurations request={currentMetrics.recent_requests[0]}/>
+            </div> : <p className="text-label text-muted">Charts will appear after this API process records requests.</p>}
             <dl className="grid grid-cols-1 divide-y divide-hairline border-y border-hairline sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               <div className="px-3 py-2.5">
                 <dt className="text-micro uppercase tracking-[0.12em] text-muted">Errors</dt>
@@ -293,7 +360,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
                 {currentMetrics.recent_requests.slice(0, 20).map((request, index) => (
                   <li key={`${request.query}-${index}`} className="flex flex-col gap-1.5 py-2.5">
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                      <p className="min-w-0 break-words text-label font-semibold text-ink">{request.query}</p>
+                      <p className="min-w-0 break-words text-label font-semibold text-ink"><span className="mr-2 text-micro font-normal text-faint">{index === 0 ? 'Latest' : `Earlier · ${index}`}</span>{request.query}</p>
                       <span className="num shrink-0 text-micro text-muted">{formatLatency(request.duration_ms)}</span>
                     </div>
                     <dl className="flex flex-wrap gap-x-4 gap-y-1">
