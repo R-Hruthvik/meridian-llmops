@@ -202,6 +202,10 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     });
   };
 
+  const sourceScope = recentDocumentsLoaded && !recentDocumentsUnavailable && totalDocuments > 0
+    ? `${totalDocuments} indexed ${totalDocuments === 1 ? 'document' : 'documents'}`
+    : 'all indexed workspace documents';
+
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6">
       <div className="ask-page-heading order-0">
@@ -223,7 +227,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
       <section className="ask-composer order-2" aria-label="Ask a question">
         <label htmlFor="rag-query-input" className="ask-prompt-label">What would you like to know?</label>
         <p className="mb-2 text-micro text-muted">
-          Search across {recentDocumentsLoaded && !recentDocumentsUnavailable && totalDocuments > 0 ? `${totalDocuments} indexed documents` : 'all indexed workspace documents'}. Name both files when asking how they relate; answers show which files supplied evidence.
+          Search across {sourceScope}. Name both files when asking how they relate; answers show which files supplied evidence.
         </p>
         <textarea
           id="rag-query-input"
