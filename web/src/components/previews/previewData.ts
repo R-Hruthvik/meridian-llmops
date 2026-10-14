@@ -82,6 +82,15 @@ export function requestsWithinRange<T extends { recorded_at: string }>(
   });
 }
 
+export function requestsForEventList<T extends { recorded_at: string }>(
+  requests: T[],
+  range: string,
+): T[] {
+  const timed = requestsWithinRange(requests, range);
+  const untimed = requests.filter((request) => !Number.isFinite(Date.parse(request.recorded_at)));
+  return [...timed, ...untimed];
+}
+
 export function formatRequestTime(value: string): string {
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp)
@@ -104,9 +113,20 @@ export function latencyPolyline(
   }).join(' ');
 }
 
-export function latencyTicks(requests: Array<{ duration_ms: number }>): [string, string, string] {
+export function latencyTicks(requests: Array<{ duration_ms: number }>): [string, string, string, string] {
   const maximum = Math.max(...requests.map((request) => request.duration_ms), 1000) * 1.1;
-  return [formatDuration(maximum), formatDuration(maximum / 2), '0 ms'];
+  return [formatDuration(maximum), formatDuration(maximum * 2 / 3), formatDuration(maximum / 3), '0 ms'];
+}
+
+export function requestRangeNotice(
+  requests: Array<{ recorded_at: string }>,
+  range: string,
+  error = '',
+): string {
+  if (error) return error;
+  const untimed = requests.filter((request) => !Number.isFinite(Date.parse(request.recorded_at))).length;
+  if (untimed) return `${untimed} recent ${untimed === 1 ? 'request lacks' : 'requests lack'} a timestamp, so it cannot be placed in the selected time range. Restart the API to record timestamps for new requests.`;
+  return `No requests were recorded in this time range (${range}).`;
 }
 
 export function stageMilliseconds(

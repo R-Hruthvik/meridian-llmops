@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Activity, ArrowDownToLine, ArrowUpRight, BookOpenText, Check, ChevronDown, FileText, LibraryBig, MessageSquareText, Plus, Search, Settings2, Sparkles, X } from 'lucide-react';
 import { api } from '../../services/api';
-import { formatDuration, formatProvider, formatRequestTime, latencyPolyline, PREVIEW_ANSWER, PREVIEW_CLAIMS, PREVIEW_QUESTION, PREVIEW_SOURCES, requestsWithinRange, stageMilliseconds } from './previewData';
+import { requestsForEventList, requestRangeNotice, formatDuration, formatProvider, formatRequestTime, latencyPolyline, latencyTicks, PREVIEW_ANSWER, PREVIEW_CLAIMS, PREVIEW_QUESTION, PREVIEW_SOURCES, requestsWithinRange, stageMilliseconds } from './previewData';
 import { usePreviewRuntime } from './usePreviewRuntime';
 import './EvidenceJournalPreview.css';
 
@@ -26,11 +26,13 @@ export default function EvidenceJournalPreview() {
   const [activeCitation, setActiveCitation] = useState(1);
   const [selectedSourceId, setSelectedSourceId] = useState<string>(PREVIEW_SOURCES[0].id);
   const [question, setQuestion] = useState(PREVIEW_QUESTION);
+  const [sourceScope, setSourceScope] = useState('All 3 preview documents');
   const [query, setQuery] = useState('');
   const [notice, setNotice] = useState('');
   const [range, setRange] = useState('24 hours');
   const runtime = usePreviewRuntime(page === 'Monitor' || page === 'Settings', page === 'Monitor');
   const liveRequests = requestsWithinRange(runtime.metrics?.recent_requests ?? [], range);
+  const eventRequests = requestsForEventList(runtime.metrics?.recent_requests ?? [], range);
 
   const submitQuestion = (event: FormEvent) => {
     event.preventDefault();
@@ -63,7 +65,7 @@ export default function EvidenceJournalPreview() {
           <form className="ej-composer" onSubmit={submitQuestion}>
             <label htmlFor="ej-question">Ask your documents</label>
             <div className="ej-composer-row"><textarea id="ej-question" rows={2} value={question} onChange={(e) => setQuestion(e.target.value)} /><button className="ej-primary" type="submit"><Sparkles size={16} /> Show sample answer</button></div>
-            <div className="ej-composer-meta"><span><BookOpenText size={15} /> Searching all 3 preview documents</span><button type="button" className="ej-quiet" onClick={() => setNotice('Source scope is set to all indexed documents in this preview.')}>Change scope <ChevronDown size={14} /></button></div>
+            <div className="ej-composer-meta"><label className="ej-scope"><BookOpenText size={15} /> Search in<select value={sourceScope} onChange={(event) => setSourceScope(event.target.value)}>{['All 3 preview documents', ...PREVIEW_SOURCES.map((source) => source.file)].map((source) => <option key={source}>{source}</option>)}</select></label><span>Scope is for preview only</span></div>
           </form>
 
           <div className="ej-answer-layout">
@@ -97,8 +99,8 @@ export default function EvidenceJournalPreview() {
         {page === 'Monitor' && <section className="ej-page">
           <div className="ej-page-heading"><div><h1>Monitor</h1><span className="ej-subheading">Live API data · recent request window</span></div><label className="ej-range-label">Time range<select value={range} onChange={(e) => setRange(e.target.value)}><option>90 minutes</option><option>6 hours</option><option>24 hours</option><option>7 days</option></select></label></div>
           <div className="ej-metrics"><div><span>Median answer time</span><strong>{formatDuration(runtime.metrics?.latency_ms.p50)}</strong><em>API recorded</em></div><div><span>Retrieval p50</span><strong>{formatDuration(runtime.metrics?.retrieval_latency_ms.p50)}</strong><em>API recorded</em></div><div><span>Requests</span><strong>{runtime.metrics?.request_count ?? '—'}</strong><em>{runtime.apiStatus === 'ready' ? 'API ready' : runtime.apiStatus === 'offline' ? 'API unavailable' : 'Checking API'}</em></div></div>
-          <div className="ej-chart-block"><div className="ej-chart-heading"><h2>Answer latency</h2><span>Seconds · {range}</span></div><div className="ej-chart"><div className="ej-axis"><span>Recent</span><span>Requests</span></div>{liveRequests.length ? <svg viewBox="0 0 720 170" preserveAspectRatio="none" role="img" aria-label={`Recorded answer latency over ${range}`}><path className="ej-gridline" d="M0 15H720 M0 84H720 M0 154H720"/><polyline className="ej-chart-line" points={latencyPolyline(liveRequests, 700, 139)}/></svg> : <p role="status">{runtime.metricsError || 'No requests in this time range.'}</p>}</div><div className="ej-chart-x"><span>{liveRequests.length ? formatRequestTime(liveRequests.at(-1)!.recorded_at) : '—'}</span><span>{liveRequests.length ? formatRequestTime(liveRequests[0].recorded_at) : '—'}</span></div></div>
-          <div className="ej-events"><div className="ej-chart-heading"><h2>Recent requests</h2><button type="button" className="ej-quiet" onClick={() => void runtime.refresh()}>Refresh</button></div>{liveRequests.length ? liveRequests.map((request) => <div className="ej-event-row" key={`${request.recorded_at}-${request.duration_ms}`}><span className={`ej-event-dot ${request.error ? 'warn' : 'good'}`}/><strong>{request.error ? 'Request failed' : 'Answer returned'}</strong><span>{formatRequestTime(request.recorded_at)} · retrieval {formatDuration(stageMilliseconds(request.timings_ms, 'retrieval'))} · generation {formatDuration(stageMilliseconds(request.timings_ms, 'generation'))}</span><time>{formatDuration(request.duration_ms)}</time></div>) : <p className="ej-data-note">{runtime.metricsError || 'No requests were recorded in this time range.'}</p>}</div>
+          <div className="ej-chart-block"><div className="ej-chart-heading"><h2>Answer latency</h2><span>Seconds · {range}</span></div><div className="ej-chart"><div className="ej-axis"><span>{liveRequests.length ? latencyTicks(liveRequests)[0] : '—'}</span><span>{liveRequests.length ? latencyTicks(liveRequests)[1] : '—'}</span><span>{liveRequests.length ? latencyTicks(liveRequests)[2] : '0 ms'}</span><span>Seconds</span></div><svg viewBox="0 0 720 170" preserveAspectRatio="none" role="img" aria-label={`Recorded answer latency over ${range}`}><path className="ej-gridline" d="M0 15H720 M0 84H720 M0 154H720"/>{liveRequests.length > 0 && <polyline className="ej-chart-line" points={latencyPolyline(liveRequests, 700, 139)}/>}</svg></div>{liveRequests.length === 0 && <p role="status" className="ej-data-note">{requestRangeNotice(runtime.metrics?.recent_requests ?? [], range, runtime.metricsError)}</p>}<div className="ej-chart-x"><span>{liveRequests.length ? formatRequestTime(liveRequests.at(-1)!.recorded_at) : 'Oldest'}</span><span>{liveRequests.length ? formatRequestTime(liveRequests[0].recorded_at) : 'Newest'}</span></div></div>
+          <div className="ej-events"><div className="ej-chart-heading"><h2>Recent requests</h2><button type="button" className="ej-quiet" onClick={() => void runtime.refresh()}>Refresh</button></div>{eventRequests.length ? eventRequests.map((request) => <div className="ej-event-row" key={`${request.recorded_at}-${request.duration_ms}`}><span className={`ej-event-dot ${request.error ? 'warn' : 'good'}`}/><strong>{request.error ? 'Request failed' : 'Answer returned'}</strong><span>{formatRequestTime(request.recorded_at)} · retrieval {formatDuration(stageMilliseconds(request.timings_ms, 'retrieval'))} · generation {formatDuration(stageMilliseconds(request.timings_ms, 'generation'))}</span><time>{formatDuration(request.duration_ms)}</time></div>) : <p className="ej-data-note">{requestRangeNotice(runtime.metrics?.recent_requests ?? [], range, runtime.metricsError)}</p>}</div>
         </section>}
 
         {page === 'Settings' && <section className="ej-page">

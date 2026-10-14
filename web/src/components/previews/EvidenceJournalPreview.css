@@ -220,3 +220,5 @@
 @media (prefers-reduced-motion: reduce) {
   .ej-preview *, .ej-preview *::before, .ej-preview *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+@keyframes ej-passage-reveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.ej-selected-passage { animation: ej-passage-reveal 140ms ease-out both; }
