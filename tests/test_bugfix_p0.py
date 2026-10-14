@@ -213,29 +213,49 @@ class TestFix5RateLimiter:
         assert success_count <= 60, f"Too many succeeded: {success_count}"
         assert rate_limited >= 20, f"Not enough rate-limited: {rate_limited}"
 
-    def test_rate_limiter_tenant_isolation(self):
-        """Different tenants have independent rate limits."""
+    def test_rate_limiter_key_isolation(self, monkeypatch):
+        """Different keys have independent rate limits regardless of tenant headers."""
+        import json
+
         from services.gateway.app import app
 
+        monkeypatch.setenv(
+            "API_KEYS",
+            json.dumps({
+                "key-a-for-rate-test": {"tenant": "tenant-a", "role": "user"},
+                "key-b-for-rate-test": {"tenant": "tenant-b", "role": "user"},
+            }),
+        )
         client = TestClient(app)
-        key = "meridian-test-secret-key-2026"
+        from packages.core.settings import get_settings
+        from services.gateway import auth
 
-        # Tenant A uses 30 requests
-        for i in range(30):
+        auth._rate_limits.clear()
+        capacity = int(get_settings().rate_limit_per_minute)
+
+        # Exhaust key A's quota so the decisive assertion actually exercises
+        # a rate-limited bucket rather than a full one.
+        exhausted = False
+        for _ in range(capacity + 5):
             resp = client.post(
                 "/v1/guardrails/check",
-                headers={"X-API-Key": key, "X-Tenant-Id": "tenant-a-isolation"},
+                headers={"X-API-Key": "key-a-for-rate-test", "X-Tenant-Id": "tenant-a-isolation"},
                 json={"text": "safe prompt"},
             )
+            if resp.status_code == 429:
+                exhausted = True
+                break
             assert resp.status_code == 200
+        assert exhausted, "Key A never reached its rate limit, so isolation is untested"
 
-        # Tenant B should still have full quota
+        # Key B must still have its own full quota, despite sending the
+        # tenant header that key A used.
         resp = client.post(
             "/v1/guardrails/check",
-            headers={"X-API-Key": key, "X-Tenant-Id": "tenant-b-isolation"},
+            headers={"X-API-Key": "key-b-for-rate-test", "X-Tenant-Id": "tenant-a-isolation"},
             json={"text": "safe prompt"},
         )
-        assert resp.status_code == 200, "Tenant B should not be rate-limited"
+        assert resp.status_code == 200, "Key B should not be rate-limited"
 
     def test_rate_limiter_eviction_prevents_memory_leak(self):
         """Verify stale entries are evicted."""

@@ -110,7 +110,7 @@ def reindex(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--storage-root', type=Path, default=None)
-    parser.add_argument('--qdrant-path', help='Local Qdrant directory (default: configured server)')
+    parser.add_argument('--qdrant-path', help='Override the configured backend with a local Qdrant directory')
     parser.add_argument('--yes', action='store_true', help='Confirm collection replacement')
     parser.add_argument('--resume', action='store_true', help='Continue an interrupted rebuild')
     args = parser.parse_args()
@@ -127,8 +127,15 @@ def main() -> int:
             return 1
     embedder = FastEmbedEmbedder(settings.embedding_model, settings.fastembed_cache_path,
                                 expected_dim=settings.qdrant_vector_dim)
-    client = (QdrantClient(path=args.qdrant_path) if args.qdrant_path
-              else QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port))
+    local_path = args.qdrant_path
+    if local_path is None and settings.vector_backend == 'qdrant_local':
+        local_path = settings.qdrant_local_path
+    if local_path == ':memory:':
+        client = QdrantClient(':memory:')
+    elif local_path is not None:
+        client = QdrantClient(path=local_path)
+    else:
+        client = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
     try:
         manifest = reindex(storage, client, settings, embedder, resume=args.resume)
         print(f'Reindexed {manifest.chunk_count} chunks; index manifest written')

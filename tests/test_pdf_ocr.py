@@ -16,6 +16,9 @@ class _Image:
         assert format == "JPEG"
         output.write(b"page-image")
 
+    def close(self):
+        pass
+
 
 def test_page_ocr_renders_only_requested_page_and_prefers_tesseract(monkeypatch):
     render_calls = []

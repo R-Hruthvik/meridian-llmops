@@ -79,8 +79,8 @@ def ocr_page_text(
         )
         if is_usable_ocr_text(local_text):
             return local_text
-    except Exception:  # noqa: BLE001 - local OCR failure intentionally enables configured fallback
-        pass  # noqa: S110
+    except Exception:  # noqa: BLE001, S110 - local OCR failure intentionally enables configured fallback
+        pass
 
     from packages.core.settings import get_settings
 

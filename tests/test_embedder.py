@@ -106,7 +106,13 @@ async def test_app_lifespan_initializes_model_once(monkeypatch):
     monkeypatch.setattr(app_module, 'FastEmbedEmbedder', create_embedder)
     monkeypatch.setattr(app_module, 'init_db', init_db)
     monkeypatch.setattr(app_module.ingestion_pipeline, 'load_persisted_knowledge_base', lambda: 0)
-    async with app_module.lifespan(app_module.app):
-        assert app_module.ingestion_pipeline.embedder is not None
-    async with app_module.lifespan(app_module.app):
-        assert len(initialized) == 1
+    previous = getattr(app_module.app.state, 'index_consistency', None)
+    try:
+        async with app_module.lifespan(app_module.app):
+            assert app_module.ingestion_pipeline.embedder is not None
+        async with app_module.lifespan(app_module.app):
+            assert len(initialized) == 1
+    finally:
+        # The index gate reads app state, so restoring only the module global
+        # would still leak the stubbed hydration verdict into later tests.
+        app_module.app.state.index_consistency = previous

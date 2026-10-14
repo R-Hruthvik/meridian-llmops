@@ -292,3 +292,35 @@ def test_cli_local_backend_writes_only_isolated_manifest(tmp_path, monkeypatch):
     assert script.main() == 0
     assert read_manifest(isolated_root).chunk_count == 1
     assert (default_root / 'index_manifest.json').read_bytes() == original_manifest
+
+
+@pytest.mark.parametrize('local_path_kind', ['directory', 'memory'])
+def test_cli_honors_configured_local_backend(tmp_path, monkeypatch, local_path_kind):
+    import scripts.reindex as script
+    import services.ingestion.storage as storage_module
+
+    root = tmp_path / 'storage'
+    local_path = str(tmp_path / 'qdrant') if local_path_kind == 'directory' else ':memory:'
+    config = settings().model_copy(update={'vector_backend': 'qdrant_local', 'qdrant_local_path': local_path})
+    seed(DocumentStorageManager(root))
+    monkeypatch.setattr(storage_module, 'get_default_storage_root', lambda: root)
+    monkeypatch.setattr(script, 'get_settings', lambda: config)
+    monkeypatch.setattr(script, 'FastEmbedEmbedder', lambda *args, **kwargs: FakeEmbedder(8))
+    monkeypatch.setattr('sys.argv', ['reindex.py', '--yes'])
+    clients = []
+
+    def local_client(*args, **kwargs):
+        assert 'host' not in kwargs, 'configured local backend must not connect to a server'
+        if local_path_kind == 'memory':
+            assert args == (':memory:',) and kwargs == {}
+        client = QdrantClient(*args, **kwargs)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(script, 'QdrantClient', local_client)
+    assert script.main() == 0
+    assert len(clients) == 1
+    assert read_manifest(root).chunk_count == 1
+    if local_path_kind == 'directory':
+        with closing(QdrantClient(path=local_path)) as reopened:
+            assert reopened.count(config.qdrant_collection, exact=True).count == 1
