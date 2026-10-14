@@ -15,21 +15,21 @@ const ReviewQueue = React.lazy(() => import('./components/ReviewQueue').then((m)
 const MetricsDashboard = React.lazy(() => import('./components/MetricsDashboard').then((m) => ({ default: m.MetricsDashboard })));
 const SettingsModal = React.lazy(() => import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal })));
 
-type Route = '/ask' | '/sources' | '/sources/index' | '/operations/safety' | '/operations/review' | '/operations/usage' | '/settings';
+type Route = '/ask' | '/sources' | '/sources/index' | '/operations/rules' | '/operations/review' | '/operations/usage' | '/settings';
 export type BackendHealth = 'online' | 'degraded' | 'offline' | 'unknown';
 const NAV = [
   { label: 'Ask', path: '/ask' as Route, Icon: CircleHelp },
   { label: 'Sources', path: '/sources' as Route, Icon: BookOpen },
-  { label: 'Operations', path: '/operations/safety' as Route, Icon: ShieldCheck },
+  { label: 'Operations', path: '/operations/rules' as Route, Icon: ShieldCheck },
   { label: 'Settings', path: '/settings' as Route, Icon: Settings2 },
 ];
 const parseRoute = (): Route => {
   const path = window.location.hash.replace(/^#/, '');
-  const valid: Route[] = ['/ask', '/sources', '/sources/index', '/operations/safety', '/operations/review', '/operations/usage', '/settings'];
+  const valid: Route[] = ['/ask', '/sources', '/sources/index', '/operations/rules', '/operations/review', '/operations/usage', '/settings'];
   return valid.includes(path as Route) ? path as Route : '/ask';
 };
 const TARGET_ROUTE: Record<OverlayTarget, Route> = {
-  corpus: '/sources', index: '/sources/index', guardrails: '/operations/safety',
+  corpus: '/sources', index: '/sources/index', guardrails: '/operations/rules',
   review: '/operations/review', metrics: '/operations/usage', settings: '/settings',
 };
 
@@ -71,7 +71,7 @@ export const App: React.FC = () => {
     navigate(TARGET_ROUTE[target]);
   }, [navigate]);
   const closeOverlay = useCallback(() => { setFocus({}); navigate('/ask'); }, [navigate]);
-  const activeTarget: OverlayTarget | null = route === '/sources' ? 'corpus' : route === '/sources/index' ? 'index' : route === '/operations/safety' ? 'guardrails' : route === '/operations/review' ? 'review' : route === '/operations/usage' ? 'metrics' : route === '/settings' ? 'settings' : null;
+  const activeTarget: OverlayTarget | null = route === '/sources' ? 'corpus' : route === '/sources/index' ? 'index' : route === '/operations/rules' ? 'guardrails' : route === '/operations/review' ? 'review' : route === '/operations/usage' ? 'metrics' : route === '/settings' ? 'settings' : null;
   const workbench = useMemo(() => ({ openOverlay, closeOverlay, activeOverlay: activeTarget }), [openOverlay, closeOverlay, activeTarget]);
   const saveApiKey = (key: string) => { setApiKey(key); api.setApiKey(key); };
 
@@ -107,11 +107,11 @@ export const App: React.FC = () => {
         {!collapsed && <div className="sidebar-resizer" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin={200} aria-valuemax={320} aria-valuenow={sidebarWidth} tabIndex={0} onKeyDown={onResizeKey} onPointerDown={onResizePointer} />}
         <div className="workbench-main">
           <header className="workbench-header">
-            <div className="header-title"><span className="eyebrow">WORKSPACE</span><strong>{sectionTitle}</strong></div>
+            <div className="header-title"><strong>{sectionTitle}</strong></div>
             <div className="header-tools"><label>Tenant <input aria-label="Tenant Identifier" value={tenantId} onChange={(event) => setTenantId(event.target.value)} /></label><StatusChip variant={health === 'online' ? 'ok' : health === 'degraded' ? 'warn' : 'fail'}>{health === 'online' ? 'Online' : health === 'degraded' ? 'Degraded' : health === 'unknown' ? 'Unknown' : 'Offline'}</StatusChip></div>
           </header>
           {operations && <nav className="section-nav" aria-label="Operations sections">
-            {[['Safety rules', '/operations/safety'], ['Review queue', '/operations/review'], ['Usage', '/operations/usage']].map(([label, path]) => <a key={path} href={`#${path}`} aria-current={route === path ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(path as Route); }}>{label}</a>)}
+            {[['Safety rules', '/operations/rules'], ['Review queue', '/operations/review'], ['Usage', '/operations/usage']].map(([label, path]) => <a key={path} href={`#${path}`} aria-current={route === path ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(path as Route); }}>{label}</a>)}
           </nav>}
           {route.startsWith('/sources') && <nav className="section-nav" aria-label="Sources sections">
             {[['Catalog', '/sources'], ['Index & storage', '/sources/index']].map(([label, path]) => <a key={path} href={`#${path}`} aria-current={route === path ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(path as Route); }}>{label}</a>)}
@@ -120,7 +120,7 @@ export const App: React.FC = () => {
             <div className="route-view" hidden={route !== '/ask'}><RagWorkspace tenantId={tenantId}/></div>
             {route === '/sources' && <LazySurface label="Sources"><IngestionStudio tenantId={tenantId} focusedDocumentId={focus.documentId ?? null} focusedChunkId={focus.chunkId ?? null} onDismissFocus={() => setFocus({})}/></LazySurface>}
             {route === '/sources/index' && <LazySurface label="Index and storage"><IndexStorageStudio tenantId={tenantId}/></LazySurface>}
-            {route === '/operations/safety' && <LazySurface label="Safety rules"><GuardrailsStudio tenantId={tenantId}/></LazySurface>}
+            {route === '/operations/rules' && <LazySurface label="Safety rules"><GuardrailsStudio tenantId={tenantId}/></LazySurface>}
             {route === '/operations/review' && <LazySurface label="Review queue"><ReviewQueue tenantId={tenantId}/></LazySurface>}
             {route === '/operations/usage' && <LazySurface label="Usage"><MetricsDashboard tenantId={tenantId}/></LazySurface>}
             {route === '/settings' && <LazySurface label="Settings"><SettingsModal isOpen presentation="page" onClose={closeOverlay} platformApiKey={apiKey} onSavePlatformApiKey={saveApiKey}/></LazySurface>}

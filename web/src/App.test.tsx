@@ -106,7 +106,7 @@ describe('Meridian workbench navigation', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/sources'));
     expect(go('Sources')).toHaveAttribute('aria-current', 'page');
     window.history.forward();
-    await waitFor(() => expect(window.location.hash).toBe('#/operations/safety'));
+    await waitFor(() => expect(window.location.hash).toBe('#/operations/rules'));
     expect(go('Operations')).toHaveAttribute('aria-current', 'page');
   });
 
