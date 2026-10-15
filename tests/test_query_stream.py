@@ -1,10 +1,12 @@
 """Server-Sent Events contract for the streaming query endpoint."""
 
+import asyncio
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
-from packages.core.models import Chunk
+from packages.core.models import Chunk, QueryRequest
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.app import app
@@ -23,10 +25,9 @@ class _FixedRetriever:
         return RetrievalResult(query, top_k, [ranked], timings_ms={"total": 1.0})
 
 
-def _install_answer_graph(monkeypatch, answer: str) -> FakeStreamingLLM:
+def _install_graph(monkeypatch, llm: FakeStreamingLLM) -> FakeStreamingLLM:
     from services.rag_engine import app as app_module
 
-    llm = FakeStreamingLLM([answer])
     chunk = Chunk(
         id="chunk-stream",
         document_id="doc-stream",
@@ -42,6 +43,10 @@ def _install_answer_graph(monkeypatch, answer: str) -> FakeStreamingLLM:
     )
     monkeypatch.setattr(app_module, "agent_graph", graph)
     return llm
+
+
+def _install_answer_graph(monkeypatch, answer: str) -> FakeStreamingLLM:
+    return _install_graph(monkeypatch, FakeStreamingLLM([answer]))
 
 
 def _frames(response) -> list[tuple[str, dict]]:
@@ -162,6 +167,54 @@ def test_stream_route_rejects_prompt_injection(monkeypatch):
         )
     assert response.status_code == 400
     assert "Prompt injection detected" in response.json()["detail"]
+
+
+def _event_names(frames: list[str]) -> list[str]:
+    return [frame.split("\n", 1)[0].removeprefix("event: ") for frame in frames]
+
+
+def _token_text(frames: list[str]) -> str:
+    deltas = []
+    for frame in frames:
+        if frame.startswith("event: token"):
+            payload = frame.split("data: ", 1)[1].split("\n", 1)[0]
+            deltas.append(json.loads(payload)["delta"])
+    return "".join(deltas)
+
+
+@pytest.mark.asyncio
+async def test_token_frames_stream_before_generation_completes(monkeypatch):
+    from services.rag_engine.routers.api import _stream_query_response
+
+    gate = asyncio.Event()
+    llm = FakeStreamingLLM(["Hel", "lo ", "world"], gate=gate)
+    _install_graph(monkeypatch, llm)
+
+    req = QueryRequest(query="How does Meridian stream answers?", top_k=3, max_cycles=1)
+    frames: list[str] = []
+    first_token_seen = False
+    async for frame in _stream_query_response(
+        req=req,
+        tenant_id="default",
+        sanitized_query=req.query,
+        request_id="rid",
+        output_guardrails_enabled=False,
+    ):
+        frames.append(frame)
+        if not first_token_seen and frame.startswith("event: token"):
+            first_token_seen = True
+            gate.set()
+
+    events = _event_names(frames)
+    # The provider only yields its second delta after this test releases the gate,
+    # which only happens once the first token frame has already been delivered.
+    assert llm.stream_calls
+    assert llm.unary_calls == []
+    assert events[0] == "retrieval_complete"
+    assert "error" not in events
+    assert events[-1] == "done"
+    assert _token_text(frames) == "Hello world"
+
 
 
 
