@@ -104,10 +104,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom sleek scrollbar */
+/* Keep custom scrollbars easy to see and grab. */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {

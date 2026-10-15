@@ -35,6 +35,8 @@ const TARGET_ROUTE: Record<OverlayTarget, Route> = {
 export const App: React.FC = () => {
   const [route, setRoute] = useState<Route>(parseRoute);
   const [tenantId, setTenantId] = useState('default');
+  const [tenantDraft, setTenantDraft] = useState(tenantId);
+  const [tenantSubmitAttempted, setTenantSubmitAttempted] = useState(false);
   const [health, setHealth] = useState<BackendHealth>('offline');
   const [sidebarWidth, setSidebarWidth] = useState(248);
   const [collapsed, setCollapsed] = useState(false);
@@ -47,6 +49,8 @@ export const App: React.FC = () => {
     if (!window.location.hash) window.history.replaceState(null, '', '#/ask');
     return () => { window.removeEventListener('popstate', sync); window.removeEventListener('hashchange', sync); };
   }, []);
+
+  useEffect(() => setTenantDraft(tenantId), [tenantId]);
 
   useEffect(() => {
     let live = true;
@@ -87,6 +91,12 @@ export const App: React.FC = () => {
   };
 
   const operations = route.startsWith('/operations');
+  const tenantInvalid = tenantDraft.trim() === '';
+  const submitTenant = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setTenantSubmitAttempted(true);
+    if (!tenantInvalid) setTenantId(tenantDraft.trim());
+  };
   const sectionTitle = route === '/ask' ? 'Ask' : route.startsWith('/sources') ? 'Sources' : operations ? 'Monitor' : 'Settings';
   return (
     <WorkbenchContext.Provider value={workbench}>
@@ -104,7 +114,12 @@ export const App: React.FC = () => {
         <div className="workbench-main">
           <header className="workbench-header">
             <div className="header-title"><span className="header-breadcrumb"><span>Meridian</span><span aria-hidden="true"> / </span><strong>{sectionTitle}</strong></span></div>
-            <div className="header-tools"><label>Workspace <input aria-label="Workspace identifier" value={tenantId} onChange={(event) => setTenantId(event.target.value)} /></label><StatusChip variant={health === 'online' ? 'ok' : health === 'degraded' ? 'warn' : health === 'offline' ? 'fail' : 'faint'}>{health === 'online' ? 'Online' : health === 'degraded' ? 'Degraded' : health === 'unknown' ? 'Checking' : 'Offline'}</StatusChip></div>
+            <div className="header-tools"><form className="tenant-form" onSubmit={submitTenant} noValidate>
+              <label htmlFor="workspace-tenant">Workspace</label>
+              <input id="workspace-tenant" aria-label="Workspace identifier" value={tenantDraft} onChange={(event) => setTenantDraft(event.target.value)} aria-invalid={tenantSubmitAttempted && tenantInvalid} aria-describedby={tenantSubmitAttempted && tenantInvalid ? 'workspace-tenant-error' : undefined} />
+              <button type="submit">Apply</button>
+              {tenantSubmitAttempted && tenantInvalid && <span id="workspace-tenant-error" className="tenant-error" role="alert">Enter a workspace identifier.</span>}
+            </form><StatusChip variant={health === 'online' ? 'ok' : health === 'degraded' ? 'warn' : health === 'offline' ? 'fail' : 'faint'}>{health === 'online' ? 'Online' : health === 'degraded' ? 'Degraded' : health === 'unknown' ? 'Checking' : 'Offline'}</StatusChip></div>
           </header>
           {operations && <nav className="section-nav" aria-label="Monitor sections">
             {[['Usage', '/operations/usage'], ['Safety checks', '/operations/rules'], ['Review queue', '/operations/review']].map(([label, path]) => <a key={path} href={`#${path}`} aria-current={route === path ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(path as Route); }}>{label}</a>)}

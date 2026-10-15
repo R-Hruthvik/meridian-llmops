@@ -45,9 +45,12 @@
 .header-breadcrumb { color: rgb(var(--text-muted)); font-size: 13px; }
 .header-breadcrumb strong { color: rgb(var(--text)); font-weight: 600; }
 .header-tools { display: flex; align-items: center; gap: 1rem; }
-.header-tools label { display: flex; align-items: center; gap: .45rem; color: rgb(var(--text-muted)); font-size: 12px; }
+.tenant-form { position: relative; display: flex; align-items: center; gap: .45rem; color: rgb(var(--text-muted)); font-size: 12px; }
 .header-tools input { width: 118px; max-width: 24vw; padding: .45rem .55rem; border: 1px solid rgb(var(--border)); border-radius: 6px; color: rgb(var(--text)); background: rgb(var(--surface-raised)); font: 13px 'Geist Mono', monospace; }
 .header-tools input:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; }
+.tenant-form button { min-height: 32px; padding: 0 .55rem; border: 1px solid rgb(var(--border)); border-radius: 5px; background: rgb(var(--surface-raised)); color: rgb(var(--text)); cursor: pointer; font: 12px 'Geist', sans-serif; }
+.tenant-form button:hover { border-color: rgb(var(--accent)); color: rgb(var(--accent)); }
+.tenant-error { position: absolute; top: calc(100% + .25rem); right: 0; z-index: 2; padding: .35rem .5rem; border-radius: 4px; background: rgb(var(--fail-wash)); color: rgb(var(--fail)); }
 .section-nav { width: min(100%, 1680px); min-height: 45px; display: flex; gap: 1.4rem; margin-inline: auto; padding: 0 clamp(1.5rem, 5vw, 5.5rem); border-bottom: 1px solid rgb(var(--border)); }
 .section-nav a { display: inline-flex; align-items: center; min-height: 45px; padding: 0 .1rem; border-bottom: 2px solid transparent; color: rgb(var(--text-muted)); font-size: 13px; text-decoration: none; }
 .section-nav a[aria-current="page"] { border-bottom-color: rgb(var(--accent)); color: rgb(var(--accent)); font-weight: 600; }
@@ -99,7 +102,7 @@
   .workbench-main { min-height: calc(100dvh - 66px); }
   .workbench-header { height: 60px; padding-inline: 1rem; }
   .header-tools { gap: .5rem; }
-  .header-tools label { gap: .25rem; font-size: 11px; }
+  .tenant-form { gap: .25rem; font-size: 11px; }
   .header-tools input { width: 92px; padding: .4rem; }
   .workbench-content { padding: 1.5rem 1.25rem 2rem; }
   .ask-page-heading { align-items: flex-start; }
@@ -110,7 +113,7 @@
 }
 @media (max-width: 440px) {
   .header-breadcrumb { font-size: 11px; }
-  .header-tools label { font-size: 0; }
+  .tenant-form label { font-size: 0; }
   .header-tools input { width: 88px; }
   .ask-page-heading { gap: .75rem; }
   .ask-shortcuts summary { min-height: 34px; padding-inline: .6rem; font-size: 11px; }
