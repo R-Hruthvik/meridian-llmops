@@ -108,6 +108,25 @@ def test_json_ingest_preserves_existing_ui_response_fields(upload_client):
     assert pipeline.get_document(row["document_id"])["title"] == "Office Hours"
 
 
+def test_delete_document_evicts_chunks_from_vector_and_lexical_indexes(upload_client):
+    client, _ = upload_client
+    created = client.post("/v1/ingest", headers=HEADERS, json={
+        "title": "Eviction Probe", "text": "Meridian zzzquux lexical eviction probe token.",
+        "source": "eviction_probe.txt", "format": "txt",
+    }).json()
+    doc_id = created["document_id"]
+    assert any(chunk.document_id == doc_id for chunk in app_module.retriever.bm25_index.chunks)
+
+    deleted = client.delete(f"/v1/documents/{doc_id}", headers=HEADERS)
+    assert deleted.status_code == 200
+
+    assert all(chunk.document_id != doc_id for chunk in app_module.retriever.bm25_index.chunks)
+    assert app_module.vector_store.count() == 0
+    resp = client.post("/v1/retrieve", headers=HEADERS, json={"query": "zzzquux eviction probe", "top_k": 5})
+    assert resp.status_code == 200
+    assert resp.json()["chunks"] == []
+
+
 @pytest.mark.asyncio
 async def test_oversized_upload_stops_reading_at_limit(upload_client):
     _, pipeline = upload_client
