@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.core.models import ExtractedField, ReviewItem
+from packages.core.db_models import ExtractedField, ReviewItem
 from packages.core.schemas import ReviewItemAction, ReviewItemResponse
 from services.rag_engine.deps import get_db, require_admin
 
