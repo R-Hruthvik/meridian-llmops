@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     )
 
     # API & Service
-    app_env: str = "development"
+    app_env: str = "production"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     api_key_secret: str = Field(default_factory=lambda: os.environ.get("API_KEY_SECRET", ""))

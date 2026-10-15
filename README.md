@@ -25,6 +25,8 @@ flowchart LR
 
 Dense vectors are stored in Qdrant; disk records retain chunk text and metadata for ingestion state and BM25. Neo4j graph storage/context is optional and disabled by default. LiteLLM is an optional provider gateway; direct provider configuration is also supported.
 
+Compose binds service ports to `127.0.0.1` for local access. The app image defaults to `APP_ENV=production` and requires production credentials at startup. For remote production access, put the app behind a TLS-terminating reverse proxy and configure the host firewall to allow access only through that proxy. Set `APP_ENV=development` explicitly in `.env` for local Compose development.
+
 ## Five-minute local start
 
 Requirements: Python 3.11+, `uv`, Node.js/npm for the web UI, and Docker for Qdrant. The first start downloads the configured embedding model if it is not cached.
