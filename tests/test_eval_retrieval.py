@@ -1,6 +1,12 @@
-from evals.eval_retrieval import evaluate, gate_failures
+import json
+from pathlib import Path
+
+from evals.eval_retrieval import evaluate, format_summary, gate_failures
 from packages.core.models import Chunk
 from services.rag_engine.retrieval.hybrid import RankedChunk, RetrievalResult
+
+# Minimum retrieval quality the CI gate must enforce on every pull request.
+AGREED_RETRIEVAL_GATE = {"hit@5": 0.95, "mrr": 0.85, "unanswerable_accuracy": 1.00}
 
 
 class FakeRetriever:
@@ -139,3 +145,37 @@ def test_sufficiency_only_uses_configured_top_k_while_retrieving_ten_for_mrr():
 
     assert retriever.calls == [(case["question"], 10, "eval")]
     assert report["metrics"]["unanswerable_accuracy"] == 1.0
+
+
+def test_checked_in_retrieval_thresholds_meet_the_agreed_gate():
+    thresholds = json.loads(
+        (Path(__file__).resolve().parents[1] / "evals" / "thresholds.json").read_text(encoding="utf-8")
+    )
+
+    for metric, minimum in AGREED_RETRIEVAL_GATE.items():
+        assert thresholds[metric] >= minimum, f"{metric} gate {thresholds[metric]} is looser than agreed {minimum}"
+
+
+def test_format_summary_reports_metrics_thresholds_and_breaches():
+    report = {
+        "gate": "FAIL",
+        "metrics": {
+            "cases": 50,
+            "answerable_cases": 42,
+            "unanswerable_cases": 8,
+            "hit@5": 0.92,
+            "mrr": 0.8730158730158729,
+            "unanswerable_accuracy": 1.0,
+        },
+        "thresholds": {"hit@5": 0.95, "mrr": 0.85, "unanswerable_accuracy": 1.0},
+        "gate_failures": ["hit@5 0.920 < 0.950"],
+    }
+
+    summary = format_summary(report)
+
+    assert "**Result:** FAIL" in summary
+    assert "| hit@5 | 0.920 | 0.95 |" in summary
+    assert "| mrr | 0.873 | 0.85 |" in summary
+    assert "| unanswerable_accuracy | 1.000 | 1.00 |" in summary
+    assert "Cases: 50 (42 answerable, 8 unanswerable)" in summary
+    assert "- hit@5 0.920 < 0.950" in summary

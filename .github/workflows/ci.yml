@@ -90,7 +90,11 @@ jobs:
           -k every_rag_and_gateway_route_is_authenticated_except_health -v
 
       - name: Evaluate retrieval quality
-        run: uv run --frozen python evals/eval_retrieval.py
+        run: >-
+          uv run --frozen python evals/eval_retrieval.py
+          --thresholds evals/thresholds.json
+          --report evals/reports/retrieval_report.json
+          --summary "$GITHUB_STEP_SUMMARY"
 
   frontend:
     name: Frontend Tests & Secret-Free Build
