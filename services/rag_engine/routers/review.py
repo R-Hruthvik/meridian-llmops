@@ -1,16 +1,40 @@
 """Human-in-the-Loop (HITL) Review Queue router for low-confidence extractions."""
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.core.db_models import ExtractedField, ReviewItem
-from packages.core.schemas import ReviewItemAction, ReviewItemResponse
+from packages.core.db_models import ExtractedField, ORMDocument, ReviewItem
+from packages.core.schemas import GoldenCase, ReviewItemAction, ReviewItemResponse
 from services.rag_engine.deps import get_db, require_admin
 
 router = APIRouter(prefix="/v1/review", tags=["Human Review Queue"])
+
+# Verified review outcomes: a human confirmed the extracted value (approved) or
+# supplied the ground truth (corrected). Both are exportable and flag their source
+# chunk as unreliable for the original extraction.
+VERIFIED_REVIEW_STATUSES = ("approved", "corrected")
+# Export category used for review-derived golden cases; the retrieval golden
+# schema (evals/golden_dataset.json) requires one of its known categories.
+EXPORTED_GOLDEN_CATEGORY = "factual"
+
+
+def build_golden_case(item: ReviewItem, field: ExtractedField, document: ORMDocument) -> GoldenCase:
+    """Map one verified review item to the retrieval golden-dataset schema."""
+    phrase = item.corrected_value or field.value
+    source = document.source_uri or document.title
+    return GoldenCase(
+        id=f"review-{item.id}",
+        category=EXPORTED_GOLDEN_CATEGORY,
+        question=f"What is the {field.field_name.replace('_', ' ')} for {document.title}?",
+        answerable=True,
+        expected_doc=Path(source).name,
+        expected_phrases=[phrase],
+        notes=item.notes or f"Human-verified {field.field_name} from review item {item.id}.",
+    )
 
 
 @router.get("/items", response_model=list[ReviewItemResponse])
@@ -99,3 +123,41 @@ async def process_review_action(
         corrected_value=item.corrected_value,
         notes=item.notes
     )
+
+
+@router.get("/golden-export", response_model=list[GoldenCase])
+async def export_golden_cases(
+    db: AsyncSession = Depends(get_db),
+    tenant_id: str = Depends(require_admin),
+):
+    """Exports verified review corrections as evaluation-compatible golden cases.
+
+    Verified outcomes are ``approved`` and ``corrected`` review items; each is
+    mapped to the schema consumed by ``evals/eval_retrieval.py``.
+    """
+    stmt = (
+        select(ReviewItem, ExtractedField, ORMDocument)
+        .join(ExtractedField, ReviewItem.extracted_field_id == ExtractedField.id)
+        .join(ORMDocument, ExtractedField.document_id == ORMDocument.id)
+        .where(ReviewItem.status.in_(VERIFIED_REVIEW_STATUSES))
+    )
+    result = await db.execute(stmt)
+    return [build_golden_case(item, field, document) for item, field, document in result.all()]
+
+
+async def review_flagged_chunk_ids(db: AsyncSession) -> set[str]:
+    """Return chunk ids whose extraction a reviewer rejected or corrected.
+
+    These chunks carry degraded authority: their content produced a wrong
+    extraction, so retrieval should rank them below equally-scored peers.
+    """
+    stmt = (
+        select(ExtractedField.provenance_chunk_id)
+        .join(ReviewItem, ReviewItem.extracted_field_id == ExtractedField.id)
+        .where(
+            ReviewItem.status.in_(("rejected", "corrected")),
+            ExtractedField.provenance_chunk_id.is_not(None),
+        )
+    )
+    result = await db.execute(stmt)
+    return {chunk_id for chunk_id in result.scalars().all() if chunk_id}
