@@ -4,7 +4,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from packages.core.models import Base, ExtractedField, ORMDocument, ReviewItem
+from packages.core.db_models import Base, ExtractedField, ORMDocument, ReviewItem
 
 
 @pytest_asyncio.fixture
