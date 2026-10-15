@@ -711,6 +711,11 @@ async def ingest_document_endpoint(
     }
 
 
+def _sse_event(event: str, data: dict[str, Any]) -> str:
+    """Encode one Server-Sent Events frame with a named event and JSON payload."""
+    return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+
 @router.post("/v1/query", response_model=QueryResponse)
 async def query_endpoint(
     req: QueryRequest,
