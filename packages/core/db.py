@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -33,8 +34,18 @@ async def init_db(url: str | None = None):
     target = create_engine_for(url) if url is not None else engine
     async with target.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_migrate_document_tenant)
     if url is not None:
         await target.dispose()
+
+
+def _migrate_document_tenant(connection) -> None:
+    """Add tenant ownership to pre-existing document tables."""
+    columns = {column["name"] for column in inspect(connection).get_columns("documents")}
+    if "tenant_id" not in columns:
+        connection.execute(
+            text("ALTER TABLE documents ADD COLUMN tenant_id VARCHAR(255) NOT NULL DEFAULT 'default'")
+        )
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

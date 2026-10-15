@@ -29,11 +29,14 @@ from packages.core.models import (
 )
 from services.rag_engine.deps import get_db, require_user
 from services.rag_engine.routers._state import (
-    LiveRef,
+    agent_graph_ref,
+    index_gate_ref,
     _settings,
     input_guardrails,
     logger,
     output_guardrails,
+    retriever_ref,
+    tracer_ref,
 )
 from services.rag_engine.routers.review import review_flagged_chunk_ids
 
@@ -41,10 +44,10 @@ router = APIRouter()
 
 # Resolve shared services/helpers through the aggregation module at call time so
 # tests that rebind ``routers.api.<name>`` are honoured.
-_index_gate = LiveRef("_index_gate")
-retriever = LiveRef("retriever")
-tracer = LiveRef("tracer")
-agent_graph = LiveRef("agent_graph")
+_index_gate = index_gate_ref
+retriever = retriever_ref
+tracer = tracer_ref
+agent_graph = agent_graph_ref
 
 
 class GuardrailCheckRequest(BaseModel):
@@ -95,7 +98,7 @@ async def retrieve_endpoint(
     blocked = _index_gate(request)
     if blocked is not None:
         return blocked
-    flagged_chunk_ids = await _review_flags(db)
+    flagged_chunk_ids = await _review_flags(db, tenant_id)
     result = retriever.retrieve(
         payload.query,
         top_k=payload.top_k,
@@ -116,10 +119,10 @@ def _sse_event(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
-async def _review_flags(db: AsyncSession) -> set[str]:
+async def _review_flags(db: AsyncSession, tenant_id: str) -> set[str]:
     """Best-effort review-flag lookup; a review store that is not ready must not break retrieval."""
     try:
-        return await review_flagged_chunk_ids(db)
+        return await review_flagged_chunk_ids(db, tenant_id)
     except Exception as error:  # noqa: BLE001 - retrieval proceeds unpenalized when the review store is down
         logger.warning("Review-flag lookup failed; retrieving without penalties (%s)", type(error).__name__)
         return set()
@@ -172,6 +175,7 @@ async def query_endpoint(
                 "max_cycles": req.max_cycles,
                 "is_refusal": False,
                 "tenant_id": tenant_id,
+                "flagged_chunk_ids": sorted(await _review_flags(db, tenant_id)),
                 "answer_status": "answered",
                 "verification_result": None,
                 "timings_ms": {},
@@ -225,7 +229,8 @@ async def query_endpoint(
     )
 
     degraded_reason: str | None = final_state.get("generation_error")
-    flagged_chunk_ids = await _review_flags(db) & {chunk.chunk_id for chunk in chunks_data}
+    flagged_chunk_ids = await _review_flags(db, tenant_id) & {chunk.chunk_id for chunk in chunks_data}
+    logger.info("RAG query completed", extra={"request_id": request_id, "trace_id": trace.id})
     return QueryResponse(
         query=req.query,
         answer=final_answer,
@@ -263,6 +268,7 @@ async def _stream_query_response(
     sanitized_query: str,
     request_id: str,
     output_guardrails_enabled: bool,
+    flagged_chunk_ids: set[str] | None = None,
 ) -> AsyncIterator[str]:
     """Yield SSE frames for one agentic RAG pipeline run.
 
@@ -282,6 +288,7 @@ async def _stream_query_response(
         "max_cycles": req.max_cycles,
         "is_refusal": False,
         "tenant_id": tenant_id,
+        "flagged_chunk_ids": sorted(flagged_chunk_ids or set()),
         "answer_status": "answered",
         "verification_result": None,
         "timings_ms": {},
@@ -394,6 +401,7 @@ async def query_stream_endpoint(
     req: QueryRequest,
     request: Request,
     tenant_id: str = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Streams the agentic RAG pipeline as Server-Sent Events.
 
@@ -428,6 +436,7 @@ async def query_stream_endpoint(
             sanitized_query=sanitized_query,
             request_id=request_id,
             output_guardrails_enabled=output_guardrails_enabled,
+            flagged_chunk_ids=await _review_flags(db, tenant_id),
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

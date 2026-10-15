@@ -16,6 +16,7 @@ patches take effect at call time.
 """
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
@@ -47,8 +48,15 @@ from services.rag_engine.observability.langfuse_client import LangfuseTracer
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 from services.rag_engine.retrieval.reranker import CrossEncoderReranker, LexicalReranker
 from services.rag_engine.routers._state import (  # noqa: F401 - shared state re-exported for import/monkeypatch compatibility
+    bind_api_module,
     SECRET_SUFFIX,
     SETTINGS_FILE,
+    ProviderURLNotAllowed,
+    _RuntimeSettings,
+    _ServiceProxy,
+    _default_runtime_settings,
+    _default_service_cache,
+    _default_settings,
     _active_services,
     _default_llm_settings,
     _default_services,
@@ -79,21 +87,53 @@ from services.rag_engine.routers._state import (  # noqa: F401 - shared state re
     retriever,
     tracer,
     vector_store,
+    load_secrets,
+    save_secrets,
+    validate_provider_url,
 )
 from services.rag_engine.routers.documents import router as documents_router
 from services.rag_engine.routers.documents import (
+    _get_document_list_response,  # noqa: F401 - re-exported for import compatibility
+    catalog_alias_endpoint,  # noqa: F401 - re-exported for import compatibility
+    clear_all_documents_endpoint,  # noqa: F401 - re-exported for import compatibility
+    delete_document_endpoint,  # noqa: F401 - re-exported for import compatibility
+    get_document_chunks_endpoint,  # noqa: F401 - re-exported for import compatibility
+    get_document_details_endpoint,  # noqa: F401 - re-exported for import compatibility
+    ingest_document_endpoint,  # noqa: F401 - re-exported for import compatibility
+    list_documents_endpoint,  # noqa: F401 - re-exported for import compatibility
+    seed_sample_documents_endpoint,  # noqa: F401 - re-exported for import compatibility
     upload_documents_endpoint,  # noqa: F401 - re-exported for test/import compatibility
 )
 from services.rag_engine.routers.ops import router as ops_router
+from services.rag_engine.routers.ops import (
+    get_index_status,  # noqa: F401 - re-exported for import compatibility
+    get_metrics,  # noqa: F401 - re-exported for import compatibility
+    health_check,  # noqa: F401 - re-exported for import compatibility
+    health_live,  # noqa: F401 - re-exported for import compatibility
+    health_ready,  # noqa: F401 - re-exported for import compatibility
+    reindex_endpoint,  # noqa: F401 - re-exported for import compatibility
+)
 from services.rag_engine.routers.query import (
+    GuardrailCheckRequest,  # noqa: F401 - re-exported for import compatibility
+    RetrieveRequest,  # noqa: F401 - re-exported for import compatibility
     _sse_event,  # noqa: F401 - re-exported for test/import compatibility
     _stream_query_response,  # noqa: F401 - re-exported for test/import compatibility
+    _review_flags,  # noqa: F401 - re-exported for import compatibility
+    check_guardrails_get,  # noqa: F401 - re-exported for import compatibility
+    check_guardrails_post,  # noqa: F401 - re-exported for import compatibility
+    query_endpoint,  # noqa: F401 - re-exported for import compatibility
+    query_stream_endpoint,  # noqa: F401 - re-exported for import compatibility
+    retrieve_endpoint,  # noqa: F401 - re-exported for import compatibility
 )
 from services.rag_engine.routers.query import router as query_router
 from services.rag_engine.routers.review import router as review_router
 from services.rag_engine.routers.settings import (
     TestAndFetchModelsRequest,  # noqa: F401 - re-exported for test/import compatibility
+    get_llm_settings,  # noqa: F401 - re-exported for import compatibility
+    get_providers_status,  # noqa: F401 - re-exported for import compatibility
     test_and_fetch_models,  # noqa: F401 - re-exported for test/import compatibility
+    test_llm_connection,  # noqa: F401 - re-exported for import compatibility
+    update_llm_settings,  # noqa: F401 - re-exported for import compatibility
 )
 from services.rag_engine.routers.settings import router as settings_router
 
@@ -405,3 +445,4 @@ def mount_web(app: FastAPI) -> None:
 
 app = create_app()
 app.state.use_legacy_services = True
+bind_api_module(sys.modules[__name__])

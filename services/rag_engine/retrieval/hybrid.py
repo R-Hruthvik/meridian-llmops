@@ -207,11 +207,12 @@ class HybridRetriever:
 
     @staticmethod
     def _penalize(scores: dict[str, Any]) -> dict[str, Any]:
-        """Scale a flagged chunk's final score so it ranks below equal peers."""
+        """Reduce a flagged chunk's score without promoting negative logits."""
+        final = float(scores["final"] or 0.0)
         return {
             **scores,
             "review_penalty": FLAGGED_CHUNK_PENALTY,
-            "final": float(scores["final"] or 0.0) * FLAGGED_CHUNK_PENALTY,
+            "final": final - abs(final) * (1 - FLAGGED_CHUNK_PENALTY),
         }
 
     def _span(self, name: str, **attributes: Any):

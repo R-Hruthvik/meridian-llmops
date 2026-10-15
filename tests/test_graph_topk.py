@@ -27,6 +27,7 @@ class _RecordingRetriever:
 
     def __init__(self, corpus_size: int = CORPUS_SIZE):
         self.calls: list[int] = []
+        self.flagged_calls: list[set[str]] = []
         self.corpus = [
             Chunk(
                 id=f"c{i}",
@@ -37,8 +38,16 @@ class _RecordingRetriever:
             for i in range(corpus_size)
         ]
 
-    def retrieve(self, query: str, top_k: int = 5, tenant_id: str = "default", debug: bool = False) -> RetrievalResult:
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 5,
+        tenant_id: str = "default",
+        debug: bool = False,
+        flagged_chunk_ids: set[str] | None = None,
+    ) -> RetrievalResult:
         self.calls.append(top_k)
+        self.flagged_calls.append(flagged_chunk_ids or set())
         chunks = [
             RankedChunk(chunk=chunk, rank=i + 1, scores={"final": 0.9, "rrf": 0.9})
             for i, chunk in enumerate(self.corpus[:top_k])
@@ -118,6 +127,20 @@ async def test_recall_k_is_derived_from_top_k_when_omitted():
 
     assert retriever.calls == [4]
     assert len(final_state["retrieved_chunks"]) == 4
+
+
+@pytest.mark.asyncio
+async def test_agent_graph_passes_review_flags_into_retrieval():
+    retriever = _RecordingRetriever()
+    graph = build_rag_agent_graph(
+        retriever=retriever, graph_store=KnowledgeGraphStore(in_memory=True)
+    )
+    state = _base_state()
+    state["flagged_chunk_ids"] = ["c1"]
+
+    await graph.ainvoke(state, config={"configurable": {"top_k": 2}})
+
+    assert retriever.flagged_calls == [{"c1"}]
 
 
 @pytest.mark.asyncio

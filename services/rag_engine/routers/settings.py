@@ -22,13 +22,16 @@ from services.gateway.safe_http import (
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.deps import require_admin
 from services.rag_engine.routers._state import (
-    LiveRef,
+    graph_store_ref,
+    llm_client_ref,
+    retriever_ref,
+    runtime_llm_settings_ref,
+    tracer_ref,
     _active_services,
     _is_masked,
     _merge_preserving_saved,
     _model_fetch_get,
     _resolve_active_llm_config_with_secrets,
-    _runtime_llm_settings,
     _save_persisted_settings,
     _settings,
     _settings_lock,
@@ -39,10 +42,11 @@ router = APIRouter()
 
 # Resolve shared services through the aggregation module at call time so tests
 # that rebind ``routers.api.<name>`` are honoured.
-graph_store = LiveRef("graph_store")
-retriever = LiveRef("retriever")
-llm_client = LiveRef("llm_client")
-tracer = LiveRef("tracer")
+graph_store = graph_store_ref
+retriever = retriever_ref
+llm_client = llm_client_ref
+tracer = tracer_ref
+_runtime_llm_settings = runtime_llm_settings_ref
 
 
 class TestAndFetchModelsRequest(BaseModel):

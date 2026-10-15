@@ -18,6 +18,7 @@ import os
 from collections.abc import MutableMapping
 from contextvars import ContextVar
 from pathlib import Path
+from types import ModuleType
 from typing import Any, cast
 
 import httpx
@@ -35,18 +36,30 @@ from services.gateway.safe_http import (
 from services.ingestion import storage as ingestion_storage
 
 logger = logging.getLogger("meridian.rag_engine")
+_api_module: ModuleType | None = None
+
+
+def bind_api_module(module: ModuleType) -> None:
+    """Bind the compatibility module without importing it from this state leaf."""
+    global _api_module
+    _api_module = module
+
+
+def set_live_value(name: str, value: Any) -> None:
+    if _api_module is None:
+        raise RuntimeError("RAG router API module is not initialized")
+    setattr(_api_module, name, value)
 
 
 def live(name: str) -> Any:
     """Return the current value of ``name`` on the aggregation module.
 
-    The aggregation module (:mod:`services.rag_engine.routers.api`) owns the
-    canonical service proxies; the test suite monkeypatches those names. Reading
-    through it keeps a single source of truth for the process.
+    The API module is registered during assembly. Keeping a module reference
+    avoids making this low-level state module import the application assembly.
     """
-    from services.rag_engine.routers import api
-
-    return getattr(api, name)
+    if _api_module is None:
+        raise RuntimeError("RAG router API module is not initialized")
+    return getattr(_api_module, name)
 
 
 class LiveRef:
@@ -73,6 +86,35 @@ class LiveRef:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self._target()(*args, **kwargs)
+
+    def __getitem__(self, key: Any) -> Any:
+        return self._target()[key]
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        self._target()[key] = value
+
+    def __delitem__(self, key: Any) -> None:
+        del self._target()[key]
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._target()
+
+    def __iter__(self):
+        return iter(self._target())
+
+    def __len__(self) -> int:
+        return len(self._target())
+
+
+index_gate_ref = LiveRef("_index_gate")
+vector_store_ref = LiveRef("vector_store")
+graph_store_ref = LiveRef("graph_store")
+ingestion_pipeline_ref = LiveRef("ingestion_pipeline")
+retriever_ref = LiveRef("retriever")
+tracer_ref = LiveRef("tracer")
+agent_graph_ref = LiveRef("agent_graph")
+llm_client_ref = LiveRef("llm_client")
+runtime_llm_settings_ref = LiveRef("_runtime_llm_settings")
 
 
 # Services are created by create_app/lifespan. Proxies preserve legacy module imports.
@@ -101,11 +143,13 @@ _default_settings = None
 
 
 def _default_services() -> dict[str, Any]:
-    global _default_service_cache, _default_settings
-    if _default_service_cache is None:
-        _default_settings = live("_core_get_settings")()
-        _default_service_cache = live("_build_services")(_default_settings)
-    return _default_service_cache
+    service_cache = live("_default_service_cache")
+    if service_cache is None:
+        settings = live("_core_get_settings")()
+        service_cache = live("_build_services")(settings)
+        set_live_value("_default_settings", settings)
+        set_live_value("_default_service_cache", service_cache)
+    return service_cache
 
 _settings = _ServiceProxy("settings")
 vector_store = _ServiceProxy("vector_store")
@@ -150,6 +194,13 @@ def _get_settings_file() -> Path:
 
 
 SETTINGS_FILE = _get_settings_file()
+_SETTINGS_FILE_GETTER = _get_settings_file
+
+
+def _current_settings_file() -> Path:
+    if _get_settings_file is not _SETTINGS_FILE_GETTER:
+        return _get_settings_file()
+    return live("_get_settings_file")()
 
 
 def _get_secrets_file() -> Path:
@@ -187,7 +238,7 @@ _default_llm_settings: dict[str, Any] = {
 
 def _load_persisted_settings() -> dict[str, Any]:
     settings = dict(_default_llm_settings)
-    settings_file = live("_get_settings_file")()
+    settings_file = _current_settings_file()
     saved: dict[str, Any] = {}
     if settings_file.exists():
         try:
@@ -281,7 +332,7 @@ def masked_llm_view(d: dict[str, Any]) -> dict[str, Any]:
 
 
 def _save_persisted_settings(settings: dict[str, Any]) -> None:
-    settings_file = live("_get_settings_file")()
+    settings_file = _current_settings_file()
     existing: dict[str, Any] = {}
     if settings_file.exists():
         try:
@@ -317,10 +368,11 @@ class _RuntimeSettings(MutableMapping[str, Any]):
         active = _active_services.get()
         if active is not None and "runtime_llm_settings" in active:
             return cast(dict[str, Any], active["runtime_llm_settings"])
-        global _default_runtime_settings
-        if _default_runtime_settings is None:
-            _default_runtime_settings = _load_persisted_settings()
-        return _default_runtime_settings
+        persisted = live("_default_runtime_settings")
+        if persisted is None:
+            persisted = _load_persisted_settings()
+            set_live_value("_default_runtime_settings", persisted)
+        return persisted
 
     def __getitem__(self, key: str) -> Any:
         return self._target()[key]

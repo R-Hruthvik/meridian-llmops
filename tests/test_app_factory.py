@@ -86,6 +86,34 @@ def fake_overrides():
     }
 
 
+def test_api_module_preserves_route_and_state_exports():
+    expected = (
+        "health_live",
+        "get_metrics",
+        "query_endpoint",
+        "delete_document_endpoint",
+        "get_llm_settings",
+        "_default_service_cache",
+        "_default_runtime_settings",
+        "validate_provider_url",
+        "ProviderURLNotAllowed",
+        "load_secrets",
+        "save_secrets",
+    )
+
+    assert all(hasattr(app_module, name) for name in expected)
+
+
+def test_default_service_cache_can_be_reset_through_api_compatibility_name(monkeypatch):
+    sentinel = {"service": object()}
+    monkeypatch.setattr(app_module, "_default_service_cache", None)
+    monkeypatch.setattr(app_module, "_core_get_settings", lambda: "test-settings")
+    monkeypatch.setattr(app_module, "_build_services", lambda settings: sentinel)
+
+    assert app_module._default_services() is sentinel
+    assert app_module._default_service_cache is sentinel
+
+
 def test_create_app_uses_per_instance_settings_and_overrides(monkeypatch):
     monkeypatch.setattr(app_module, "validate_auth_configuration", lambda: None)
     monkeypatch.setattr(app_module, "_validate_production", lambda settings: None)
@@ -112,6 +140,29 @@ def test_create_app_uses_per_instance_settings_and_overrides(monkeypatch):
     assert second_services["vector_store"].ready
     assert first.state.vector_store is first_services["vector_store"]
     assert second.state.vector_store is second_services["vector_store"]
+
+
+def test_create_app_builds_default_services_per_instance(monkeypatch):
+    monkeypatch.setattr(app_module, "validate_auth_configuration", lambda: None)
+    monkeypatch.setattr(app_module, "_validate_production", lambda settings: None)
+
+    async def no_startup(application, settings):
+        return None
+
+    monkeypatch.setattr(app_module, "_startup", no_startup)
+    built_services = [fake_overrides(), fake_overrides()]
+    monkeypatch.setattr(app_module, "_build_services", lambda settings: built_services.pop(0))
+    first = app_module.create_app(
+        Settings(_env_file=None, app_env="testing", qdrant_local_path=":memory:"),
+        {"runtime_llm_settings": {}},
+    )
+    second = app_module.create_app(
+        Settings(_env_file=None, app_env="testing", qdrant_local_path=":memory:"),
+        {"runtime_llm_settings": {}},
+    )
+
+    with TestClient(first), TestClient(second):
+        assert first.state.vector_store is not second.state.vector_store
 
 
 

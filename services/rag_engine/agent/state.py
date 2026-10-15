@@ -16,6 +16,7 @@ class RagAgentState(TypedDict, total=False):
     cycle_count: int
     max_cycles: int
     tenant_id: str
+    flagged_chunk_ids: list[str]
     answer_status: Literal["answered", "insufficient_context", "unverified", "refused"]
     verification_result: VerificationResult | None
     timings_ms: dict[str, float]

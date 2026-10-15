@@ -9,7 +9,7 @@ citations). They are kept separate from the Pydantic API schemas in
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -24,6 +24,9 @@ class ORMDocument(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     file_type: Mapped[str] = mapped_column(String(50), nullable=False)
     source_uri: Mapped[str] = mapped_column(String(512), nullable=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="default", server_default=text("'default'")
+    )
     processing_status: Mapped[str] = mapped_column(String(50), default="processed")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 

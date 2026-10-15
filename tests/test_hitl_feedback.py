@@ -7,7 +7,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from packages.core.db_models import Base, ExtractedField, ORMDocument, ReviewItem
+from packages.core.db_models import Base, ExtractedField, ORMChunk, ORMDocument, ReviewItem
 from packages.core.models import Chunk, QueryResponse
 from packages.core.schemas import GoldenCase
 from scripts.validate_golden import validate_dataset
@@ -98,13 +98,54 @@ async def test_export_endpoint_returns_only_verified_items(test_db_session: Asyn
         review_status="pending",
     )
     pending_item = ReviewItem(id="item_2", extracted_field_id="field_2", status="pending")
-    test_db_session.add_all([document, field, item, pending_doc, pending_field, pending_item])
+    test_db_session.add_all([
+        document,
+        field,
+        item,
+        ORMChunk(id="chunk_9", document_id="doc_1", content="The reviewed limit is $750."),
+        pending_doc,
+        pending_field,
+        pending_item,
+    ])
     await test_db_session.commit()
 
-    cases = await export_golden_cases(db=test_db_session, tenant_id="ops")
+    cases = await export_golden_cases(db=test_db_session, tenant_id="default")
 
     assert [case.id for case in cases] == ["review-item_1"]
     assert cases[0].expected_phrases == ["$750"]
+
+
+@pytest.mark.asyncio
+async def test_export_skips_corrected_values_absent_from_source_chunks(test_db_session: AsyncSession):
+    document, field, item = _seed_rows()
+    impossible_field = ExtractedField(
+        id="field_impossible",
+        document_id="doc_1",
+        field_name="unsupported_limit",
+        value="$9999",
+        confidence=0.2,
+        provenance_chunk_id="chunk_impossible",
+    )
+    impossible_item = ReviewItem(
+        id="item_impossible",
+        extracted_field_id="field_impossible",
+        status="corrected",
+        corrected_value="$9999",
+    )
+    test_db_session.add_all([
+        document,
+        field,
+        item,
+        impossible_field,
+        impossible_item,
+        ORMChunk(id="chunk_9", document_id="doc_1", content="The reviewed limit is $750."),
+        ORMChunk(id="chunk_impossible", document_id="doc_1", content="The reviewed limit is $750."),
+    ])
+    await test_db_session.commit()
+
+    cases = await export_golden_cases(db=test_db_session, tenant_id="default")
+
+    assert [case.id for case in cases] == ["review-item_1"]
 
 
 @pytest.mark.asyncio
@@ -135,9 +176,33 @@ async def test_flagged_chunk_ids_cover_rejected_and_corrected_items(test_db_sess
     test_db_session.add_all([document, field, item, rejected_field, rejected_item, approved_field, approved_item])
     await test_db_session.commit()
 
-    flagged = await review_flagged_chunk_ids(test_db_session)
+    flagged = await review_flagged_chunk_ids(test_db_session, "default")
 
     assert flagged == {"chunk_9", "chunk_7"}
+
+
+@pytest.mark.asyncio
+async def test_flagged_chunk_ids_are_scoped_to_document_tenant(test_db_session: AsyncSession):
+    document, field, item = _seed_rows()
+    other_document = ORMDocument(
+        id="doc_other", title="Other tenant", file_type="md", tenant_id="other"
+    )
+    other_field = ExtractedField(
+        id="field_other",
+        document_id="doc_other",
+        field_name="limit",
+        value="$1",
+        confidence=0.2,
+        provenance_chunk_id="chunk_other",
+    )
+    other_item = ReviewItem(
+        id="item_other", extracted_field_id="field_other", status="rejected"
+    )
+    test_db_session.add_all([document, field, item, other_document, other_field, other_item])
+    await test_db_session.commit()
+
+    assert await review_flagged_chunk_ids(test_db_session, "default") == {"chunk_9"}
+    assert await review_flagged_chunk_ids(test_db_session, "other") == {"chunk_other"}
 
 
 def _build_retriever(chunks: list[Chunk]) -> HybridRetriever:
@@ -180,6 +245,13 @@ def test_flagged_chunk_scores_lower_and_reranks():
     assert penalized.chunks[0].chunk_id != top.chunk_id
     finals = [chunk.scores["final"] for chunk in penalized.chunks]
     assert finals == sorted(finals, reverse=True)
+
+
+def test_flagged_negative_logit_moves_down():
+    penalized = HybridRetriever._penalize({"final": -8.0, "rerank": -8.0})
+
+    assert penalized["final"] == -12.0
+    assert penalized["final"] < -7.0
 
 
 def test_query_response_defaults_keep_backward_compatibility():

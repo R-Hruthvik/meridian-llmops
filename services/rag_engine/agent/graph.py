@@ -201,7 +201,14 @@ def build_rag_agent_graph(
         configured_top_k, _ = resolve_retrieval_breadth(config)
         top_k = min(max(state.get("retry_top_k", configured_top_k), MIN_TOP_K), MAX_TOP_K)
         started = time.perf_counter()
-        result = retriever.retrieve(query, top_k=top_k, tenant_id=state.get("tenant_id", "default"))
+        retrieve_options = {
+            "top_k": top_k,
+            "tenant_id": state.get("tenant_id", "default"),
+        }
+        flagged_chunk_ids = set(state.get("flagged_chunk_ids", []))
+        if flagged_chunk_ids:
+            retrieve_options["flagged_chunk_ids"] = flagged_chunk_ids
+        result = retriever.retrieve(query, **retrieve_options)
         sources = [_to_search_result(ranked) for ranked in result.chunks[:top_k]]
         entities: list[Entity] = []
         graph_context: list[dict[str, Any]] = []

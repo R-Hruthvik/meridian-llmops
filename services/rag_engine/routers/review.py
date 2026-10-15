@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.core.db_models import ExtractedField, ORMDocument, ReviewItem
+from packages.core.db_models import ExtractedField, ORMChunk, ORMDocument, ReviewItem
 from packages.core.schemas import GoldenCase, ReviewItemAction, ReviewItemResponse
 from services.rag_engine.deps import get_db, require_admin
 
@@ -45,7 +45,8 @@ async def list_pending_review_items(
     stmt = (
         select(ReviewItem, ExtractedField)
         .join(ExtractedField, ReviewItem.extracted_field_id == ExtractedField.id)
-        .where(ReviewItem.status == "pending")
+        .join(ORMDocument, ExtractedField.document_id == ORMDocument.id)
+        .where(ReviewItem.status == "pending", ORMDocument.tenant_id == tenant_id)
     )
     result = await db.execute(stmt)
     rows = result.all()
@@ -79,7 +80,8 @@ async def process_review_action(
     stmt = (
         select(ReviewItem, ExtractedField)
         .join(ExtractedField, ReviewItem.extracted_field_id == ExtractedField.id)
-        .where(ReviewItem.id == item_id)
+        .join(ORMDocument, ExtractedField.document_id == ORMDocument.id)
+        .where(ReviewItem.id == item_id, ORMDocument.tenant_id == tenant_id)
     )
     result = await db.execute(stmt)
     row = result.first()
@@ -138,13 +140,26 @@ async def export_golden_cases(
         select(ReviewItem, ExtractedField, ORMDocument)
         .join(ExtractedField, ReviewItem.extracted_field_id == ExtractedField.id)
         .join(ORMDocument, ExtractedField.document_id == ORMDocument.id)
-        .where(ReviewItem.status.in_(VERIFIED_REVIEW_STATUSES))
+        .where(
+            ReviewItem.status.in_(VERIFIED_REVIEW_STATUSES),
+            ORMDocument.tenant_id == tenant_id,
+        )
     )
     result = await db.execute(stmt)
-    return [build_golden_case(item, field, document) for item, field, document in result.all()]
+    cases = []
+    for item, field, document in result.all():
+        case = build_golden_case(item, field, document)
+        chunk_result = await db.execute(
+            select(ORMChunk.content).where(ORMChunk.document_id == document.id)
+        )
+        source_chunks = chunk_result.scalars().all()
+        phrase = " ".join(case.expected_phrases[0].casefold().split())
+        if phrase and any(phrase in " ".join(chunk.casefold().split()) for chunk in source_chunks):
+            cases.append(case)
+    return cases
 
 
-async def review_flagged_chunk_ids(db: AsyncSession) -> set[str]:
+async def review_flagged_chunk_ids(db: AsyncSession, tenant_id: str) -> set[str]:
     """Return chunk ids whose extraction a reviewer rejected or corrected.
 
     These chunks carry degraded authority: their content produced a wrong
@@ -153,9 +168,11 @@ async def review_flagged_chunk_ids(db: AsyncSession) -> set[str]:
     stmt = (
         select(ExtractedField.provenance_chunk_id)
         .join(ReviewItem, ReviewItem.extracted_field_id == ExtractedField.id)
+        .join(ORMDocument, ExtractedField.document_id == ORMDocument.id)
         .where(
             ReviewItem.status.in_(("rejected", "corrected")),
             ExtractedField.provenance_chunk_id.is_not(None),
+            ORMDocument.tenant_id == tenant_id,
         )
     )
     result = await db.execute(stmt)

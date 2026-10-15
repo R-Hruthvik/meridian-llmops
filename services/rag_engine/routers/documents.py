@@ -13,15 +13,15 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from packages.core.errors import IndexReadError, IndexWriteError, IngestionError
 from packages.core.models import DocumentFormat, IngestDocumentRequest
 from services.rag_engine.deps import require_admin, require_user
-from services.rag_engine.routers._state import LiveRef
+from services.rag_engine.routers._state import ingestion_pipeline_ref, retriever_ref, vector_store_ref
 
 router = APIRouter()
 
 # Resolve shared services through the aggregation module at call time so tests
 # that rebind ``routers.api.<name>`` are honoured.
-vector_store = LiveRef("vector_store")
-ingestion_pipeline = LiveRef("ingestion_pipeline")
-retriever = LiveRef("retriever")
+vector_store = vector_store_ref
+ingestion_pipeline = ingestion_pipeline_ref
+retriever = retriever_ref
 
 
 @router.post("/v1/documents")
@@ -146,6 +146,7 @@ async def catalog_alias_endpoint(tenant_id: str = Depends(require_user)):
     .. deprecated::
         Use :get:`/v1/documents` instead.
     """
+    # Keep this static alias before the /{doc_id} routes below.
     response = _get_document_list_response(tenant_id)
     response["Deprecation"] = "true"
     response["Sunset"] = "2027-01-01"

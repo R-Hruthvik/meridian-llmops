@@ -13,17 +13,23 @@ from packages.core.models import IndexStatusResponse
 from services.ingestion.manifest import check_consistency
 from services.rag_engine.deps import require_admin, require_user
 from services.rag_engine.index_inspector import build_index_status
-from services.rag_engine.routers._state import LiveRef
+from services.rag_engine.routers._state import (
+    graph_store_ref,
+    ingestion_pipeline_ref,
+    retriever_ref,
+    tracer_ref,
+    vector_store_ref,
+)
 
 router = APIRouter()
 
 # Resolve shared services through the aggregation module at call time so tests
 # that rebind ``routers.api.<name>`` are honoured.
-vector_store = LiveRef("vector_store")
-graph_store = LiveRef("graph_store")
-ingestion_pipeline = LiveRef("ingestion_pipeline")
-retriever = LiveRef("retriever")
-tracer = LiveRef("tracer")
+vector_store = vector_store_ref
+graph_store = graph_store_ref
+ingestion_pipeline = ingestion_pipeline_ref
+retriever = retriever_ref
+tracer = tracer_ref
 
 
 @router.get("/health/live")
