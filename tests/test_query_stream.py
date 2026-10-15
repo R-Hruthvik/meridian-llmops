@@ -1,5 +1,63 @@
 """Server-Sent Events contract for the streaming query endpoint."""
 
+import json
+
+from fastapi.testclient import TestClient
+
+from packages.core.models import Chunk
+from services.ingestion.graph_store import KnowledgeGraphStore
+from services.rag_engine.agent.graph import build_rag_agent_graph
+from services.rag_engine.app import app
+from services.rag_engine.retrieval.hybrid import RankedChunk, RetrievalResult
+from tests.fakes import FakeLLM
+
+AUTH = {"X-API-Key": "meridian-test-secret-key-2026"}
+
+
+class _FixedRetriever:
+    def __init__(self, chunk: Chunk):
+        self.chunk = chunk
+
+    def retrieve(self, query: str, top_k: int = 5, tenant_id: str = "default", debug: bool = False):
+        ranked = RankedChunk(self.chunk, 1, {"dense": 0.95, "bm25": 0.0, "final": 0.95})
+        return RetrievalResult(query, top_k, [ranked], timings_ms={"total": 1.0})
+
+
+def _install_answer_graph(monkeypatch, answer: str) -> FakeLLM:
+    from services.rag_engine import app as app_module
+
+    llm = FakeLLM(content=answer)
+    chunk = Chunk(
+        id="chunk-stream",
+        document_id="doc-stream",
+        text="Meridian streams answers over SSE.",
+        metadata={"filename": "stream.md"},
+    )
+    graph = build_rag_agent_graph(
+        retriever=_FixedRetriever(chunk),
+        graph_store=KnowledgeGraphStore(in_memory=True),
+        llm_client=llm,
+        min_dense_score=0.70,
+        verify_mode="citations",
+    )
+    monkeypatch.setattr(app_module, "agent_graph", graph)
+    return llm
+
+
+def _frames(response) -> list[tuple[str, dict]]:
+    parsed: list[tuple[str, dict]] = []
+    for block in response.text.strip().split("\n\n"):
+        event = None
+        data = None
+        for line in block.splitlines():
+            if line.startswith("event: "):
+                event = line[7:]
+            elif line.startswith("data: "):
+                data = line[6:]
+        if event is not None:
+            parsed.append((event, json.loads(data) if data else {}))
+    return parsed
+
 
 def test_sse_event_encodes_named_frame():
     from services.rag_engine.routers.api import _sse_event
@@ -15,3 +73,18 @@ def test_sse_event_terminates_frame_with_blank_line():
     assert frame.endswith("\n\n")
     assert frame.count("\n\n") == 1
     assert frame.startswith("event: done\ndata: ")
+
+
+def test_stream_route_emits_retrieval_tokens_and_done(monkeypatch):
+    _install_answer_graph(monkeypatch, "Meridian streams answers over SSE [1].")
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/query/stream",
+            headers=AUTH,
+            json={"query": "How does Meridian stream answers?", "top_k": 3},
+        )
+    assert response.status_code == 200
+    names = [name for name, _ in _frames(response)]
+    assert names[0] == "retrieval_complete"
+    assert "token" in names
+    assert names[-1] == "done"
