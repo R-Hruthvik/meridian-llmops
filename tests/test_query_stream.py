@@ -88,3 +88,15 @@ def test_stream_route_emits_retrieval_tokens_and_done(monkeypatch):
     assert names[0] == "retrieval_complete"
     assert "token" in names
     assert names[-1] == "done"
+
+
+def test_stream_sets_text_event_stream_content_type(monkeypatch):
+    _install_answer_graph(monkeypatch, "Meridian streams answers over SSE [1].")
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/query/stream",
+            headers=AUTH,
+            json={"query": "How does Meridian stream answers?"},
+        )
+    assert response.headers["content-type"].startswith("text/event-stream")
+
