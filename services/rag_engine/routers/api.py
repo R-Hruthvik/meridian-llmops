@@ -6,7 +6,7 @@ import logging
 import os
 import time
 import uuid
-from collections.abc import MutableMapping
+from collections.abc import AsyncIterator, MutableMapping
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -24,7 +24,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
@@ -841,6 +841,139 @@ async def query_endpoint(
         model=model_value,
         timings_ms=timings_ms,
         usage=final_state.get("usage"),
+    )
+
+
+def _token_deltas(text: str, size: int = 24) -> list[str]:
+    """Slice completed text into fixed-size delta chunks for ``token`` frames."""
+    return [text[index : index + size] for index in range(0, len(text), size)]
+
+
+async def _stream_query_response(
+    req: QueryRequest,
+    tenant_id: str,
+    sanitized_query: str,
+    request_id: str,
+    output_guardrails_enabled: bool,
+) -> AsyncIterator[str]:
+    """Yield SSE frames for one agentic RAG pipeline run.
+
+    The compiled graph is streamed with ``astream``, so ``retrieval_complete``
+    is emitted as soon as retrieval finishes, before generation and verification
+    run. The provider client can stream token deltas
+    (:meth:`LiteLLMClient.chat_completion_stream`), but the shared generation
+    node is unary; wiring provider streaming through it would be an invasive
+    rewrite. ``token`` frames therefore carry deltas of the final answer once
+    generation completes, not live provider tokens.
+    """
+    initial_state: dict[str, Any] = {
+        "query": sanitized_query,
+        "current_search_query": sanitized_query,
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "cycle_count": 0,
+        "max_cycles": req.max_cycles,
+        "is_refusal": False,
+        "tenant_id": tenant_id,
+        "answer_status": "answered",
+        "verification_result": None,
+        "timings_ms": {},
+        "request_id": request_id,
+        "serving_provider": None,
+        "serving_model": None,
+        "usage": None,
+        "debug": {},
+    }
+    final_state: dict[str, Any] = {}
+    async for update in agent_graph.astream(
+        initial_state,
+        config={"configurable": {"top_k": req.top_k}},
+        stream_mode="updates",
+    ):
+        for node_name, node_update in update.items():
+            if node_update:
+                final_state.update(node_update)
+            if node_name == "retrieve":
+                chunks = (node_update or {}).get("retrieved_chunks", [])
+                yield _sse_event(
+                    "retrieval_complete",
+                    {
+                        "chunk_ids": [chunk.chunk_id for chunk in chunks],
+                        "timings_ms": (node_update or {}).get("timings_ms", {}),
+                    },
+                )
+
+    raw_answer = final_state.get("draft_answer", "")
+    if output_guardrails_enabled and not final_state.get("is_refusal", False):
+        out_result = output_guardrails.evaluate(raw_answer)
+        final_answer = out_result.sanitized_text
+        if not out_result.allowed:
+            final_state["answer_status"] = "refused"
+            final_state["is_refusal"] = True
+            final_state["verification_result"] = VerificationSummary(status="unchecked", scope="unchecked")
+    else:
+        final_answer = raw_answer
+
+    for delta in _token_deltas(final_answer):
+        yield _sse_event("token", {"delta": delta})
+
+    verification_result = final_state.get("verification_result")
+    verification = VerificationSummary.model_validate(
+        verification_result.model_dump() if verification_result is not None else {}
+    )
+    yield _sse_event(
+        "verification_complete",
+        {
+            "status": verification.status,
+            "citations": [chunk.chunk_id for chunk in final_state.get("retrieved_chunks", [])],
+        },
+    )
+    yield _sse_event("done", {"request_id": request_id})
+
+
+@router.post("/v1/query/stream")
+async def query_stream_endpoint(
+    req: QueryRequest,
+    request: Request,
+    tenant_id: str = Depends(require_user),
+):
+    """Streams the agentic RAG pipeline as Server-Sent Events.
+
+    Emits ``retrieval_complete``, ``token``, ``verification_complete``, and
+    ``done`` frames. See :func:`_stream_query_response` for what is streamed
+    live versus delivered once generation completes.
+    """
+    blocked = _index_gate(request)
+    if blocked is not None:
+        return blocked
+    client_guardrails_enabled = not (
+        req.enforce_guardrails is False and _settings.allow_client_disable_guardrails
+    )
+    input_guardrails_enabled = _settings.enable_input_guardrails and client_guardrails_enabled
+    output_guardrails_enabled = _settings.enable_output_guardrails and client_guardrails_enabled
+
+    sanitized_query = req.query
+    if input_guardrails_enabled:
+        guard_result = input_guardrails.evaluate(req.query)
+        if not guard_result.allowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Prompt injection detected: {', '.join(guard_result.policy_violations)}",
+            )
+        sanitized_query = guard_result.sanitized_text
+
+    request_id = str(uuid.uuid4())
+    return StreamingResponse(
+        _stream_query_response(
+            req=req,
+            tenant_id=tenant_id,
+            sanitized_query=sanitized_query,
+            request_id=request_id,
+            output_guardrails_enabled=output_guardrails_enabled,
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
