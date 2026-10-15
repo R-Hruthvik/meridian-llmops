@@ -176,7 +176,7 @@ def test_stream_token_frames_are_provider_deltas(monkeypatch):
         response = client.post(
             "/v1/query/stream",
             headers=AUTH,
-            json={"query": "How does Meridian stream answers?", "top_k": 3},
+            json={"query": "How does Meridian stream answers?", "top_k": 3, "max_cycles": 1},
         )
     assert response.status_code == 200
     deltas = [
