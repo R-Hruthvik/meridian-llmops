@@ -93,3 +93,47 @@ def test_chunk_dim_mismatch():
     from packages.core.models import Chunk
     with pytest.raises(ValueError):
         Chunk(id="c", document_id="d", text="t", embedding=[0.1] * 3).validate_dim(1024)
+
+
+def test_models_module_has_no_sqlalchemy_imports():
+    """Issue #66: packages/core/models.py stays Pydantic-only, with no ORM coupling."""
+    import ast
+    from pathlib import Path
+
+    source_path = Path(__file__).resolve().parents[1] / "packages" / "core" / "models.py"
+    tree = ast.parse(source_path.read_text())
+
+    imported_modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_modules.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_modules.append(node.module)
+
+    sqlalchemy_imports = [m for m in imported_modules if m.split(".")[0] == "sqlalchemy"]
+    assert not sqlalchemy_imports, f"models.py must not import SQLAlchemy, found {sqlalchemy_imports}"
+
+
+def test_orm_models_live_in_db_models_and_stay_reexported():
+    """Issue #66: tables live in db_models and remain importable from models."""
+    from packages.core import db_models
+    from packages.core.db_models import Base
+
+    assert set(Base.metadata.tables) == {
+        "documents",
+        "chunks",
+        "extracted_fields",
+        "review_items",
+        "answers",
+        "claims",
+        "citations",
+    }
+
+    # Backward-compatible re-exports must keep working during the transition.
+    from packages.core.models import Base as ReexportedBase
+    from packages.core.models import ExtractedField, ORMDocument, ReviewItem
+
+    assert ReexportedBase is db_models.Base
+    assert ORMDocument is db_models.ORMDocument
+    assert ReviewItem is db_models.ReviewItem
+    assert ExtractedField is db_models.ExtractedField
