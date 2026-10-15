@@ -190,6 +190,7 @@ def test_sensitive_rag_routes_require_admin():
         "/v1/settings/llm/test",
         "/v1/review/items",
         "/v1/review/items/{item_id}/action",
+        "/v1/review/golden-export",
     }
     for route in _iter_api_routes(app.routes):
         if getattr(route, "path", "") in admin_paths:
