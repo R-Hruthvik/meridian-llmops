@@ -574,6 +574,7 @@ async def retrieve_endpoint(
     payload: RetrieveRequest,
     request: Request,
     tenant_id: str = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Runs hybrid retrieval only (dense + BM25 + RRF) and returns ranked chunks.
 
@@ -583,7 +584,14 @@ async def retrieve_endpoint(
     blocked = _index_gate(request)
     if blocked is not None:
         return blocked
-    result = retriever.retrieve(payload.query, top_k=payload.top_k, tenant_id=tenant_id, debug=payload.debug)
+    flagged_chunk_ids = await _review_flags(db)
+    result = retriever.retrieve(
+        payload.query,
+        top_k=payload.top_k,
+        tenant_id=tenant_id,
+        debug=payload.debug,
+        flagged_chunk_ids=flagged_chunk_ids,
+    )
     return {
         "query": result.query,
         "top_k": result.top_k,
