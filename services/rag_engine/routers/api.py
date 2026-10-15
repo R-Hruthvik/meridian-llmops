@@ -1173,11 +1173,15 @@ async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(re
 
 @router.delete("/v1/documents/{doc_id}")
 async def delete_document_endpoint(doc_id: str, tenant_id: str = Depends(require_user)):
-    """Deletes a document and its chunks from vector and graph stores."""
+    """Deletes a document and evicts its chunks from vector, lexical, and graph stores."""
+    doc = ingestion_pipeline.get_document(doc_id, tenant_id=tenant_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
+    chunk_ids = [chunk["id"] for chunk in doc.get("chunks", [])]
     deleted = ingestion_pipeline.delete_document(doc_id, tenant_id=tenant_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
-    retriever.update_chunks(vector_store.get_all_chunks(None))
+    retriever.remove_chunks(chunk_ids)
     return {"status": "deleted", "document_id": doc_id, "message": "Document successfully deleted"}
 
 
