@@ -72,3 +72,16 @@ async def test_generate_node_streams_deltas_to_config_sink():
     assert result["draft_answer"] == "Hello world"
     assert llm.stream_calls
     assert llm.unary_calls == []
+
+
+@pytest.mark.asyncio
+async def test_generate_node_without_sink_uses_unary_completion():
+    llm = FakeStreamingLLM(["Hello world"])
+    graph = _build_graph(llm)
+
+    result = await graph.ainvoke(_initial_state(), config={"configurable": {"top_k": 3}})
+
+    assert result["draft_answer"] == "Hello world"
+    assert llm.unary_calls
+    assert llm.stream_calls == []
+
