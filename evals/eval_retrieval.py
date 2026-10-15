@@ -249,10 +249,13 @@ def _index_graph(retriever: Any, tenant_id: str) -> KnowledgeGraphStore:
     return graph_store
 
 
+GATE_METRICS = ("hit@5", "mrr", "unanswerable_accuracy")
+
+
 def gate_failures(report: dict[str, Any], thresholds: dict[str, float]) -> list[str]:
     metrics = report["metrics"]
     failures = []
-    for metric in ("hit@5", "mrr", "unanswerable_accuracy"):
+    for metric in GATE_METRICS:
         actual = metrics[metric]
         threshold = thresholds[metric]
         if actual is None:
@@ -260,6 +263,37 @@ def gate_failures(report: dict[str, Any], thresholds: dict[str, float]) -> list[
         elif actual < threshold:
             failures.append(f"{metric} {actual:.3f} < {threshold:.3f}")
     return failures
+
+
+def format_summary(report: dict[str, Any]) -> str:
+    """Render the retrieval gate as a GitHub Actions step summary."""
+    metrics = report["metrics"]
+    thresholds = report.get("thresholds", {})
+    lines = [
+        "## Retrieval Quality Gate",
+        "",
+        f"**Result:** {report['gate']}",
+        "",
+        "| Metric | Actual | Threshold |",
+        "| --- | --- | --- |",
+    ]
+    for metric in GATE_METRICS:
+        actual = metrics.get(metric)
+        threshold = thresholds.get(metric)
+        actual_text = "n/a" if actual is None else f"{actual:.3f}"
+        threshold_text = "n/a" if threshold is None else f"{threshold:.2f}"
+        lines.append(f"| {metric} | {actual_text} | {threshold_text} |")
+    lines += [
+        "",
+        (
+            f"Cases: {metrics['cases']} "
+            f"({metrics['answerable_cases']} answerable, {metrics['unanswerable_cases']} unanswerable)"
+        ),
+    ]
+    if report.get("gate_failures"):
+        lines += ["", "**Threshold breaches:**"]
+        lines += [f"- {failure}" for failure in report["gate_failures"]]
+    return "\n".join(lines) + "\n"
 
 
 def main() -> int:
@@ -270,6 +304,7 @@ def main() -> int:
     parser.add_argument("--top-k", type=int)
     parser.add_argument("--tenant", default="eval")
     parser.add_argument("--report", help="Write the full JSON report to this path for CI summaries and artifacts")
+    parser.add_argument("--summary", help="Append a markdown metrics summary to this path (e.g. $GITHUB_STEP_SUMMARY)")
     parser.add_argument("--graph", action="store_true", help="Run the multi-hop graph A/B evidence comparison")
     args = parser.parse_args()
 
@@ -315,6 +350,9 @@ def main() -> int:
         report_path = Path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(rendered + "\n", encoding="utf-8")
+    if args.summary:
+        with Path(args.summary).open("a", encoding="utf-8") as handle:
+            handle.write(format_summary(report))
     print(rendered)
     return 1 if failures else 0
 
