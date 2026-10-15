@@ -143,4 +143,11 @@ def test_stream_terminates_and_closes_after_done_frame(monkeypatch):
     assert lines.index("event: done") == len(lines) - 2
 
 
+def test_stream_route_requires_authentication():
+    with TestClient(app) as client:
+        response = client.post("/v1/query/stream", json={"query": "hi"})
+    assert response.status_code == 401
+
+
+
 
