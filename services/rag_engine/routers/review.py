@@ -14,8 +14,7 @@ from services.rag_engine.deps import get_db, require_admin
 router = APIRouter(prefix="/v1/review", tags=["Human Review Queue"])
 
 # Verified review outcomes: a human confirmed the extracted value (approved) or
-# supplied the ground truth (corrected). Both are exportable and flag their source
-# chunk as unreliable for the original extraction.
+# supplied the ground truth (corrected). Both are exportable as golden cases.
 VERIFIED_REVIEW_STATUSES = ("approved", "corrected")
 # Export category used for review-derived golden cases; the retrieval golden
 # schema (evals/golden_dataset.json) requires one of its known categories.
