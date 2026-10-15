@@ -57,7 +57,7 @@ class TestFix2DeadCode:
 
     def test_dead_code_removed(self):
         """The unreachable second return block must be gone."""
-        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "api.py"
+        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
         content = filepath.read_text()
 
         # The dead code's signature must not exist
@@ -70,7 +70,7 @@ class TestFix2DeadCode:
 
     def test_single_return_shape(self):
         """test_and_fetch_models should have exactly 2 returns (early-bail + final), no dead 3rd."""
-        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "api.py"
+        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
         content = filepath.read_text()
 
         # Extract the function body precisely
@@ -142,7 +142,7 @@ class TestFix4FakeLatency:
     """Verify test_llm_connection no longer uses fake +15.0 padding."""
 
     def test_no_fake_latency_constant(self):
-        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "api.py"
+        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
         content = filepath.read_text()
 
         # Extract just the test_llm_connection function body
@@ -151,7 +151,7 @@ class TestFix4FakeLatency:
         assert "+ 12.0" not in func_body, "Fake +12.0 latency padding must be removed"
 
     def test_real_api_call_made(self):
-        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "api.py"
+        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
         content = filepath.read_text()
 
         func_body = content.split("def test_llm_connection")[1].split("\n\n\n")[0]
@@ -161,7 +161,7 @@ class TestFix4FakeLatency:
 
     def test_connection_test_returns_real_status(self):
         """When the endpoint is unreachable, status should be 'error', not always 'connected'."""
-        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "api.py"
+        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
         content = filepath.read_text()
 
         func_body = content.split("def test_llm_connection")[1].split("\n\n\n")[0]
