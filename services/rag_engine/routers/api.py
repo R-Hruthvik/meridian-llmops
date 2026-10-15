@@ -6,7 +6,7 @@ import logging
 import os
 import time
 import uuid
-from collections.abc import MutableMapping
+from collections.abc import AsyncIterator, MutableMapping
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -24,7 +24,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
@@ -711,6 +711,11 @@ async def ingest_document_endpoint(
     }
 
 
+def _sse_event(event: str, data: dict[str, Any]) -> str:
+    """Encode one Server-Sent Events frame with a named event and JSON payload."""
+    return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+
 @router.post("/v1/query", response_model=QueryResponse)
 async def query_endpoint(
     req: QueryRequest,
@@ -836,6 +841,183 @@ async def query_endpoint(
         model=model_value,
         timings_ms=timings_ms,
         usage=final_state.get("usage"),
+    )
+
+
+async def _stream_query_response(
+    req: QueryRequest,
+    tenant_id: str,
+    sanitized_query: str,
+    request_id: str,
+    output_guardrails_enabled: bool,
+) -> AsyncIterator[str]:
+    """Yield SSE frames for one agentic RAG pipeline run.
+
+    The graph runs concurrently with a pump that forwards generation deltas, so
+    ``token`` frames are emitted as the provider produces them: the first token
+    no longer waits for generation or verification to finish. ``retrieval_complete``
+    is gated ahead of the first token frame. If the graph raises, an ``error``
+    frame precedes ``done`` so the stream always terminates cleanly.
+    """
+    initial_state: dict[str, Any] = {
+        "query": sanitized_query,
+        "current_search_query": sanitized_query,
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "cycle_count": 0,
+        "max_cycles": req.max_cycles,
+        "is_refusal": False,
+        "tenant_id": tenant_id,
+        "answer_status": "answered",
+        "verification_result": None,
+        "timings_ms": {},
+        "request_id": request_id,
+        "serving_provider": None,
+        "serving_model": None,
+        "usage": None,
+        "debug": {},
+    }
+
+    events: asyncio.Queue[Any] = asyncio.Queue()
+    token_sink: asyncio.Queue[Any] = asyncio.Queue()
+    retrieval_ready = asyncio.Event()
+    outcome: dict[str, Any] = {"final_state": {}, "error": None}
+
+    async def pump_tokens() -> None:
+        await retrieval_ready.wait()
+        while True:
+            delta = await token_sink.get()
+            if delta is None:
+                return
+            await events.put(_sse_event("token", {"delta": delta}))
+
+    async def run_graph() -> None:
+        final_state: dict[str, Any] = {}
+        try:
+            async for update in agent_graph.astream(
+                initial_state,
+                config={"configurable": {"top_k": req.top_k, "token_sink": token_sink}},
+                stream_mode="updates",
+            ):
+                for node_name, node_update in update.items():
+                    if node_update:
+                        final_state.update(node_update)
+                    if node_name == "retrieve":
+                        chunks = (node_update or {}).get("retrieved_chunks", [])
+                        await events.put(
+                            _sse_event(
+                                "retrieval_complete",
+                                {
+                                    "chunk_ids": [chunk.chunk_id for chunk in chunks],
+                                    "timings_ms": (node_update or {}).get("timings_ms", {}),
+                                },
+                            )
+                        )
+                        retrieval_ready.set()
+        except Exception as exc:  # noqa: BLE001 - surfaced to the client as an error frame
+            outcome["error"] = exc
+        finally:
+            # Always unblock the pump and flush its remaining frames, even on failure.
+            retrieval_ready.set()
+            token_sink.put_nowait(None)
+        outcome["final_state"] = final_state
+        await pump_task
+        await events.put(None)
+
+    pump_task = asyncio.create_task(pump_tokens())
+    graph_task = asyncio.create_task(run_graph())
+    try:
+        while True:
+            item = await events.get()
+            if item is None:
+                break
+            yield item
+    finally:
+        for task in (graph_task, pump_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(graph_task, pump_task, return_exceptions=True)
+
+    final_state = outcome["final_state"]
+    error = outcome["error"]
+    if error is not None:
+        yield _sse_event("error", {"message": str(error)})
+
+    raw_answer = final_state.get("draft_answer", "")
+    if output_guardrails_enabled and not final_state.get("is_refusal", False):
+        out_result = output_guardrails.evaluate(raw_answer)
+        final_answer = out_result.sanitized_text
+        if not out_result.allowed:
+            final_state["answer_status"] = "refused"
+            final_state["is_refusal"] = True
+            final_state["verification_result"] = VerificationSummary(status="unchecked", scope="unchecked")
+    else:
+        final_answer = raw_answer
+
+    verification_result = final_state.get("verification_result")
+    verification = VerificationSummary.model_validate(
+        verification_result.model_dump() if verification_result is not None else {}
+    )
+    yield _sse_event(
+        "verification_complete",
+        {
+            "status": verification.status,
+            "citations": [chunk.chunk_id for chunk in final_state.get("retrieved_chunks", [])],
+        },
+    )
+    yield _sse_event(
+        "done",
+        {
+            "request_id": request_id,
+            "answer": final_answer,
+            "answer_status": final_state.get("answer_status", "answered"),
+        },
+    )
+
+
+@router.post("/v1/query/stream")
+async def query_stream_endpoint(
+    req: QueryRequest,
+    request: Request,
+    tenant_id: str = Depends(require_user),
+):
+    """Streams the agentic RAG pipeline as Server-Sent Events.
+
+    Emits ``retrieval_complete``, ``token``, ``verification_complete``, and
+    ``done`` frames. See :func:`_stream_query_response` for what is streamed
+    live versus delivered once generation completes.
+    """
+    blocked = _index_gate(request)
+    if blocked is not None:
+        return blocked
+    client_guardrails_enabled = not (
+        req.enforce_guardrails is False and _settings.allow_client_disable_guardrails
+    )
+    input_guardrails_enabled = _settings.enable_input_guardrails and client_guardrails_enabled
+    output_guardrails_enabled = _settings.enable_output_guardrails and client_guardrails_enabled
+
+    sanitized_query = req.query
+    if input_guardrails_enabled:
+        guard_result = input_guardrails.evaluate(req.query)
+        if not guard_result.allowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Prompt injection detected: {', '.join(guard_result.policy_violations)}",
+            )
+        sanitized_query = guard_result.sanitized_text
+
+    request_id = str(uuid.uuid4())
+    return StreamingResponse(
+        _stream_query_response(
+            req=req,
+            tenant_id=tenant_id,
+            sanitized_query=sanitized_query,
+            request_id=request_id,
+            output_guardrails_enabled=output_guardrails_enabled,
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

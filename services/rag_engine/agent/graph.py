@@ -111,6 +111,47 @@ def _active_llm_config(getter: Callable[[], Mapping[str, Any]] | None) -> dict[s
     return dict(getter() or {}) if getter else {}
 
 
+async def _stream_completion(
+    client: LiteLLMClient,
+    messages: list[dict[str, str]],
+    model: str,
+    provider: str,
+    api_key: str | None,
+    base_url: str | None,
+    token_sink: Any,
+) -> dict[str, Any]:
+    """Stream a completion, forwarding each delta to ``token_sink`` and accumulating the text.
+
+    Returns the same response shape as :meth:`LiteLLMClient.chat_completion` so the
+    caller's usage normalization, provenance, and tracing keep working unchanged.
+    """
+    pieces: list[str] = []
+    async for delta in client.chat_completion_stream(
+        messages=messages,
+        model=model,
+        provider=provider,
+        api_key=api_key,
+        base_url=base_url,
+        temperature=0.0,
+        max_tokens=600,
+    ):
+        pieces.append(delta)
+        token_sink.put_nowait(delta)
+    draft = "".join(pieces)
+    last = client.last_response or {}
+    served_model = last.get("model") or model
+    return {
+        "id": "cmpl-stream",
+        "object": "chat.completion",
+        "model": served_model,
+        "provider": last.get("provider") or provider,
+        "requested_model": model,
+        "raw_response": {"model": served_model, "choices": [{"message": {"content": draft}}]},
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": draft}, "finish_reason": "stop"}],
+        "usage": None,
+    }
+
+
 async def _rewrite_query(
     query: str,
     client: LiteLLMClient,
@@ -257,7 +298,7 @@ def build_rag_agent_graph(
             "is_refusal": False,
         }
 
-    async def generate_node(state: RagAgentState) -> dict[str, Any]:
+    async def generate_node(state: RagAgentState, config: RunnableConfig) -> dict[str, Any]:
         chunks = [_result_dict(source) for source in state.get("retrieved_chunks", [])]
         prompt = build_prompt(state["query"].strip(), chunks)
         selected_chunks = prompt.selected_chunks
@@ -276,6 +317,7 @@ def build_rag_agent_graph(
             )
 
         cfg = _active_llm_config(llm_config_getter)
+        token_sink = ((config or {}).get("configurable") or {}).get("token_sink")
         provider = cfg.get("provider", "openai")
         api_key = cfg.get("api_key")
         model = cfg.get("model") or "gpt-4o-mini"
@@ -294,15 +336,26 @@ def build_rag_agent_graph(
                 else nullcontext(None)
             )
             with generation_context as generation:
-                response = await client.chat_completion(
-                    messages=prompt.messages,
-                    model=model,
-                    provider=provider,
-                    api_key=api_key,
-                    base_url=cfg.get("base_url"),
-                    temperature=0.0,
-                    max_tokens=600,
-                )
+                if token_sink is None:
+                    response = await client.chat_completion(
+                        messages=prompt.messages,
+                        model=model,
+                        provider=provider,
+                        api_key=api_key,
+                        base_url=cfg.get("base_url"),
+                        temperature=0.0,
+                        max_tokens=600,
+                    )
+                else:
+                    response = await _stream_completion(
+                        client,
+                        prompt.messages,
+                        model,
+                        provider,
+                        api_key,
+                        cfg.get("base_url"),
+                        token_sink,
+                    )
                 draft = response.get("choices", [{}])[0].get("message", {}).get("content", "")
                 served_model = response.get("model", model)
                 usage = normalize_usage(
