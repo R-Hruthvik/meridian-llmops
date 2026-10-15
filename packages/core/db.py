@@ -29,7 +29,7 @@ AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_co
 @retry_on_connection_failure(max_attempts=3)
 async def init_db(url: str | None = None):
     """Initializes relational database schema."""
-    from packages.core.models import Base
+    from packages.core.db_models import Base
     target = create_engine_for(url) if url is not None else engine
     async with target.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

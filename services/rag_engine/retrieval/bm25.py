@@ -110,6 +110,19 @@ class BM25Index:
         self._postings = self._build_postings(self.bm25) if self.bm25 else {}
         self._build_tenant_indexes()
 
+    def rebuild(self) -> None:
+        """Rebuild the index from the current chunk list after corpus changes."""
+        self.chunk_map = {c.id: c for c in self.chunks}
+        self._build_index()
+
+    def remove_chunks(self, chunk_ids: list[str]) -> None:
+        """Evict chunks by id so deleted documents stop matching lexical queries."""
+        removed = set(chunk_ids)
+        if not removed:
+            return
+        self.chunks = [chunk for chunk in self.chunks if chunk.id not in removed]
+        self.rebuild()
+
     def search(
         self, query: str, top_k: int = 5, tenant_id: str | None = None
     ) -> list[SearchResult]:
