@@ -100,3 +100,28 @@ def test_stream_sets_text_event_stream_content_type(monkeypatch):
         )
     assert response.headers["content-type"].startswith("text/event-stream")
 
+
+def test_stream_frame_schema_matches_contract(monkeypatch):
+    answer = "Meridian streams answers over SSE [1]."
+    _install_answer_graph(monkeypatch, answer)
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/query/stream",
+            headers=AUTH,
+            json={"query": "How does Meridian stream answers?", "top_k": 3},
+        )
+    by_event: dict[str, list[dict]] = {}
+    for name, data in _frames(response):
+        by_event.setdefault(name, []).append(data)
+
+    assert set(by_event) == {"retrieval_complete", "token", "verification_complete", "done"}
+    retrieval = by_event["retrieval_complete"][0]
+    assert retrieval["chunk_ids"] == ["chunk-stream"]
+    assert isinstance(retrieval["timings_ms"], dict)
+    assert "".join(frame["delta"] for frame in by_event["token"]) == answer
+    verification = by_event["verification_complete"][0]
+    assert verification["status"] == "citations_ok"
+    assert verification["citations"] == ["chunk-stream"]
+    assert by_event["done"][-1]["request_id"]
+
+
