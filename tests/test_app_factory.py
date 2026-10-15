@@ -49,7 +49,7 @@ class FakeRetriever:
     def update_chunks(self, chunks):
         self.chunks = chunks
 
-    def retrieve(self, query, top_k, tenant_id=None, debug=False):
+    def retrieve(self, query, top_k, tenant_id=None, debug=False, flagged_chunk_ids=None):
         return SimpleNamespace(query=query, top_k=top_k, chunks=[], timings_ms={})
 
 
