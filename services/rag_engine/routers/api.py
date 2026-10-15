@@ -1,4 +1,19 @@
-"""Unified Meridian RAG Engine & LLMOps FastAPI Application."""
+"""Meridian RAG Engine aggregation module (route handlers live in sub-routers).
+
+This module owns application assembly: the aggregation ``router`` that mounts
+every sub-router, the ``create_app`` factory with its lifespan, the shared
+health/readiness helpers and error handlers, and the web-UI mount. The route
+handlers themselves live in the sibling modules :mod:`ops`, :mod:`settings`,
+:mod:`documents`, :mod:`query`, and :mod:`review`.
+
+Shared runtime state and the dependency-injection seam live in
+:mod:`services.rag_engine.routers._state`. Those names are deliberately
+re-exported here (see the ``_state`` import below) so existing imports such as
+``from services.rag_engine.app import vector_store`` keep working and the test
+suite's ``monkeypatch.setattr(routers.api, ...)`` calls still land. The
+sub-routers resolve service singletons through ``LiveRef``/``live`` so those
+patches take effect at call time.
+"""
 
 import asyncio
 from contextlib import asynccontextmanager
