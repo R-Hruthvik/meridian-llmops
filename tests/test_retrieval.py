@@ -131,6 +131,46 @@ def test_bm25_add_chunks_rebuilds_tenant_indexes(sample_chunks):
     assert index.search("ERR-4049 rate limit", top_k=1, tenant_id="a") == []
 
 
+def test_bm25_remove_chunks_evicts_deleted_ids(sample_chunks):
+    """Deleting a document must drop its chunks from lexical results at once."""
+    index = BM25Index(sample_chunks)
+    assert "c3" in {item.chunk_id for item in index.search("ERR-4049 rate limit", top_k=5)}
+
+    index.remove_chunks(["c3", "c4"])
+
+    assert index.chunk_of("c3") is None
+    assert index.chunk_of("c4") is None
+    assert index.search("ERR-4049 rate limit", top_k=5) == []
+    assert index.search("DeepEval GitHub Actions regressions", top_k=5) == []
+
+
+def test_bm25_remove_chunks_keeps_untouched_chunks(sample_chunks):
+    index = BM25Index(sample_chunks)
+
+    index.remove_chunks(["c3"])
+
+    assert [chunk.id for chunk in index.chunks] == ["c1", "c2", "c4"]
+    assert [item.chunk_id for item in index.search("Qdrant vector database", top_k=5)] == ["c2"]
+
+
+def test_bm25_remove_chunks_ignores_unknown_ids(sample_chunks):
+    index = BM25Index(sample_chunks)
+
+    index.remove_chunks(["missing-id"])
+
+    assert [chunk.id for chunk in index.chunks] == [chunk.id for chunk in sample_chunks]
+
+
+def test_bm25_rebuild_reflects_removed_chunks(sample_chunks):
+    index = BM25Index(sample_chunks)
+    index.chunks = [chunk for chunk in index.chunks if chunk.id != "c3"]
+
+    index.rebuild()
+
+    assert index.chunk_of("c3") is None
+    assert index.search("ERR-4049 rate limit", top_k=5) == []
+
+
 def test_bm25_sparse_scores_match_rank_bm25_after_updates(sample_chunks):
     chunks = [
         chunk.model_copy(
