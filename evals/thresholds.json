@@ -1,5 +1,5 @@
 {
-  "hit@5": 0.90,
-  "mrr": 0.70,
-  "unanswerable_accuracy": 0.85
+  "hit@5": 0.95,
+  "mrr": 0.85,
+  "unanswerable_accuracy": 1.0
 }
