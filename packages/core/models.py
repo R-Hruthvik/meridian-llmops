@@ -191,6 +191,15 @@ class VerificationSummary(BaseModel):
     details: str | None = None
 
 
+class ReviewStatus(BaseModel):
+    """Review-queue signals attached to one query response (issue #67)."""
+
+    flagged_chunk_ids: list[str] = Field(
+        default_factory=list,
+        description="Reviewer-flagged chunks among this response's sources; empty when none",
+    )
+
+
 class QueryResponse(BaseModel):
     """Unified system response payload."""
     query: str
@@ -210,6 +219,10 @@ class QueryResponse(BaseModel):
     debug: dict[str, Any] = Field(default_factory=dict)
     sources: list[SearchResult] = Field(default_factory=list)
     request_id: str | None = None
+    trace_id: str | None = Field(None, description="Observability trace id for end-to-end audit; null when untraced")
+    review_status: ReviewStatus = Field(
+        default_factory=ReviewStatus, description="Review-queue audit signals for this response (issue #67)"
+    )
     provider: str | None = None
     model: str | None = None
     timings_ms: dict[str, float] = Field(default_factory=dict)

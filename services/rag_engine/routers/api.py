@@ -28,6 +28,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core.errors import IndexReadError, IndexWriteError, IngestionError, ProviderError
 from packages.core.models import (
@@ -37,6 +38,7 @@ from packages.core.models import (
     IngestDocumentRequest,
     QueryRequest,
     QueryResponse,
+    ReviewStatus,
     SearchResult,
     ServingProvenance,
     UpdateLLMSettingsRequest,
@@ -63,11 +65,12 @@ from services.ingestion.manifest import ConsistencyReport, check_consistency
 from services.ingestion.pipeline import IngestionPipeline
 from services.ingestion.vector_store import QdrantChunkStore
 from services.rag_engine.agent.graph import build_rag_agent_graph
-from services.rag_engine.deps import get_services, require_admin, require_user
+from services.rag_engine.deps import get_db, get_services, require_admin, require_user
 from services.rag_engine.index_inspector import build_index_status
 from services.rag_engine.observability.langfuse_client import LangfuseTracer
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 from services.rag_engine.retrieval.reranker import CrossEncoderReranker, LexicalReranker
+from services.rag_engine.routers.review import review_flagged_chunk_ids
 from services.rag_engine.routers.review import router as review_router
 
 
@@ -571,6 +574,7 @@ async def retrieve_endpoint(
     payload: RetrieveRequest,
     request: Request,
     tenant_id: str = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Runs hybrid retrieval only (dense + BM25 + RRF) and returns ranked chunks.
 
@@ -580,7 +584,14 @@ async def retrieve_endpoint(
     blocked = _index_gate(request)
     if blocked is not None:
         return blocked
-    result = retriever.retrieve(payload.query, top_k=payload.top_k, tenant_id=tenant_id, debug=payload.debug)
+    flagged_chunk_ids = await _review_flags(db)
+    result = retriever.retrieve(
+        payload.query,
+        top_k=payload.top_k,
+        tenant_id=tenant_id,
+        debug=payload.debug,
+        flagged_chunk_ids=flagged_chunk_ids,
+    )
     return {
         "query": result.query,
         "top_k": result.top_k,
@@ -716,11 +727,21 @@ def _sse_event(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
+async def _review_flags(db: AsyncSession) -> set[str]:
+    """Best-effort review-flag lookup; a review store that is not ready must not break retrieval."""
+    try:
+        return await review_flagged_chunk_ids(db)
+    except Exception as error:  # noqa: BLE001 - retrieval proceeds unpenalized when the review store is down
+        logger.warning("Review-flag lookup failed; retrieving without penalties (%s)", type(error).__name__)
+        return set()
+
+
 @router.post("/v1/query", response_model=QueryResponse)
 async def query_endpoint(
     req: QueryRequest,
     request: Request,
     tenant_id: str = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Executes the self-healing Agentic RAG pipeline with guardrails and tracing."""
     blocked = _index_gate(request)
@@ -815,6 +836,7 @@ async def query_endpoint(
     )
 
     degraded_reason: str | None = final_state.get("generation_error")
+    flagged_chunk_ids = await _review_flags(db) & {chunk.chunk_id for chunk in chunks_data}
     return QueryResponse(
         query=req.query,
         answer=final_answer,
@@ -837,6 +859,8 @@ async def query_endpoint(
         debug=final_state.get("debug", {}),
         sources=chunks_data,
         request_id=request_id,
+        trace_id=trace.id,
+        review_status=ReviewStatus(flagged_chunk_ids=sorted(flagged_chunk_ids)),
         provider=provider_value,
         model=model_value,
         timings_ms=timings_ms,

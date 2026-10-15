@@ -16,6 +16,10 @@ from services.ingestion.vector_store import QdrantChunkStore
 from services.rag_engine.retrieval.bm25 import BM25Index
 from services.rag_engine.retrieval.fusion import reciprocal_rank_fusion
 
+# Multiplier applied to the final score of chunks a reviewer rejected or corrected
+# (issue #67). They keep their content but lose ranking authority.
+FLAGGED_CHUNK_PENALTY = 0.5
+
 
 @dataclass(frozen=True)
 class RankedChunk:
@@ -109,6 +113,7 @@ class HybridRetriever:
         top_k: int = 5,
         tenant_id: str = "default",
         debug: bool = False,
+        flagged_chunk_ids: set[str] | None = None,
     ) -> RetrievalResult:
         pool = max(self.pool_min, 4 * top_k)
         timings: dict[str, float] = {name: 0.0 for name in ("embed", "dense", "bm25", "fusion", "rerank")}
@@ -163,6 +168,7 @@ class HybridRetriever:
                 "bm25_rank": candidate.ranks.get("bm25"),
                 "rrf": candidate.rrf,
                 "rerank": None,
+                "review_penalty": 1.0,
                 "final": candidate.rrf,
             }
             candidates.append((chunk, scores))
@@ -185,12 +191,28 @@ class HybridRetriever:
             ]
             candidates.sort(key=lambda item: item[1]["final"], reverse=True)
 
+        if flagged_chunk_ids:
+            candidates = [
+                (chunk, self._penalize(scores) if chunk.id in flagged_chunk_ids else scores)
+                for chunk, scores in candidates
+            ]
+            candidates.sort(key=lambda item: item[1]["final"], reverse=True)
+
         chunks = [
             RankedChunk(chunk=chunk, rank=position, scores=scores)
             for position, (chunk, scores) in enumerate(candidates[:top_k], start=1)
         ]
         timings["total"] = _ms(started)
         return RetrievalResult(query=query, top_k=top_k, chunks=chunks, timings_ms=timings)
+
+    @staticmethod
+    def _penalize(scores: dict[str, Any]) -> dict[str, Any]:
+        """Scale a flagged chunk's final score so it ranks below equal peers."""
+        return {
+            **scores,
+            "review_penalty": FLAGGED_CHUNK_PENALTY,
+            "final": float(scores["final"] or 0.0) * FLAGGED_CHUNK_PENALTY,
+        }
 
     def _span(self, name: str, **attributes: Any):
         if self.tracer is None:

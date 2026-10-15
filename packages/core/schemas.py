@@ -1,6 +1,22 @@
 """Pydantic schemas for human review items."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class GoldenCase(BaseModel):
+    """One evaluation-compatible golden case exported from a verified review item.
+
+    Field-for-field the schema consumed by ``evals/eval_retrieval.py`` and
+    ``scripts/validate_golden.py`` (see ``evals/golden_dataset.json``).
+    """
+
+    id: str
+    category: str
+    question: str
+    answerable: bool
+    expected_doc: str | None = None
+    expected_phrases: list[str] = Field(default_factory=list)
+    notes: str
 
 
 class ReviewItemResponse(BaseModel):
