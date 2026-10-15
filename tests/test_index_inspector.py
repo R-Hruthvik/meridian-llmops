@@ -9,7 +9,7 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from packages.core.models import Base, ORMDocument
+from packages.core.db_models import Base, ORMDocument
 from services.rag_engine.index_inspector import build_index_status
 
 HEADERS = {"X-API-Key": "meridian-test-admin-key-2026"}
