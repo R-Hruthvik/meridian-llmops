@@ -8,13 +8,17 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from packages.core.db_models import Base, ExtractedField, ORMDocument, ReviewItem
+from packages.core.models import Chunk
 from packages.core.schemas import GoldenCase
 from scripts.validate_golden import validate_dataset
+from services.rag_engine.retrieval.bm25 import BM25Index
+from services.rag_engine.retrieval.hybrid import FLAGGED_CHUNK_PENALTY, HybridRetriever
 from services.rag_engine.routers.review import (
     build_golden_case,
     export_golden_cases,
     review_flagged_chunk_ids,
 )
+from tests.fakes import FakeEmbedder, make_vector_store
 
 
 @pytest_asyncio.fixture
@@ -134,3 +138,45 @@ async def test_flagged_chunk_ids_cover_rejected_and_corrected_items(test_db_sess
     flagged = await review_flagged_chunk_ids(test_db_session)
 
     assert flagged == {"chunk_9", "chunk_7"}
+
+
+def _build_retriever(chunks: list[Chunk]) -> HybridRetriever:
+    embedder = FakeEmbedder()
+    vector_store = make_vector_store(embedder)
+    vector_store.upsert_chunks(chunks, embedder.embed_passages([chunk.text for chunk in chunks]))
+    return HybridRetriever(embedder=embedder, vector_store=vector_store, bm25_index=BM25Index(chunks))
+
+
+def _penalty_chunks() -> list[Chunk]:
+    return [
+        Chunk(id="c1", document_id="d1", text="Meridian routes queries through LiteLLM to every provider.",
+              metadata={"filename": "arch.md", "page_start": 1}),
+        Chunk(id="c2", document_id="d1", text="Meridian routes queries through LiteLLM to every provider.",
+              metadata={"filename": "arch.md", "page_start": 2}),
+        Chunk(id="c3", document_id="d2", text="Unrelated billing reconciliation note.",
+              metadata={"filename": "b.md", "page_start": 1}),
+    ]
+
+
+def test_retriever_applies_no_penalty_without_flags():
+    retriever = _build_retriever(_penalty_chunks())
+    result = retriever.retrieve("Meridian routes queries through LiteLLM", top_k=3)
+    assert [chunk.scores["review_penalty"] for chunk in result.chunks] == [1.0, 1.0, 1.0]
+
+
+def test_flagged_chunk_scores_lower_and_reranks():
+    retriever = _build_retriever(_penalty_chunks())
+    baseline = retriever.retrieve("Meridian routes queries through LiteLLM", top_k=3)
+    top = baseline.chunks[0]
+
+    penalized = retriever.retrieve(
+        "Meridian routes queries through LiteLLM", top_k=3, flagged_chunk_ids={top.chunk_id}
+    )
+    by_id = {chunk.chunk_id: chunk for chunk in penalized.chunks}
+
+    assert by_id[top.chunk_id].scores["review_penalty"] == FLAGGED_CHUNK_PENALTY
+    assert by_id[top.chunk_id].scores["final"] == pytest.approx(top.scores["final"] * FLAGGED_CHUNK_PENALTY)
+    # The identical, unflagged peer overtakes the penalized chunk.
+    assert penalized.chunks[0].chunk_id != top.chunk_id
+    finals = [chunk.scores["final"] for chunk in penalized.chunks]
+    assert finals == sorted(finals, reverse=True)
