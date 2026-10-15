@@ -169,6 +169,24 @@ def test_stream_route_rejects_prompt_injection(monkeypatch):
     assert "Prompt injection detected" in response.json()["detail"]
 
 
+def test_stream_token_frames_are_provider_deltas(monkeypatch):
+    llm = FakeStreamingLLM(["Hel", "lo ", "world"])
+    _install_graph(monkeypatch, llm)
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/query/stream",
+            headers=AUTH,
+            json={"query": "How does Meridian stream answers?", "top_k": 3},
+        )
+    assert response.status_code == 200
+    deltas = [
+        json.loads(block.split("data: ", 1)[1].split("\n", 1)[0])["delta"]
+        for block in response.text.strip().split("\n\n")
+        if block.startswith("event: token")
+    ]
+    assert deltas == ["Hel", "lo ", "world"]
+
+
 def _event_names(frames: list[str]) -> list[str]:
     return [frame.split("\n", 1)[0].removeprefix("event: ") for frame in frames]
 
