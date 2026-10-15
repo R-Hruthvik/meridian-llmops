@@ -125,3 +125,22 @@ def test_stream_frame_schema_matches_contract(monkeypatch):
     assert by_event["done"][-1]["request_id"]
 
 
+def test_stream_terminates_and_closes_after_done_frame(monkeypatch):
+    _install_answer_graph(monkeypatch, "Meridian streams answers over SSE [1].")
+    with TestClient(app) as client:
+        with client.stream(
+            "POST",
+            "/v1/query/stream",
+            headers=AUTH,
+            json={"query": "How does Meridian stream answers?"},
+        ) as response:
+            assert response.status_code == 200
+            lines = [line for line in response.iter_lines() if line]
+        assert response.is_closed
+
+    # The iterator exhausted (the generator returned), and ``done`` is the last frame.
+    assert lines[0] == "event: retrieval_complete"
+    assert lines.index("event: done") == len(lines) - 2
+
+
+
