@@ -269,6 +269,7 @@ def main() -> int:
     parser.add_argument("--docs")
     parser.add_argument("--top-k", type=int)
     parser.add_argument("--tenant", default="eval")
+    parser.add_argument("--report", help="Write the full JSON report to this path for CI summaries and artifacts")
     parser.add_argument("--graph", action="store_true", help="Run the multi-hop graph A/B evidence comparison")
     args = parser.parse_args()
 
@@ -309,7 +310,12 @@ def main() -> int:
         failures = gate_failures(report, thresholds)
         report["gate"] = "FAIL" if failures else "PASS"
     report["gate_failures"] = failures
-    print(json.dumps(report, indent=2))
+    rendered = json.dumps(report, indent=2)
+    if args.report:
+        report_path = Path(args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(rendered + "\n", encoding="utf-8")
+    print(rendered)
     return 1 if failures else 0
 
 
