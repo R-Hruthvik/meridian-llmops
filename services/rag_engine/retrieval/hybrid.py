@@ -99,6 +99,10 @@ class HybridRetriever:
         """
         self.bm25_index = BM25Index(chunks)
 
+    def remove_chunks(self, chunk_ids: list[str]) -> None:
+        """Evict chunks from the lexical index when their documents are deleted."""
+        self.bm25_index.remove_chunks(chunk_ids)
+
     def retrieve(
         self,
         query: str,
