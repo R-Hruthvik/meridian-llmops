@@ -290,11 +290,11 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-
-class Base(DeclarativeBase):
-    pass
+# Backward-compatible re-export (issue #66): ORM models now live in
+# packages.core.db_models. New code should import from there directly.
+from packages.core.db_models import Base
 
 
 class ORMDocument(Base):
