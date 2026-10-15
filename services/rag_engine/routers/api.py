@@ -844,11 +844,6 @@ async def query_endpoint(
     )
 
 
-def _token_deltas(text: str, size: int = 24) -> list[str]:
-    """Slice completed text into fixed-size delta chunks for ``token`` frames."""
-    return [text[index : index + size] for index in range(0, len(text), size)]
-
-
 async def _stream_query_response(
     req: QueryRequest,
     tenant_id: str,
@@ -858,13 +853,11 @@ async def _stream_query_response(
 ) -> AsyncIterator[str]:
     """Yield SSE frames for one agentic RAG pipeline run.
 
-    The compiled graph is streamed with ``astream``, so ``retrieval_complete``
-    is emitted as soon as retrieval finishes, before generation and verification
-    run. The provider client can stream token deltas
-    (:meth:`LiteLLMClient.chat_completion_stream`), but the shared generation
-    node is unary; wiring provider streaming through it would be an invasive
-    rewrite. ``token`` frames therefore carry deltas of the final answer once
-    generation completes, not live provider tokens.
+    The graph runs concurrently with a pump that forwards generation deltas, so
+    ``token`` frames are emitted as the provider produces them: the first token
+    no longer waits for generation or verification to finish. ``retrieval_complete``
+    is gated ahead of the first token frame. If the graph raises, an ``error``
+    frame precedes ``done`` so the stream always terminates cleanly.
     """
     initial_state: dict[str, Any] = {
         "query": sanitized_query,
@@ -885,24 +878,71 @@ async def _stream_query_response(
         "usage": None,
         "debug": {},
     }
-    final_state: dict[str, Any] = {}
-    async for update in agent_graph.astream(
-        initial_state,
-        config={"configurable": {"top_k": req.top_k}},
-        stream_mode="updates",
-    ):
-        for node_name, node_update in update.items():
-            if node_update:
-                final_state.update(node_update)
-            if node_name == "retrieve":
-                chunks = (node_update or {}).get("retrieved_chunks", [])
-                yield _sse_event(
-                    "retrieval_complete",
-                    {
-                        "chunk_ids": [chunk.chunk_id for chunk in chunks],
-                        "timings_ms": (node_update or {}).get("timings_ms", {}),
-                    },
-                )
+
+    events: asyncio.Queue[Any] = asyncio.Queue()
+    token_sink: asyncio.Queue[Any] = asyncio.Queue()
+    retrieval_ready = asyncio.Event()
+    outcome: dict[str, Any] = {"final_state": {}, "error": None}
+
+    async def pump_tokens() -> None:
+        await retrieval_ready.wait()
+        while True:
+            delta = await token_sink.get()
+            if delta is None:
+                return
+            await events.put(_sse_event("token", {"delta": delta}))
+
+    async def run_graph() -> None:
+        final_state: dict[str, Any] = {}
+        try:
+            async for update in agent_graph.astream(
+                initial_state,
+                config={"configurable": {"top_k": req.top_k, "token_sink": token_sink}},
+                stream_mode="updates",
+            ):
+                for node_name, node_update in update.items():
+                    if node_update:
+                        final_state.update(node_update)
+                    if node_name == "retrieve":
+                        chunks = (node_update or {}).get("retrieved_chunks", [])
+                        await events.put(
+                            _sse_event(
+                                "retrieval_complete",
+                                {
+                                    "chunk_ids": [chunk.chunk_id for chunk in chunks],
+                                    "timings_ms": (node_update or {}).get("timings_ms", {}),
+                                },
+                            )
+                        )
+                        retrieval_ready.set()
+        except Exception as exc:  # noqa: BLE001 - surfaced to the client as an error frame
+            outcome["error"] = exc
+        finally:
+            # Always unblock the pump and flush its remaining frames, even on failure.
+            retrieval_ready.set()
+            token_sink.put_nowait(None)
+        outcome["final_state"] = final_state
+        await pump_task
+        await events.put(None)
+
+    pump_task = asyncio.create_task(pump_tokens())
+    graph_task = asyncio.create_task(run_graph())
+    try:
+        while True:
+            item = await events.get()
+            if item is None:
+                break
+            yield item
+    finally:
+        for task in (graph_task, pump_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(graph_task, pump_task, return_exceptions=True)
+
+    final_state = outcome["final_state"]
+    error = outcome["error"]
+    if error is not None:
+        yield _sse_event("error", {"message": str(error)})
 
     raw_answer = final_state.get("draft_answer", "")
     if output_guardrails_enabled and not final_state.get("is_refusal", False):
@@ -915,9 +955,6 @@ async def _stream_query_response(
     else:
         final_answer = raw_answer
 
-    for delta in _token_deltas(final_answer):
-        yield _sse_event("token", {"delta": delta})
-
     verification_result = final_state.get("verification_result")
     verification = VerificationSummary.model_validate(
         verification_result.model_dump() if verification_result is not None else {}
@@ -929,7 +966,14 @@ async def _stream_query_response(
             "citations": [chunk.chunk_id for chunk in final_state.get("retrieved_chunks", [])],
         },
     )
-    yield _sse_event("done", {"request_id": request_id})
+    yield _sse_event(
+        "done",
+        {
+            "request_id": request_id,
+            "answer": final_answer,
+            "answer_status": final_state.get("answer_status", "answered"),
+        },
+    )
 
 
 @router.post("/v1/query/stream")
