@@ -252,6 +252,19 @@ def test_bm25_only_hit_returned_with_metadata(sample_chunks):
     assert result.chunks[0].scores["bm25"] > 0
 
 
+def test_hybrid_remove_chunks_excludes_deleted_ids(sample_chunks):
+    """A deleted document must vanish from fused retrieval, not just from Qdrant."""
+    retriever = build_retriever(sample_chunks)
+    assert "c3" in {chunk.chunk_id for chunk in retriever.retrieve("ERR-4049 rate limit", top_k=5).chunks}
+
+    retriever.vector_store.delete_document("d2", "default")
+    retriever.remove_chunks(["c3", "c4"])
+
+    result = retriever.retrieve("ERR-4049 rate limit", top_k=5)
+    assert not ({"c3", "c4"} & {chunk.chunk_id for chunk in result.chunks})
+    assert retriever.bm25_index.chunk_of("c3") is None
+
+
 def test_stage_timings_present(sample_chunks):
     retriever = build_retriever(sample_chunks)
     result = retriever.retrieve("gateway load balancing", top_k=2)
