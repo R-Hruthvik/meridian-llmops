@@ -1,5 +1,6 @@
 """Deterministic lightweight doubles used only by unit tests."""
 
+import asyncio
 import hashlib
 
 import numpy as np
@@ -58,4 +59,36 @@ class FakeLLM:
             "model": kwargs.get("model", "fake-model"),
             "usage": {"prompt_tokens": 7, "completion_tokens": 5, "total_tokens": 12},
             "raw_response": {"choices": [{"message": {"content": content}}]},
+        }
+
+
+class FakeStreamingLLM(FakeLLM):
+    """FakeLLM that also streams deltas, optionally blocking mid-generation on a gate.
+
+    ``gate`` is awaited before the second delta is produced, so a caller can prove
+    that an earlier delta was delivered while generation was still in flight.
+    """
+
+    def __init__(self, deltas: list[str], gate: asyncio.Event | None = None):
+        super().__init__(content="".join(deltas))
+        self.deltas = deltas
+        self.gate = gate
+        self.stream_calls: list[dict] = []
+        self.unary_calls: list[dict] = []
+        self.last_response: dict | None = None
+
+    async def chat_completion(self, **kwargs):
+        self.unary_calls.append(kwargs)
+        return await super().chat_completion(**kwargs)
+
+    async def chat_completion_stream(self, **kwargs):
+        self.stream_calls.append(kwargs)
+        for index, delta in enumerate(self.deltas):
+            if self.gate is not None and index == 1:
+                await asyncio.wait_for(self.gate.wait(), timeout=5)
+            await asyncio.sleep(0)
+            yield delta
+        self.last_response = {
+            "provider": kwargs.get("provider", "fake"),
+            "model": kwargs.get("model", "fake-model"),
         }

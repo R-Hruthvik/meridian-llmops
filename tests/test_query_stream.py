@@ -9,7 +9,7 @@ from services.ingestion.graph_store import KnowledgeGraphStore
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.app import app
 from services.rag_engine.retrieval.hybrid import RankedChunk, RetrievalResult
-from tests.fakes import FakeLLM
+from tests.fakes import FakeStreamingLLM
 
 AUTH = {"X-API-Key": "meridian-test-secret-key-2026"}
 
@@ -23,10 +23,10 @@ class _FixedRetriever:
         return RetrievalResult(query, top_k, [ranked], timings_ms={"total": 1.0})
 
 
-def _install_answer_graph(monkeypatch, answer: str) -> FakeLLM:
+def _install_answer_graph(monkeypatch, answer: str) -> FakeStreamingLLM:
     from services.rag_engine import app as app_module
 
-    llm = FakeLLM(content=answer)
+    llm = FakeStreamingLLM([answer])
     chunk = Chunk(
         id="chunk-stream",
         document_id="doc-stream",
