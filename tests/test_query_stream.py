@@ -216,6 +216,41 @@ async def test_token_frames_stream_before_generation_completes(monkeypatch):
     assert _token_text(frames) == "Hello world"
 
 
+@pytest.mark.asyncio
+async def test_stream_surfaces_graph_error_then_done(monkeypatch):
+    from services.rag_engine.routers.api import _stream_query_response
+
+    llm = FakeStreamingLLM(["Hel"])
+    _install_graph(monkeypatch, llm)
+
+    async def boom(**kwargs):
+        raise RuntimeError("provider exploded")
+        yield  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr(llm, "chat_completion_stream", boom)
+
+    req = QueryRequest(query="q", top_k=3, max_cycles=1)
+    frames = [
+        frame
+        async for frame in _stream_query_response(
+            req=req,
+            tenant_id="default",
+            sanitized_query=req.query,
+            request_id="rid",
+            output_guardrails_enabled=False,
+        )
+    ]
+
+    events = _event_names(frames)
+    assert "error" in events
+    assert events[-1] == "done"
+    error_payload = json.loads(
+        next(f for f in frames if f.startswith("event: error")).split("data: ", 1)[1].split("\n", 1)[0]
+    )
+    assert error_payload["message"]
+
+
+
 
 
 
