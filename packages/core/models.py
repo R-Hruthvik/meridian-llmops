@@ -283,61 +283,21 @@ class IndexStatusResponse(BaseModel):
 
 
 # =====================================================================
-# SQLAlchemy 2.0 ORM Models for Persistence & Human-in-the-Loop Review
+# Backward-compatible re-exports for the ORM models (issue #66)
 # =====================================================================
+# The SQLAlchemy ORM models now live in packages.core.db_models; they are
+# re-exported here so existing ``from packages.core.models import <ORM model>``
+# call sites keep working during the transition. New code should import from
+# packages.core.db_models directly.
 
-import uuid
-from datetime import UTC, datetime
-
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-# Backward-compatible re-export (issue #66): ORM models now live in
-# packages.core.db_models. New code should import from there directly.
 from packages.core.db_models import (  # noqa: F401
     Base,
     ExtractedField,
+    ORMAnswer,
     ORMChunk,
+    ORMCitation,
+    ORMClaim,
     ORMDocument,
     ReviewItem,
 )
-
-
-class ORMAnswer(Base):
-    __tablename__ = "answers"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    query_text: Mapped[str] = mapped_column(Text, nullable=False)
-    answer_text: Mapped[str] = mapped_column(Text, nullable=False)
-    confidence: Mapped[float] = mapped_column(Float, default=1.0)
-    status: Mapped[str] = mapped_column(String(50), default="verified")
-    latency_ms: Mapped[float] = mapped_column(Float, default=0.0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
-
-    claims: Mapped[list["ORMClaim"]] = relationship("ORMClaim", back_populates="answer", cascade="all, delete-orphan")
-
-
-class ORMClaim(Base):
-    __tablename__ = "claims"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    answer_id: Mapped[str] = mapped_column(String(36), ForeignKey("answers.id"), nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-    verification_status: Mapped[str] = mapped_column(String(50), default="supported")
-
-    answer: Mapped["ORMAnswer"] = relationship("ORMAnswer", back_populates="claims")
-    citations: Mapped[list["ORMCitation"]] = relationship("ORMCitation", back_populates="claim", cascade="all, delete-orphan")
-
-
-class ORMCitation(Base):
-    __tablename__ = "citations"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), nullable=False)
-    chunk_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    quote: Mapped[str] = mapped_column(Text, nullable=False)
-    support_score: Mapped[float] = mapped_column(Float, default=1.0)
-    verification_status: Mapped[str] = mapped_column(String(50), default="supported")
-
-    claim: Mapped["ORMClaim"] = relationship("ORMClaim", back_populates="citations")
 
