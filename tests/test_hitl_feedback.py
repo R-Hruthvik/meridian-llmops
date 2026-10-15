@@ -205,3 +205,57 @@ def test_query_endpoint_exposes_trace_id_and_review_status():
     data = response.json()
     assert data["trace_id"].startswith("trace-")
     assert data["review_status"]["flagged_chunk_ids"] == []
+
+
+def test_retrieve_endpoint_passes_review_flags_to_scoring(tmp_path: Path, monkeypatch):
+    import asyncio
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from services.rag_engine import app as app_module
+    from services.rag_engine.app import app
+    from services.rag_engine.deps import get_db
+    from services.rag_engine.retrieval.hybrid import RetrievalResult
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/review.db")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def seed():
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        async with factory() as session:
+            session.add_all([
+                ORMDocument(id="d1", title="Doc", file_type="md"),
+                ExtractedField(id="f1", document_id="d1", field_name="limit", value="$1",
+                               confidence=0.1, provenance_chunk_id="chunk-flag", review_status="corrected"),
+                ReviewItem(id="r1", extracted_field_id="f1", status="corrected"),
+            ])
+            await session.commit()
+
+    asyncio.run(seed())
+
+    async def override_get_db():
+        async with factory() as session:
+            yield session
+
+    captured: dict = {}
+
+    def fake_retrieve(query, top_k=5, tenant_id="default", debug=False, flagged_chunk_ids=None):
+        captured["flagged"] = flagged_chunk_ids
+        return RetrievalResult(query=query, top_k=top_k, chunks=[], timings_ms={})
+
+    app.dependency_overrides[get_db] = override_get_db
+    monkeypatch.setattr(app_module, "_index_gate", lambda request: None)
+    monkeypatch.setattr(app_module.retriever._target(), "retrieve", fake_retrieve)
+    try:
+        response = TestClient(app).post(
+            "/v1/retrieve",
+            headers={"X-API-Key": "meridian-test-secret-key-2026"},
+            json={"query": "anything", "top_k": 3},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert captured["flagged"] == {"chunk-flag"}
