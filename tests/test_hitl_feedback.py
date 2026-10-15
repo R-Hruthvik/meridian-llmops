@@ -8,7 +8,7 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from packages.core.db_models import Base, ExtractedField, ORMDocument, ReviewItem
-from packages.core.models import Chunk
+from packages.core.models import Chunk, QueryResponse
 from packages.core.schemas import GoldenCase
 from scripts.validate_golden import validate_dataset
 from services.rag_engine.retrieval.bm25 import BM25Index
@@ -180,3 +180,28 @@ def test_flagged_chunk_scores_lower_and_reranks():
     assert penalized.chunks[0].chunk_id != top.chunk_id
     finals = [chunk.scores["final"] for chunk in penalized.chunks]
     assert finals == sorted(finals, reverse=True)
+
+
+def test_query_response_defaults_keep_backward_compatibility():
+    response = QueryResponse(query="q", answer="a")
+
+    assert response.trace_id is None
+    assert response.review_status.flagged_chunk_ids == []
+
+
+def test_query_endpoint_exposes_trace_id_and_review_status():
+    from fastapi.testclient import TestClient
+
+    from services.rag_engine.app import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/v1/query",
+        headers={"X-API-Key": "meridian-test-secret-key-2026"},
+        json={"query": "What storage does Meridian use?", "max_cycles": 1},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["trace_id"].startswith("trace-")
+    assert data["review_status"]["flagged_chunk_ids"] == []
