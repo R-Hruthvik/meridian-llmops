@@ -23,6 +23,8 @@ web-articles/
 !README.md
 !AGENTS.md
 !CONTEXT.md
+!CONTRIBUTING.md
+!CHANGELOG.md
 # docs/ holds versioned design specs, ADRs and agent guidance — keep it tracked.
 # (scoped ignores for the few generated/scratch files live inside docs/ itself)
 *.db

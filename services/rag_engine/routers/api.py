@@ -16,6 +16,7 @@ patches take effect at call time.
 """
 
 import asyncio
+import socket
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -249,21 +250,44 @@ def _probe_http(url: str, timeout: float = 2.0) -> bool:
         return False
 
 
+def _probe_tcp(host: str, port: int, timeout: float = 2.0) -> bool:
+    """Probe a TCP port (used for Bolt/Neo4j and other non-HTTP services)."""
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
 def _check_docker_services(settings=None) -> dict[str, Any]:
     if settings is None:
         settings = _core_get_settings()
 
-    qdrant_url = f"http://{getattr(settings, 'qdrant_host', 'localhost')}:{getattr(settings, 'qdrant_port', 6333)}/collections" if settings else "http://localhost:6333/collections"
-    neo4j_url = "http://localhost:7474"
+    qdrant_host = getattr(settings, "qdrant_host", "localhost") if settings else "localhost"
+    qdrant_port = getattr(settings, "qdrant_port", 6333) if settings else 6333
+    qdrant_url = f"http://{qdrant_host}:{qdrant_port}/collections" if settings else "http://localhost:6333/collections"
+
+    from urllib.parse import urlparse
+
+    neo4j_uri = getattr(settings, "neo4j_uri", "bolt://localhost:7687") if settings else "bolt://localhost:7687"
+    try:
+        parsed = urlparse(str(neo4j_uri))
+        neo4j_host = parsed.hostname or "localhost"
+        neo4j_port = parsed.port or 7687
+    except Exception:  # noqa: BLE001 - fall back to defaults on malformed URI
+        neo4j_host, neo4j_port = "localhost", 7687
+    neo4j_http_url = f"http://{neo4j_host}:7474"
+    neo4j_endpoint = f"bolt://{neo4j_host}:{neo4j_port}"
+
     litellm_url = f"{getattr(settings, 'litellm_base_url', 'http://localhost:4000').rstrip('/')}/health" if settings else "http://localhost:4000/health"
 
     qdrant_ok = _probe_http(qdrant_url)
-    neo4j_ok = _probe_http(neo4j_url)
+    neo4j_ok = _probe_http(neo4j_http_url) or _probe_tcp(neo4j_host, neo4j_port)
     litellm_ok = _probe_http(litellm_url) or _probe_http(f"{litellm_url}/readiness")
 
     statuses: dict[str, Any] = {
         "qdrant": {"status": "reachable" if qdrant_ok else "degraded", "endpoint": qdrant_url, "reachable": qdrant_ok},
-        "neo4j": {"status": "reachable" if neo4j_ok else "degraded", "endpoint": neo4j_url, "reachable": neo4j_ok},
+        "neo4j": {"status": "reachable" if neo4j_ok else "degraded", "endpoint": neo4j_endpoint, "reachable": neo4j_ok},
         "litellm": {"status": "reachable" if litellm_ok else "degraded", "endpoint": litellm_url, "reachable": litellm_ok},
     }
     return statuses

@@ -15,7 +15,7 @@ services:
 
   neo4j:
     image: neo4j:5.18.0-community
-    profiles: ["neo4j"]
+    profiles: ["neo4j", "app"]
     container_name: meridian-neo4j
     ports:
       - "127.0.0.1:7474:7474"
@@ -63,7 +63,7 @@ services:
 
   langfuse-db:
     image: postgres:16.4-alpine
-    profiles: ["langfuse"]
+    profiles: ["langfuse", "app"]
     container_name: meridian-langfuse-db
     environment:
       - POSTGRES_USER=langfuse
@@ -79,7 +79,7 @@ services:
 
   langfuse:
     image: langfuse/langfuse:2.95.8
-    profiles: ["langfuse"]
+    profiles: ["langfuse", "app"]
     container_name: meridian-langfuse
     depends_on:
       langfuse-db:
@@ -88,9 +88,9 @@ services:
       - "127.0.0.1:3000:3000"
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql://langfuse:${POSTGRES_PASSWORD:?}@langfuse-db:5432/langfuse}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:?}
       - NEXTAUTH_URL=http://localhost:3000
-      - SALT=${SALT:-}
+      - SALT=${SALT:?}
       - TELEMETRY_ENABLED=false
 
   app:
@@ -100,8 +100,12 @@ services:
     depends_on:
       qdrant:
         condition: service_healthy
+      neo4j:
+        condition: service_healthy
       litellm:
         condition: service_healthy
+      langfuse:
+        condition: service_started
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
