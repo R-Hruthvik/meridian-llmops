@@ -1,11 +1,14 @@
 """Lexical and FastEmbed cross-encoder rerankers."""
 
+import logging
 import re
 
 from fastembed.rerank.cross_encoder import TextCrossEncoder
 
 from packages.core.config import get_settings
 from packages.core.models import Chunk, SearchResult
+
+logger = logging.getLogger(__name__)
 
 
 class LexicalReranker:
@@ -47,20 +50,52 @@ class LexicalReranker:
 
 
 class CrossEncoderReranker:
-    """Rerank chunks with FastEmbed's learned query-document cross-encoder."""
+    """Rerank chunks with a FastEmbed learned query-document cross-encoder.
+
+    ``BAAI/bge-reranker-large`` is the configured target model, but the
+    FastEmbed runtime only ships a subset of cross-encoders. When the requested
+    model cannot be loaded we try the supported BGE variants and finally fall
+    back to the lexical heuristic instead of raising during startup.
+    """
+
+    _FALLBACK_MODELS = ("BAAI/bge-reranker-base", "BAAI/bge-reranker-v2-m3", "Xenova/ms-marco-MiniLM-L-6-v2")
 
     def __init__(self, model_name: str | None = None, cache_path: str | None = None):
         settings = get_settings()
-        self.model_name = model_name or settings.reranker_model
-        self._model = TextCrossEncoder(
-            model_name=self.model_name,
-            cache_dir=cache_path or settings.fastembed_cache_path,
-            threads=4,
-        )
+        requested = model_name or settings.reranker_model
+        self.cache_path = cache_path or settings.fastembed_cache_path
+        self._lexical = LexicalReranker()
+        self._model = None
+        self.model_name = requested
+
+        candidates = [requested]
+        candidates.extend(model for model in self._FALLBACK_MODELS if model not in candidates)
+        for candidate in candidates:
+            try:
+                self._model = TextCrossEncoder(
+                    model_name=candidate,
+                    cache_dir=self.cache_path,
+                    threads=4,
+                )
+                self.model_name = candidate
+                return
+            except Exception as error:  # noqa: BLE001 - model availability is optional
+                logger.warning("Cross-encoder model %s unavailable: %s", candidate, error)
+                continue
+
+        logger.warning("No cross-encoder model could be loaded; using lexical fallback.")
 
     def rerank(self, query: str, chunks: list[Chunk], top_k: int = 5) -> list[SearchResult]:
+        if self._model is None:
+            return self._lexical.rerank(query, chunks, top_k)
+
         candidates = chunks[: max(20, 2 * top_k)]
-        scores = self._model.rerank(query, [chunk.text for chunk in candidates], batch_size=64)
+        try:
+            scores = self._model.rerank(query, [chunk.text for chunk in candidates], batch_size=64)
+        except Exception as error:  # noqa: BLE001 - degrade gracefully at query time
+            logger.warning("Cross-encoder scoring failed; using lexical fallback: %s", error)
+            return self._lexical.rerank(query, chunks, top_k)
+
         ranked = [
             SearchResult(
                 chunk_id=chunk.id,

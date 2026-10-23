@@ -2,15 +2,22 @@
 """Batch ingestion script to load local markdown/text files into Meridian LLMOps."""
 
 import argparse
+import os
 from pathlib import Path
 
 import httpx
 
 
-def ingest_directory(directory: str, api_url: str = "http://localhost:8000", api_key: str = "meridian-test-secret-key-2026"):
+def ingest_directory(directory: str, api_url: str = "http://localhost:8000", api_key: str | None = None):
     doc_dir = Path(directory)
     if not doc_dir.exists():
         print(f"❌ Error: Directory '{directory}' does not exist.")
+        return
+
+    if not api_key:
+        api_key = os.environ.get("API_KEY_SECRET")
+    if not api_key:
+        print("Error: API key is required. Set API_KEY_SECRET or pass --key.")
         return
 
     files = [f for f in doc_dir.glob("*") if f.suffix.lower() in [".md", ".txt", ".html", ".json"]]
@@ -58,7 +65,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingest documentation into Meridian LLMOps")
     parser.add_argument("--dir", default="sample_docs", help="Directory containing documents")
     parser.add_argument("--url", default="http://localhost:8000", help="Meridian API URL")
-    parser.add_argument("--key", default="meridian-test-secret-key-2026", help="X-API-Key")
+    parser.add_argument("--key", default=None, help="X-API-Key (defaults to API_KEY_SECRET env var)")
     args = parser.parse_args()
 
     ingest_directory(args.dir, args.url, args.key)

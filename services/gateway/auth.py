@@ -75,9 +75,11 @@ def _configured_keys() -> dict[str, AuthIdentity]:
 
 
 def validate_auth_configuration() -> None:
-    """Fail startup for malformed mappings or known development credentials in production."""
+    """Fail startup for missing/malformed auth configuration in every environment."""
     keys = _configured_keys()
     settings = get_settings()
+    if not keys:
+        raise RuntimeError("API key authentication is not configured; set API_KEYS, ADMIN_API_KEY, or API_KEY_SECRET")
     if settings.app_env != "production":
         return
     raw_keys = os.environ.get("API_KEYS") or settings.api_keys.get_secret_value()
