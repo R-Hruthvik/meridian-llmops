@@ -51,8 +51,9 @@
 .tenant-form button { min-height: 32px; padding: 0 .55rem; border: 1px solid rgb(var(--border)); border-radius: 5px; background: rgb(var(--surface-raised)); color: rgb(var(--text)); cursor: pointer; font: 12px 'Geist', sans-serif; }
 .tenant-form button:hover { border-color: rgb(var(--accent)); color: rgb(var(--accent)); }
 .tenant-error { position: absolute; top: calc(100% + .25rem); right: 0; z-index: 2; padding: .35rem .5rem; border-radius: 4px; background: rgb(var(--fail-wash)); color: rgb(var(--fail)); }
-.section-nav { width: min(100%, 1680px); min-height: 45px; display: flex; gap: 1.4rem; margin-inline: auto; padding: 0 clamp(1.5rem, 5vw, 5.5rem); border-bottom: 1px solid rgb(var(--border)); }
-.section-nav a { display: inline-flex; align-items: center; min-height: 45px; padding: 0 .1rem; border-bottom: 2px solid transparent; color: rgb(var(--text-muted)); font-size: 13px; text-decoration: none; }
+.section-nav { width: min(100%, 1680px); min-height: 45px; display: flex; gap: 1.4rem; margin-inline: auto; padding: 0 clamp(1.5rem, 5vw, 5.5rem); border-bottom: 1px solid rgb(var(--border)); overflow-x: auto; scrollbar-width: none; }
+.section-nav a { display: inline-flex; align-items: center; min-height: 45px; padding: 0 .1rem; border-bottom: 2px solid transparent; color: rgb(var(--text-muted)); font-size: 13px; text-decoration: none; white-space: nowrap; }
+.section-nav::-webkit-scrollbar { display: none; }
 .section-nav a[aria-current="page"] { border-bottom-color: rgb(var(--accent)); color: rgb(var(--accent)); font-weight: 600; }
 .workbench-content { min-width: 0; width: 100%; max-width: 1680px; margin-inline: auto; flex: 1; padding: 2.25rem clamp(1.5rem, 5vw, 5.5rem) 3rem; }
 .workbench-content h1 { margin-block: 0; color: rgb(var(--text)); font: 400 clamp(30px, 2.5vw, 38px)/1.12 Georgia, 'Times New Roman', serif; letter-spacing: -.035em; }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, LibraryBig, MessageSquareText, PanelLeftClose, PanelLeftOpen, Settings2 } from 'lucide-react';
 import { RagWorkspace } from './components/RagWorkspace';
+import { SurfaceErrorBoundary } from './components/SurfaceErrorBoundary';
 import { LazySurface } from './components/LazySurface';
 import { WorkbenchContext, type OpenOverlayOptions, type OverlayTarget } from './WorkbenchContext';
 import { api } from './services/api';
@@ -99,7 +100,8 @@ export const App: React.FC = () => {
   };
   const sectionTitle = route === '/ask' ? 'Ask' : route.startsWith('/sources') ? 'Sources' : operations ? 'Monitor' : 'Settings';
   return (
-    <WorkbenchContext.Provider value={workbench}>
+    <SurfaceErrorBoundary label="Application">
+      <WorkbenchContext.Provider value={workbench}>
       <a href="#main-content" className="skip-to-main">Skip to main content</a>
       <div className={`workbench-shell${collapsed ? ' sidebar-collapsed' : ''}`} style={{ '--sidebar-width': collapsed ? '72px' : `${sidebarWidth}px` } as React.CSSProperties}>
         <aside className={`workbench-sidebar${collapsed ? ' is-collapsed' : ''}`}>
@@ -143,6 +145,7 @@ export const App: React.FC = () => {
         </div>
       </div>
     </WorkbenchContext.Provider>
+    </SurfaceErrorBoundary>
   );
 };
 
