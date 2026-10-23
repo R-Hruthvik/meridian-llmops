@@ -245,7 +245,7 @@ def build_rag_agent_graph(
                         if entity_name in seen:
                             continue
                         name = entity_name.lower()
-                        if min(len(lowered), len(name)) >= 5 and (lowered in name or name in lowered):
+                        if min(len(lowered), len(name)) >= 5 and lowered == name:
                             fuzzy_hits.append(candidate)
                             seen.add(entity_name)
             entities.extend(exact_hits[:8])

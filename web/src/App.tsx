@@ -100,6 +100,7 @@ export const App: React.FC = () => {
   const sectionTitle = route === '/ask' ? 'Ask' : route.startsWith('/sources') ? 'Sources' : operations ? 'Monitor' : 'Settings';
   return (
     <WorkbenchContext.Provider value={workbench}>
+      <a href="#main-content" className="skip-to-main">Skip to main content</a>
       <div className={`workbench-shell${collapsed ? ' sidebar-collapsed' : ''}`} style={{ '--sidebar-width': collapsed ? '72px' : `${sidebarWidth}px` } as React.CSSProperties}>
         <aside className={`workbench-sidebar${collapsed ? ' is-collapsed' : ''}`}>
           <div className="sidebar-top">
@@ -127,7 +128,7 @@ export const App: React.FC = () => {
           {route.startsWith('/sources') && <nav className="section-nav" aria-label="Sources sections">
             {[['Catalog', '/sources'], ['Index & storage', '/sources/index']].map(([label, path]) => <a key={path} href={`#${path}`} aria-current={route === path ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(path as Route); }}>{label}</a>)}
           </nav>}
-          <main className="workbench-content">
+          <main id="main-content" tabIndex={-1} className="workbench-content">
             <div className="route-view" hidden={route !== '/ask'}><RagWorkspace tenantId={tenantId}/></div>
             {route === '/sources' && <LazySurface label="Sources"><IngestionStudio tenantId={tenantId} focusedDocumentId={focus.documentId ?? null} focusedChunkId={focus.chunkId ?? null} onDismissFocus={() => setFocus({})}/></LazySurface>}
             {route === '/sources/index' && <LazySurface label="Index and storage"><IndexStorageStudio tenantId={tenantId}/></LazySurface>}

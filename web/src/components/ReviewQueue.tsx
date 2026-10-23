@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ClipboardCheck, Pencil, RefreshCw, X } from 'lucide-react';
 import { api } from '../services/api';
 import type { ReviewItem } from '../types/api';
@@ -21,10 +21,11 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  // Index of the row that held focus when an action was taken. The row unmounts
-  // with its focused button and React does not relocate focus on unmount, so
-  // without this the next Tab restarted at the top of the document.
-  const [resumeRow, setResumeRow] = useState<number | null>(null);
+  // Stable id of the row that should receive focus after an action. The
+  // actioned row unmounts with its focused button and React does not relocate
+  // focus on unmount, so without this the next Tab restarted at the top of the
+  // document. Keying by id (not row index) survives reordering/refetching.
+  const [resumeItemId, setResumeItemId] = useState<string | null>(null);
 
   useEffect(() => () => {
     if (toastTimer.current !== null) {
@@ -39,7 +40,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
     correct: 'corrected',
   };
 
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -51,30 +52,32 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchItems();
   }, [tenantId]);
 
-  // After an action the list is refetched, so restore focus to the row that took
-  // the actioned item's place — or to the queue heading when nothing is left.
   useEffect(() => {
-    if (resumeRow === null) return;
-    const next = document.querySelector<HTMLButtonElement>(
-      `[data-review-action="${resumeRow}"]`,
-    );
+    void fetchItems();
+  }, [fetchItems]);
+
+  const restoreScheduledRef = useRef(false);
+  useEffect(() => {
+    if (!restoreScheduledRef.current) return;
+    restoreScheduledRef.current = false;
+    const next = resumeItemId
+      ? document.querySelector<HTMLButtonElement>(`[data-review-action="${resumeItemId}"]`)
+      : null;
     (next ?? headingRef.current)?.focus();
-    setResumeRow(null);
-  }, [items, resumeRow]);
+    setResumeItemId(null);
+  }, [items, resumeItemId]);
 
   const handleAction = async (
     itemId: string,
     action: string,
-    rowIndex: number,
+    _rowIndex: number,
     corrected?: string,
     note?: string,
   ) => {
+    const idx = items.findIndex((i) => i.id === itemId);
+    const nextId = idx >= 0 ? items[idx + 1]?.id ?? null : null;
     setActingId(itemId);
     try {
       await api.reviewItemAction(
@@ -86,7 +89,8 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
       setCorrectingId(null);
       setCorrectedValue('');
       setNotes('');
-      setResumeRow(rowIndex);
+      restoreScheduledRef.current = true;
+      setResumeItemId(nextId);
       await fetchItems();
     } catch (err: unknown) {
       setToast(err instanceof Error ? err.message : 'Review action failed');
@@ -127,7 +131,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
             Global
           </span>
         </div>
-        <button
+        <button type="button"
           onClick={() => void fetchItems()}
           disabled={loading}
           aria-label="Refresh review queue"
@@ -223,17 +227,17 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1">
-                          <button
+                          <button type="button"
                             onClick={() => void handleAction(item.id, 'approve', rowIndex)}
                             disabled={actingId === item.id}
-                            data-review-action={rowIndex}
+                            data-review-action={item.id}
                             aria-label={`Approve ${item.field_name}`}
                             className="flex items-center gap-1 rounded-sm border border-ok/30 bg-ok-wash px-2 py-1 text-micro font-bold text-ok transition-colors hover:bg-ok hover:text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                           >
                             <CheckCircle2 className="size-3" aria-hidden="true" />
                             <span>Approve</span>
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => void handleAction(item.id, 'reject', rowIndex)}
                             disabled={actingId === item.id}
                             aria-label={`Reject ${item.field_name}`}
@@ -245,7 +249,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
                           {/* A disclosure, so it reports its state. Without it the
                               button read as a plain action and pressing it twice
                               unmounted the inputs while focus was inside them. */}
-                          <button
+                          <button type="button"
                             onClick={() => {
                               setCorrectingId(correctingId === item.id ? null : item.id);
                               setCorrectedValue(item.value);
@@ -281,7 +285,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({ tenantId }) => {
                               aria-label={`Review note for ${item.field_name}`}
                               className="min-w-[160px] flex-1 rounded-sm border border-hairline bg-surface-raised px-2 py-1 text-label text-ink outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
                             />
-                            <button
+                            <button type="button"
                               onClick={() => void handleAction(item.id, 'correct', rowIndex, correctedValue, notes || undefined)}
                               disabled={actingId === item.id || !correctedValue.trim()}
                               className="rounded-sm bg-accent px-3 py-1 text-micro font-bold text-white transition-colors hover:bg-accent-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"

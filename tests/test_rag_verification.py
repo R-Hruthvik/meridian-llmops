@@ -133,7 +133,7 @@ async def test_full_date_normalizes_iso_and_slash_forms():
     result = await verify_answer(
         question="When does the period begin?",
         answer="The period begins on 2025-01-02. [1]",
-        sources=[source(1, "The period begins on 01/02/2025.")],
+        sources=[source(1, "The period begins on 2025/01/02.")],
         mode="citations",
     )
 

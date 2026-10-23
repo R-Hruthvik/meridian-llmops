@@ -16,6 +16,9 @@ import { api, ApiError } from '../services/api';
 import { PROVIDER_DEFAULT_BASE_URLS, PROVIDER_MODELS } from '../constants/providerModels';
 import type { MaskedKeyStatus, ProvidersResponse, UpdateLLMSettingsPayload } from '../types/api';
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 interface SettingsModalProps {
   isOpen: boolean;
   presentation?: 'modal' | 'page';
@@ -30,6 +33,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onGenerationTestResult,
 }) => {
   const [mounted, setMounted] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [provider, setProvider] = useState<string>('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [openaiOrgId, setOpenaiOrgId] = useState('');
@@ -144,16 +148,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (presentation === 'modal') document.body.style.overflow = 'unset';
     }
 
+    if (presentation !== 'modal' || !isOpen) {
+      return () => {
+        if (presentation === 'modal') document.body.style.overflow = 'unset';
+      };
+    }
+
+    const dialog = dialogRef.current;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    dialog?.focus();
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen && presentation === 'modal') {
+      if (e.key === 'Escape') {
         onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const panel = dialogRef.current;
+      if (!panel) return;
+      const focusables = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === panel)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      if (presentation === 'modal') document.body.style.overflow = 'unset';
+      document.body.style.overflow = 'unset';
       window.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus();
     };
   }, [isOpen, onClose, presentation]);
 
@@ -397,10 +431,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       {/* Centered modal surface */}
       <div
+        ref={presentation === 'modal' ? dialogRef : undefined}
         role={presentation === 'modal' ? 'dialog' : undefined}
         aria-modal={presentation === 'modal' ? true : undefined}
         aria-labelledby="settings-modal-title"
         aria-busy={settingsLoading}
+        tabIndex={presentation === 'modal' ? -1 : undefined}
         className={presentation === 'page'
           ? 'flex w-full flex-col overflow-hidden rounded border border-hairline bg-surface-raised'
           : 'relative z-50 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded border border-hairline bg-surface-raised shadow-overlay'}
@@ -426,7 +462,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </p>
             </div>
           </div>
-          {presentation === 'modal' && <button
+          {presentation === 'modal' && <button type="button"
             onClick={onClose}
             aria-label="Close settings modal"
             className="shrink-0 rounded-sm p-1.5 text-muted transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"

@@ -176,7 +176,7 @@ class TokenAwareChunker:
             budget -= cost
             if budget <= 0:
                 break
-        return (" ".join(reversed(taken)).strip(), "paragraph", chunks[-1].metadata.get("page_start"))
+        return (" ".join(reversed(taken)).strip(), "paragraph", chunks[-1].metadata.get("page_end"))
 
     def _word_window(self, text: str) -> str:
         words = text.split()
@@ -234,7 +234,7 @@ class TokenAwareChunker:
             chunk = chunks[index]
             if (
                 merged
-                and chunk.metadata["token_count"] < 20
+                and chunk.metadata.get("token_count", 0) < 20
                 and merged[-1].section_heading == chunk.section_heading
                 and count_tokens(merged[-1].text) + count_tokens(chunk.text) <= self.max_tokens
             ):
@@ -263,7 +263,7 @@ class TokenAwareChunker:
                 index += 1
                 continue
             if (
-                chunk.metadata["token_count"] < 20
+                chunk.metadata.get("token_count", 0) < 20
                 and index + 1 < len(chunks)
                 and chunk.section_heading == chunks[index + 1].section_heading
                 and count_tokens(chunk.text) + count_tokens(chunks[index + 1].text) <= self.max_tokens

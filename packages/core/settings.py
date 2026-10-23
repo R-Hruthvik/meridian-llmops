@@ -5,6 +5,7 @@ All configuration flows from here. Other modules import
 remains only as a re-export shim until migration completes.
 """
 
+import json
 import os
 from functools import lru_cache
 from typing import Literal
@@ -128,11 +129,27 @@ def _is_forbidden_production_secret(value: str | None) -> bool:
 def validate_production(s: Settings) -> None:
     if s.app_env != "production":
         return
-    has_api_key_config = bool(s.api_keys.get_secret_value() or s.admin_api_key.get_secret_value())
+    raw_api_keys = s.api_keys.get_secret_value().strip()
+    admin_api_key = s.admin_api_key.get_secret_value().strip()
+    has_api_key_config = bool(raw_api_keys or admin_api_key)
     if _is_forbidden_production_secret(s.api_key_secret) and not has_api_key_config:
         raise RuntimeError("missing required secret: API_KEY_SECRET")
     if _is_forbidden_production_secret(s.litellm_master_key):
         raise RuntimeError("missing required secret: LITELLM_MASTER_KEY")
+    if admin_api_key and _is_forbidden_production_secret(admin_api_key):
+        raise RuntimeError("missing required secret: ADMIN_API_KEY")
+    if raw_api_keys:
+        try:
+            parsed = json.loads(raw_api_keys)
+        except (TypeError, ValueError) as error:
+            raise RuntimeError("missing required secret: API_KEYS") from error
+        if (not isinstance(parsed, dict) or not parsed) and not admin_api_key:
+            raise RuntimeError("missing required secret: API_KEYS")
+        for key in (list(parsed.keys()) if isinstance(parsed, dict) else []):
+            if _is_forbidden_production_secret(key):
+                raise RuntimeError("missing required secret: API_KEYS")
+    if not has_api_key_config and _is_forbidden_production_secret(s.api_key_secret):
+        raise RuntimeError("missing required secret: API_KEYS")
 
 
 @lru_cache

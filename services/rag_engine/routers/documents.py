@@ -5,15 +5,20 @@ are resolved through the aggregation module at call time via :class:`LiveRef`,
 so the test suite's monkeypatches on ``routers.api`` keep taking effect.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from packages.core.errors import IndexReadError, IndexWriteError, IngestionError
 from packages.core.models import DocumentFormat, IngestDocumentRequest
 from services.rag_engine.deps import require_admin, require_user
-from services.rag_engine.routers._state import ingestion_pipeline_ref, retriever_ref, vector_store_ref
+from services.rag_engine.routers._state import (
+    ingestion_pipeline_ref,
+    retriever_ref,
+    vector_store_ref,
+)
 
 router = APIRouter()
 
@@ -44,7 +49,7 @@ async def upload_documents_endpoint(
                 data.extend(block)
                 if len(data) > limit:
                     raise IngestionError(f"{filename} exceeds the {limit / (1024 * 1024):g} MB upload limit")
-            result = ingestion_pipeline.ingest_file(filename, bytes(data), tenant_id=tenant_id)
+            result = await asyncio.to_thread(ingestion_pipeline.ingest_file, filename, bytes(data), tenant_id=tenant_id)
             results.append(result.to_dict())
         except IngestionError as error:
             results.append(
@@ -71,7 +76,8 @@ async def ingest_document_endpoint(
 ):
     """Ingests text into dedicated disk storage, the Qdrant vector store, and the graph."""
     try:
-        result = ingestion_pipeline.ingest_text(
+        result = await asyncio.to_thread(
+            ingestion_pipeline.ingest_text,
             text=payload.text,
             title=payload.title or "Uploaded Document",
             source=payload.source or "manual",
@@ -95,7 +101,7 @@ async def ingest_document_endpoint(
 @router.delete("/v1/documents")
 async def clear_all_documents_endpoint(tenant_id: str = Depends(require_admin)):
     """Clears all documents and chunks from dedicated storage and active memory."""
-    count = ingestion_pipeline.clear_all()
+    count = await asyncio.to_thread(ingestion_pipeline.clear_all, tenant_id=tenant_id)
     retriever.update_chunks(vector_store.get_all_chunks(None))
     return {"status": "cleared", "deleted_count": count, "message": f"All {count} documents removed from storage"}
 
@@ -108,7 +114,8 @@ async def seed_sample_documents_endpoint(tenant_id: str = Depends(require_admin)
     if sample_docs_dir.exists():
         for doc_file in sample_docs_dir.glob("*.md"):
             title = doc_file.stem.replace("_", " ").title()
-            ingestion_pipeline.ingest_text(
+            await asyncio.to_thread(
+                ingestion_pipeline.ingest_text,
                 text=doc_file.read_text(encoding="utf-8", errors="ignore"),
                 title=title,
                 doc_format=DocumentFormat.MARKDOWN,
@@ -156,12 +163,12 @@ async def catalog_alias_endpoint(tenant_id: str = Depends(require_user)):
 @router.get("/v1/documents/{doc_id}/chunks")
 async def get_document_chunks_endpoint(
     doc_id: str,
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     tenant_id: str = Depends(require_user),
 ):
     """Returns a page of structural chunks for a document with headings and pages."""
-    doc = ingestion_pipeline.get_document(doc_id, tenant_id=tenant_id)
+    doc = await asyncio.to_thread(ingestion_pipeline.get_document, doc_id, tenant_id=tenant_id)
     if not doc:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
     chunks = doc.get("chunks", [])
@@ -178,7 +185,7 @@ async def get_document_chunks_endpoint(
 @router.get("/v1/documents/{doc_id}")
 async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(require_user)):
     """Retrieves full document metadata and its constituent chunks."""
-    doc = ingestion_pipeline.get_document(doc_id, tenant_id=tenant_id)
+    doc = await asyncio.to_thread(ingestion_pipeline.get_document, doc_id, tenant_id=tenant_id)
     if not doc:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
     return doc
@@ -187,11 +194,11 @@ async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(re
 @router.delete("/v1/documents/{doc_id}")
 async def delete_document_endpoint(doc_id: str, tenant_id: str = Depends(require_user)):
     """Deletes a document and evicts its chunks from vector, lexical, and graph stores."""
-    doc = ingestion_pipeline.get_document(doc_id, tenant_id=tenant_id)
+    doc = await asyncio.to_thread(ingestion_pipeline.get_document, doc_id, tenant_id=tenant_id)
     if not doc:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
     chunk_ids = [chunk["id"] for chunk in doc.get("chunks", [])]
-    deleted = ingestion_pipeline.delete_document(doc_id, tenant_id=tenant_id)
+    deleted = await asyncio.to_thread(ingestion_pipeline.delete_document, doc_id, tenant_id=tenant_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
     retriever.remove_chunks(chunk_ids)

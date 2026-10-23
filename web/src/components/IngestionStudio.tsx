@@ -27,6 +27,9 @@ import type {
   IngestResponse,
 } from '../types/api';
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 interface IngestionStudioProps {
   tenantId: string;
   /** The document an answer cited, opened here from the Ask spine. */
@@ -82,6 +85,9 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const focusedDocRef = useRef<HTMLElement | null>(null);
   const focusedChunkRef = useRef<HTMLElement | null>(null);
+  const inspectorRef = useRef<HTMLDivElement | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // The citation markers now live on table rows / chunk rows, so the refs are
   // typed as plain elements and attached through stable callbacks.
@@ -92,7 +98,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
     focusedChunkRef.current = el;
   }, []);
 
-  const fetchDocuments = async (retry = true) => {
+  const fetchDocuments = useCallback(async (retry = true) => {
     setLoadingDocs(true);
     setCatalogError(null);
     try {
@@ -101,7 +107,8 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
     } catch (err: unknown) {
       // Backend may still be booting — retry the initial load once before giving up
       if (retry) {
-        setTimeout(() => {
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = setTimeout(() => {
           void fetchDocuments(false);
         }, 2000);
       } else {
@@ -111,11 +118,15 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
     } finally {
       setLoadingDocs(false);
     }
-  };
+  }, [tenantId]);
 
   useEffect(() => {
-    fetchDocuments();
-  }, [tenantId]);
+    void fetchDocuments();
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, [fetchDocuments]);
 
   // Citation drill-through: when the Ask spine hands us a document, reveal it
   // in the catalog and expand it, with the cited chunk highlighted.
@@ -169,21 +180,51 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
     onDismissFocus?.();
   }, [onDismissFocus]);
 
-  // Escape key handler for Chunk Inspector Modal
+  // Focus trap + restoration for Chunk Inspector Modal
   useEffect(() => {
     if (!selectedDocDetail) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const panel = inspectorRef.current;
+    panel?.focus();
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         closeInspector();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const p = inspectorRef.current;
+      if (!p) return;
+      const focusables = Array.from(p.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === p)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
   }, [selectedDocDetail, closeInspector]);
 
   const showToast = (toastText: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text: toastText, type });
-    setTimeout(() => setToastMessage(null), 3500);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 3500);
   };
 
   const handleIngest = async () => {
@@ -325,7 +366,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
               <span className="id-mono text-accent-ink">{focusedDocumentId}</span>
             </p>
           </div>
-          <button
+          <button type="button"
             onClick={handleDismissFocus}
             aria-label="Dismiss source focus"
             className="rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -481,7 +522,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                   : 'Add a document to let Meridian answer from your material.'}
               </p>
               {searchQuery ? (
-                <button
+                <button type="button"
                   onClick={() => setSearchQuery('')}
                   className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-3 py-1.5 text-label font-semibold text-ink transition-colors hover:bg-accent-wash focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
@@ -581,14 +622,14 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                         </td>
                         <td className="px-3 py-1.5">
                           <div className="flex items-center justify-end gap-1.5">
-                            <button
+                            <button type="button"
                               onClick={() => handleViewDetails(doc)}
                               className="flex items-center gap-1.5 rounded-sm border border-hairline px-2 py-1 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                             >
                               <Eye className="size-3.5" />
                               <span className="hidden sm:inline">Inspect chunks</span>
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => handleDelete(doc.id, doc.title)}
                               disabled={deletingId === doc.id}
                               aria-label={`Delete ${doc.title}`}
@@ -624,7 +665,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                   <Database className="size-3.5" />
                   <span>Document Ingestion &amp; Structural Chunking</span>
                 </h3>
-                <button
+                <button type="button"
                   disabled={loading}
                   onClick={() => {
                     setTitle('Distributed Caching Architecture');
@@ -700,7 +741,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
 
               {/* Action Button */}
               <div className="flex justify-end pt-1">
-                <button
+                <button type="button"
                   onClick={handleIngest}
                   disabled={loading || (!selectedFiles.length && (!text.trim() || !title.trim()))}
                   className="flex items-center gap-2 rounded bg-accent px-4 py-1.5 text-label font-bold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
@@ -792,7 +833,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                       ))}
                     </div>
                   ))}
-                  <button
+                  <button type="button"
                     onClick={() => setActiveTab('catalog')}
                     className="flex w-full items-center justify-center gap-1.5 rounded-sm border border-hairline px-3 py-1.5 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
@@ -833,7 +874,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                     />
                   </div>
 
-                  <button
+                  <button type="button"
                     onClick={() => setActiveTab('catalog')}
                     className="flex w-full items-center justify-center gap-1.5 rounded-sm border border-hairline px-3 py-1.5 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
@@ -854,10 +895,12 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
           onClick={closeInspector}
         >
           <div
+            ref={inspectorRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="chunk-inspector-modal-title"
-            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded border border-hairline bg-surface-raised shadow-overlay"
+            tabIndex={-1}
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded border border-hairline bg-surface-raised shadow-overlay outline-none"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -879,7 +922,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                   <span>characters</span>
                 </p>
               </div>
-              <button
+              <button type="button"
                 onClick={closeInspector}
                 aria-label="Close Chunk Inspector"
                 className="shrink-0 rounded-sm p-1.5 text-muted transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -929,7 +972,7 @@ export const IngestionStudio: React.FC<IngestionStudioProps> = ({
                 <span className="num text-ink">{selectedDocDetail.chunks.length}</span> structural chunks
                 from vector store
               </span>
-              <button
+              <button type="button"
                 onClick={closeInspector}
                 className="rounded-sm border border-hairline px-3 py-1 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >

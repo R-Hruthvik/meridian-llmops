@@ -27,7 +27,8 @@ class PromptBuild:
 
 def _header_value(value: Any) -> str:
     safe = str(value).replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
-    return safe.replace("<", "&lt;")
+    safe = safe.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return safe
 
 
 def _escape_source_delimiters(text: str) -> str:

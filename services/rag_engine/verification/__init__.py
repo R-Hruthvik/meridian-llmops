@@ -48,7 +48,7 @@ class _JudgeVerdict(BaseModel):
 
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
-_DATE_RE = re.compile(r"(?<!\d)(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{4})(?!\d)")
+_DATE_RE = re.compile(r"(?<!\d)\d{4}[-/]\d{1,2}[-/]\d{1,2}(?!\d)")
 _NUMBER_RE = re.compile(
     r"(?<![\w])(?P<sign>[+-])?\s*(?P<prefix>[$€£¥₹]|USD|EUR|GBP|INR)?\s*(?P<currency_sign>[+-])?\s*"
     r"(?P<number>\d(?:[\d, ]*\d)?(?:\.\d+)?)"
@@ -71,12 +71,8 @@ def _normalized_values(text: str) -> tuple[set[str], list[tuple[str, str]], dict
 
     for match in _DATE_RE.finditer(text_without_citations):
         parts = re.split(r"[-/]", match.group())
-        if len(parts[0]) == 4:
-            year, month, day = parts
-            normalized_date = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
-        else:
-            month, day, year = parts
-            normalized_date = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+        year, month, day = parts
+        normalized_date = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
         key = f"date:{normalized_date}"
         dates.append((key, match.group()))
         displays[key] = match.group()

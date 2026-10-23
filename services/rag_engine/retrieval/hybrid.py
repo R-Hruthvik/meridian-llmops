@@ -6,6 +6,7 @@ chunk is never dropped because it is missing from some local vector cache,
 and any Qdrant failure raises instead of silently degrading.
 """
 
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -94,6 +95,7 @@ class HybridRetriever:
         self.pool_min = pool_min
         self.reranker = reranker
         self.tracer = tracer
+        self._bm25_lock = threading.Lock()
 
     def update_chunks(self, chunks: list[Chunk]) -> None:
         """Rebuild the lexical corpus from the caller's chunk records.
@@ -101,11 +103,13 @@ class HybridRetriever:
         Ingestion keeps disk records authoritative, so a full rebuild is the
         correct and simple behavior for a hundreds-of-docs corpus.
         """
-        self.bm25_index = BM25Index(chunks)
+        with self._bm25_lock:
+            self.bm25_index = BM25Index(chunks)
 
     def remove_chunks(self, chunk_ids: list[str]) -> None:
         """Evict chunks from the lexical index when their documents are deleted."""
-        self.bm25_index.remove_chunks(chunk_ids)
+        with self._bm25_lock:
+            self.bm25_index.remove_chunks(chunk_ids)
 
     def retrieve(
         self,
@@ -132,8 +136,10 @@ class HybridRetriever:
         timings["dense"] = _ms(stage)
 
         stage = time.perf_counter()
+        with self._bm25_lock:
+            bm25_index = self.bm25_index
         with self._span("bm25_search", tenant_id=tenant_id):
-            sparse_results = self.bm25_index.search(query, top_k=pool, tenant_id=tenant_id)
+            sparse_results = bm25_index.search(query, top_k=pool, tenant_id=tenant_id)
         timings["bm25"] = _ms(stage)
 
         stage = time.perf_counter()

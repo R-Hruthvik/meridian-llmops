@@ -254,12 +254,13 @@ class IngestionPipeline:
             # Fresh ingest stamps the caller's tenant; hydration keeps the
             # tenant already recorded on each persisted chunk.
             chunk.metadata.setdefault("tenant_id", tenant_id)
-        indexed = 0
+        if not chunks:
+            return 0
+        vectors: list[Any] = []
         for start in range(0, len(chunks), EMBED_BATCH_SIZE):
             batch = chunks[start : start + EMBED_BATCH_SIZE]
-            vectors = self.embedder.embed_passages([embedded_text(chunk) for chunk in batch])
-            indexed += self.vector_store.upsert_chunks(batch, vectors)
-        return indexed
+            vectors.extend(self.embedder.embed_passages([embedded_text(chunk) for chunk in batch]))
+        return self.vector_store.upsert_chunks(chunks, vectors)
 
     def _rollback(self, doc_id: str, tenant_id: str) -> None:
         """Undo every partial artifact of a failed ingest."""
@@ -305,6 +306,11 @@ class IngestionPipeline:
     def load_persisted_knowledge_base(self) -> int:
         """Hydrates the vector store from disk chunk records on startup."""
         all_chunks = self.storage.load_all_chunks()
+        # Idempotent hydration: drop any stale points before re-indexing.
+        try:
+            self.vector_store.clear(tenant_id=None)
+        except Exception:  # noqa: BLE001 - collection may not exist yet
+            logger.debug("Vector store clear skipped during hydration.")
         if all_chunks:
             self._index_chunks(all_chunks)
             total_chunks = len(all_chunks)
@@ -401,13 +407,26 @@ class IngestionPipeline:
             raise IngestionError(f"Failed to delete document {doc_id}: {error}") from error
         return True
 
-    def clear_all(self) -> int:
-        """Removes all documents, chunks, and metadata files from dedicated storage."""
-        count = self.storage.clear_all()
-        self.vector_store.clear(tenant_id=None)
+    def clear_all(self, tenant_id: str | None = None) -> int:
+        """Removes all documents, chunks, and metadata files from dedicated storage.
+
+        When ``tenant_id`` is provided, only that tenant's documents are removed.
+        """
+        docs = self.storage.list_documents(tenant_id=tenant_id)
+        count = 0
+        for doc in list(docs):
+            doc_id = doc.get("id")
+            doc_tenant = doc.get("tenant_id", "default")
+            target_tenant = tenant_id if tenant_id is not None else doc_tenant
+            if doc_id and self._delete_document(doc_id, publish_manifest=False, tenant_id=target_tenant):
+                count += 1
+        try:
+            self.vector_store.clear(tenant_id=tenant_id)
+        except Exception:
+            logger.exception("Vector store clear failed during clear_all")
         if hasattr(self.graph_store, "clear_all_graph"):
-            self.graph_store.clear_all_graph()
-        else:
+            self.graph_store.clear_all_graph(tenant_id=tenant_id)
+        elif tenant_id is None:
             self.graph_store.entities.clear()
             self.graph_store.relationships.clear()
         self._publish_manifest()

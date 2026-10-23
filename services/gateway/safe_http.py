@@ -2,6 +2,7 @@
 
 import ipaddress
 import socket
+import threading
 from urllib.parse import urlsplit
 
 import httpcore
@@ -98,12 +99,16 @@ class PinnedAddressBackend:
     def __init__(self, network_backend):
         self._network_backend = network_backend
         self._addresses: dict[tuple[str, int], tuple[str, ...]] = {}
+        self._lock = threading.Lock()
 
     def pin(self, host: str, port: int, addresses: tuple[str, ...]) -> None:
-        self._addresses[(host.lower(), port)] = addresses
+        with self._lock:
+            self._addresses[(host.lower(), port)] = addresses
 
     async def connect_tcp(self, host: str, port: int, **kwargs):
-        addresses = self._addresses.get((host.lower(), port), ())
+        with self._lock:
+            addresses = self._addresses.get((host.lower(), port), ())
+            addresses = tuple(addresses)
         if not addresses:
             raise OSError("No validated provider address is available.")
         last_error: Exception | None = None

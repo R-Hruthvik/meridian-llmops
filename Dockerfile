@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:b7a9e5f6a93d6d4a31f129bbd4bdee69efccb6ded0fb230d78aafaf37af98377
 
 ENV OMP_THREAD_LIMIT=1
 ENV APP_ENV=production
@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN pip install uv && uv sync --frozen --no-dev
+RUN pip install --no-cache-dir uv==0.11.28 && uv sync --frozen --no-dev
 
 COPY packages/ ./packages/
 COPY services/ ./services/

@@ -73,6 +73,9 @@ export default (defineConfig as (
       globals: true,
       setupFiles: ['./src/setupTests.ts'],
       css: true,
+      isolate: true,
+      pool: 'forks',
+      retry: 2,
       coverage: {
         provider: 'v8',
         reporter: ['text', 'json', 'html'],

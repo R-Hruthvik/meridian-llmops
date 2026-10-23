@@ -395,6 +395,7 @@ _runtime_llm_settings = _RuntimeSettings()
 
 # Session-only cache for tested API keys (not persisted to disk)
 _tested_api_keys: dict[str, str] = {}
+_tested_api_keys_lock = __import__("asyncio").Lock()
 
 _settings_lock = asyncio.Lock()
 
@@ -443,7 +444,6 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
     default_models = {"openai": "gpt-4o-mini", "anthropic": "claude-3-5-sonnet-20241022", "openrouter": "meta-llama/llama-3.3-70b-instruct", "deepseek": "deepseek-chat", "groq": "llama-3.3-70b-versatile", "ollama": "llama3:latest", "custom": ""}
     model = configured_model or provider_models.get(provider) or default_models[provider]
     api_key = getattr(_settings, f"{provider}_api_key") or settings.get(f"{provider}_api_key")
-    api_key = api_key or _tested_api_keys.get(provider)
     base_url = getattr(_settings, f"{provider}_base_url") or settings.get(f"{provider}_base_url") or PROVIDERS[provider]["base_url_default"]
     if provider == "custom":
         base_url = _settings.custom_base_url or settings.get("custom_base_url") or base_url
@@ -458,4 +458,9 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
 
 def get_active_llm_config() -> dict[str, str]:
     """Thin no-secrets reader over the single settings owner."""
-    return {"provider": "openai", "model": _settings.default_llm_model, "base_url": _settings.litellm_base_url}
+    cfg = _resolve_active_llm_config_with_secrets()
+    return {
+        "provider": cfg.get("provider", "openai"),
+        "model": cfg.get("model", ""),
+        "base_url": cfg.get("base_url", ""),
+    }

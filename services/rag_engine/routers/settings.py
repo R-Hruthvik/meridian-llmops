@@ -6,6 +6,7 @@ and helpers are resolved through the aggregation module at call time via
 taking effect.
 """
 
+import asyncio
 import time
 from typing import Any, cast
 
@@ -22,11 +23,6 @@ from services.gateway.safe_http import (
 from services.rag_engine.agent.graph import build_rag_agent_graph
 from services.rag_engine.deps import require_admin
 from services.rag_engine.routers._state import (
-    graph_store_ref,
-    llm_client_ref,
-    retriever_ref,
-    runtime_llm_settings_ref,
-    tracer_ref,
     _active_services,
     _is_masked,
     _merge_preserving_saved,
@@ -35,7 +31,12 @@ from services.rag_engine.routers._state import (
     _save_persisted_settings,
     _settings,
     _settings_lock,
+    graph_store_ref,
+    llm_client_ref,
     masked_llm_view,
+    retriever_ref,
+    runtime_llm_settings_ref,
+    tracer_ref,
 )
 
 router = APIRouter()
@@ -218,7 +219,7 @@ async def update_llm_settings(
                 _runtime_llm_settings["provider_models"] = {}
             _runtime_llm_settings["provider_models"][prov] = model
 
-        _save_persisted_settings(dict(_runtime_llm_settings))
+        await asyncio.to_thread(_save_persisted_settings, dict(_runtime_llm_settings))
 
         new_llm_client = LiteLLMClient(allow_private_provider_urls=_settings.allow_private_provider_urls)
         llm_client = new_llm_client
@@ -238,6 +239,13 @@ async def update_llm_settings(
         if active is not None:
             active["llm_client"] = new_llm_client
             active["agent_graph"] = new_agent_graph
+        # Invalidate cached default services so stale clients are not reused.
+        try:
+            import services.rag_engine.routers.api as _api
+
+            _api._default_service_cache = None
+        except (ImportError, RuntimeError):
+            pass
 
     return masked_llm_view(dict(_runtime_llm_settings))
 
@@ -413,7 +421,7 @@ async def test_and_fetch_models(
                 _runtime_llm_settings[f"{provider}_api_key"] = api_key
             if base_url and provider in ["openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom"] and not _is_masked(base_url):
                 _runtime_llm_settings[f"{provider}_base_url"] = base_url
-            _save_persisted_settings(dict(_runtime_llm_settings))
+            await asyncio.to_thread(_save_persisted_settings, dict(_runtime_llm_settings))
 
     elapsed_ms = (time.time() - start_time) * 1000
 

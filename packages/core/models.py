@@ -95,7 +95,7 @@ class GuardrailResult(BaseModel):
 
 class IngestDocumentRequest(BaseModel):
     """Payload for the /v1/ingest endpoint."""
-    text: str = Field(..., min_length=1, description="Document text content")
+    text: str = Field(..., min_length=1, max_length=1_000_000, description="Document text content")
     title: str | None = Field(None, min_length=1, max_length=500, description="Optional document title")
     source: str | None = Field(None, description="Optional source identifier")
     metadata: dict[str, str] | None = Field(None, description="Optional key-value metadata")
@@ -159,7 +159,7 @@ def _default_max_cycles() -> int:
 
 class QueryRequest(BaseModel):
     """User query payload."""
-    query: str = Field(..., min_length=1, description="User search or prompt query")
+    query: str = Field(..., min_length=1, max_length=10_000, description="User search or prompt query")
     tenant_id: str = Field("default", description="Tenant or client identifier")
     top_k: int = Field(default_factory=_default_retrieval_top_k, ge=1, le=20, description="Number of chunks to retrieve")
     max_cycles: int = Field(default_factory=_default_max_cycles, ge=1, le=4, description="Maximum total retrieval and generation attempts")

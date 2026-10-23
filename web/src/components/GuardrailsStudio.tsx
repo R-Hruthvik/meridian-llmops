@@ -88,7 +88,7 @@ export const GuardrailsStudio: React.FC<GuardrailsStudioProps> = ({ tenantId }) 
 
       <div className="flex flex-wrap gap-1.5">
         {PRESETS.map((p) => (
-          <button
+          <button type="button"
             key={p.name}
             disabled={loading}
             onClick={() => {
@@ -117,7 +117,7 @@ export const GuardrailsStudio: React.FC<GuardrailsStudioProps> = ({ tenantId }) 
       </div>
 
       <div className="flex justify-end">
-        <button
+        <button type="button"
           onClick={() => handleEvaluate()}
           disabled={loading || !inputText.trim()}
           className="flex items-center gap-2 rounded-sm bg-accent px-4 py-2 text-label font-bold text-white transition-colors hover:bg-accent-ink disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"

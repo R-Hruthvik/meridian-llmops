@@ -189,8 +189,8 @@ else
     fi
 
     if [ -z "${API_KEYS:-}" ]; then
-        DEV_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
-        API_KEYS="$(python3 -c 'import json,sys; print(json.dumps({sys.argv[1]: {"tenant":"default","role":"admin"}}, separators=(",",":")))' "$DEV_API_KEY")"
+        DEV_API_KEY="$($PYTHON_CMD -c 'import secrets; print(secrets.token_urlsafe(32))')"
+        API_KEYS="$($PYTHON_CMD -c 'import json,sys; print(json.dumps({sys.argv[1]: {"tenant":"default","role":"admin"}}, separators=(",",":")))' "$DEV_API_KEY")"
         umask 077
         local_env_tmp="$(mktemp "$ROOT_DIR/.env.local.XXXXXX")"
         if [ -f "$ROOT_DIR/.env.local" ]; then
@@ -203,7 +203,7 @@ else
         unset DEV_API_KEY
     fi
     export API_KEYS
-    export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-sk-dev-$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')}"
+    export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-sk-dev-$($PYTHON_CMD -c 'import secrets;print(secrets.token_urlsafe(24))')}"
 fi
 
 print_banner

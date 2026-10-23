@@ -1,4 +1,4 @@
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -109,6 +109,13 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   const [recentDocumentsLoaded, setRecentDocumentsLoaded] = useState(false);
   const [recentDocumentsUnavailable, setRecentDocumentsUnavailable] = useState(false);
   const workbench = useWorkbench();
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   React.useEffect(() => {
     let active = true;
@@ -140,7 +147,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     setOpenChunkId(null);
     try {
       if (retrievalOnly) {
-        const result = await api.retrieve({ query: textToSubmit, top_k: topK }, tenantId);
+        const result = await api.retrieve({ query: textToSubmit, top_k: Math.min(10, Math.max(1, Number.isFinite(topK) ? topK : 1)) }, tenantId);
         setRetrievalResponse(result);
         setResponse(null);
         return;
@@ -149,8 +156,8 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
       const res = await api.query({
         query: textToSubmit,
         tenant_id: tenantId,
-        top_k: topK,
-        max_cycles: maxCycles,
+        top_k: Math.min(10, Math.max(1, Number.isFinite(topK) ? topK : 1)),
+        max_cycles: Math.min(5, Math.max(1, Number.isFinite(maxCycles) ? maxCycles : 1)),
         enforce_guardrails: enforceGuardrails,
       });
       setResponse(res);
@@ -172,7 +179,8 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
       .writeText(response.answer)
       .then(() => {
         setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+        copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
       })
       .catch(() => {
         // Silently catch clipboard failures
@@ -256,15 +264,15 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
               </label>
               <div className="flex items-center gap-2">
                 <label htmlFor="top-k-input" className="text-label text-muted">Sources to retrieve:</label>
-                <input id="top-k-input" type="number" min={1} max={10} value={topK} onChange={(e) => setTopK(Number(e.target.value))} className="num w-14 rounded-sm border border-hairline bg-surface px-2 py-1 text-center text-body font-semibold text-ink outline-none focus:border-hairline-strong focus-visible:ring-2 focus-visible:ring-accent" />
+                <input id="top-k-input" type="number" min={1} max={10} value={topK} onChange={(e) => { const raw = e.target.value; if (raw === '') { setTopK(0); return; } const n = Number(raw); if (Number.isFinite(n)) setTopK(Math.min(10, Math.max(1, Math.trunc(n)))); }} className="num w-14 rounded-sm border border-hairline bg-surface px-2 py-1 text-center text-body font-semibold text-ink outline-none focus:border-hairline-strong focus-visible:ring-2 focus-visible:ring-accent" />
               </div>
               <div className="flex items-center gap-2">
                 <label htmlFor="max-cycles-input" className="text-label text-muted">Maximum answer cycles:</label>
-                <input id="max-cycles-input" type="number" min={1} max={5} value={maxCycles} onChange={(e) => setMaxCycles(Number(e.target.value))} className="num w-14 rounded-sm border border-hairline bg-surface px-2 py-1 text-center text-body font-semibold text-ink outline-none focus:border-hairline-strong focus-visible:ring-2 focus-visible:ring-accent" />
+                <input id="max-cycles-input" type="number" min={1} max={5} value={maxCycles} onChange={(e) => { const raw = e.target.value; if (raw === '') { setMaxCycles(0); return; } const n = Number(raw); if (Number.isFinite(n)) setMaxCycles(Math.min(5, Math.max(1, Math.trunc(n)))); }} className="num w-14 rounded-sm border border-hairline bg-surface px-2 py-1 text-center text-body font-semibold text-ink outline-none focus:border-hairline-strong focus-visible:ring-2 focus-visible:ring-accent" />
               </div>
             </div>
           </details>
-          <button onClick={() => handleQuery()} disabled={loading || !query.trim()} className="flex min-h-11 items-center gap-2 rounded-md bg-accent px-5 py-2 text-label font-semibold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={() => handleQuery()} disabled={loading || !query.trim()} className="flex min-h-11 items-center gap-2 rounded-md bg-accent px-5 py-2 text-label font-semibold text-white transition-colors hover:bg-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
             {loading ? <><RefreshCw className="size-4 animate-spin"/><span>Working…</span></> : <><span>{retrievalOnly ? 'Find sources' : 'Ask question'}</span><Send className="size-3.5"/></>}
           </button>
         </div>
@@ -296,7 +304,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
       {error && (
         <div
           role="alert"
-          aria-live="polite"
+          aria-live="assertive"
           className={`flex items-start gap-2.5 rounded border p-3 ${
             error.status === 429
               ? 'border-hairline bg-warn-wash text-warn'
@@ -391,7 +399,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
               <Readout value={latency.value} unit={latency.unit} />
               <Readout value={String(chunks.length)} unit="chunks" />
               <Readout value={String(response.entities.length)} unit="entities" />
-              <button
+              <button type="button"
                 onClick={handleCopy}
                 title="Copy Answer to Clipboard"
                 aria-label="Copy answer text"

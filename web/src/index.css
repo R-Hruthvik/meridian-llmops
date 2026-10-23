@@ -78,7 +78,7 @@
   --border-strong: 193 188 176;
   --text: 37 45 40;               /* #252D28 — ink */
   --text-muted: 98 108 101;       /* #626C65 — quiet ink */
-  --text-faint: 126 130 120;
+  --text-faint: 95 99 90;       /* #5F635A — faint ink, AA on paper */
 
   /* Pine is the primary action and navigation color. */
   --accent: 40 92 74;             /* #285C4A */
@@ -88,7 +88,7 @@
 
   /* Status — real state only, never decorative */
   --ok: 31 122 77;                /* #1F7A4D */
-  --warn: 178 107 0;              /* #B26B00 */
+  --warn: 150 90 0;               /* #965A00 — warn, AA on paper */
   --fail: 179 38 30;              /* #B3261E */
   --ok-wash: 234 244 238;         /* #EAF4EE */
   --warn-wash: 251 242 226;       /* #FBF2E2 */
@@ -199,4 +199,21 @@ body {
   to {
     opacity: 1;
   }
+}
+
+/* Skip link */
+.skip-to-main {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 10000;
+  padding: 0.5rem 0.75rem;
+  background: rgb(var(--surface-raised));
+  color: rgb(var(--text));
+  border: 1px solid rgb(var(--border));
+  border-radius: 4px;
+}
+.skip-to-main:focus {
+  left: 0.5rem;
+  top: 0.5rem;
 }

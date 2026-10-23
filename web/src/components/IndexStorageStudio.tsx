@@ -74,7 +74,7 @@ export const IndexStorageStudio: React.FC<IndexStorageStudioProps> = ({ tenantId
           <span className="id-mono text-ink">{tenantId}</span>
         </p>
 
-        <button
+        <button type="button"
           onClick={fetchStatus}
           disabled={loading}
           aria-label="Refresh index and storage status"

@@ -213,7 +213,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ tenantId }) 
           </p>
         </div>
 
-        <button
+        <button type="button"
           onClick={() => fetchMetrics()}
           disabled={loading}
           aria-label="Refresh telemetry metrics"

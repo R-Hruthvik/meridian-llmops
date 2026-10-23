@@ -23,6 +23,7 @@ from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
@@ -48,18 +49,15 @@ from services.rag_engine.observability.langfuse_client import LangfuseTracer
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 from services.rag_engine.retrieval.reranker import CrossEncoderReranker, LexicalReranker
 from services.rag_engine.routers._state import (  # noqa: F401 - shared state re-exported for import/monkeypatch compatibility
-    bind_api_module,
     SECRET_SUFFIX,
     SETTINGS_FILE,
     ProviderURLNotAllowed,
-    _RuntimeSettings,
-    _ServiceProxy,
-    _default_runtime_settings,
-    _default_service_cache,
-    _default_settings,
     _active_services,
     _default_llm_settings,
+    _default_runtime_settings,
+    _default_service_cache,
     _default_services,
+    _default_settings,
     _get_secrets_file,
     _get_settings_file,
     _index_gate,
@@ -69,29 +67,31 @@ from services.rag_engine.routers._state import (  # noqa: F401 - shared state re
     _model_fetch_get,
     _resolve_active_llm_config_with_secrets,
     _runtime_llm_settings,
+    _RuntimeSettings,
     _save_persisted_settings,
+    _ServiceProxy,
     _settings,
     _settings_lock,
     _tested_api_keys,
     _validate_model_fetch_url,
     agent_graph,
+    bind_api_module,
     get_active_llm_config,
     graph_store,
     ingestion_pipeline,
     init_db,
     input_guardrails,
     llm_client,
+    load_secrets,
     logger,
     masked_llm_view,
     output_guardrails,
     retriever,
-    tracer,
-    vector_store,
-    load_secrets,
     save_secrets,
+    tracer,
     validate_provider_url,
+    vector_store,
 )
-from services.rag_engine.routers.documents import router as documents_router
 from services.rag_engine.routers.documents import (
     _get_document_list_response,  # noqa: F401 - re-exported for import compatibility
     catalog_alias_endpoint,  # noqa: F401 - re-exported for import compatibility
@@ -104,7 +104,7 @@ from services.rag_engine.routers.documents import (
     seed_sample_documents_endpoint,  # noqa: F401 - re-exported for import compatibility
     upload_documents_endpoint,  # noqa: F401 - re-exported for test/import compatibility
 )
-from services.rag_engine.routers.ops import router as ops_router
+from services.rag_engine.routers.documents import router as documents_router
 from services.rag_engine.routers.ops import (
     get_index_status,  # noqa: F401 - re-exported for import compatibility
     get_metrics,  # noqa: F401 - re-exported for import compatibility
@@ -113,12 +113,13 @@ from services.rag_engine.routers.ops import (
     health_ready,  # noqa: F401 - re-exported for import compatibility
     reindex_endpoint,  # noqa: F401 - re-exported for import compatibility
 )
+from services.rag_engine.routers.ops import router as ops_router
 from services.rag_engine.routers.query import (
     GuardrailCheckRequest,  # noqa: F401 - re-exported for import compatibility
     RetrieveRequest,  # noqa: F401 - re-exported for import compatibility
+    _review_flags,  # noqa: F401 - re-exported for import compatibility
     _sse_event,  # noqa: F401 - re-exported for test/import compatibility
     _stream_query_response,  # noqa: F401 - re-exported for test/import compatibility
-    _review_flags,  # noqa: F401 - re-exported for import compatibility
     check_guardrails_get,  # noqa: F401 - re-exported for import compatibility
     check_guardrails_post,  # noqa: F401 - re-exported for import compatibility
     query_endpoint,  # noqa: F401 - re-exported for import compatibility
@@ -172,7 +173,7 @@ async def lifespan(app: FastAPI):
         check_consistency, settings, qdrant_points, disk_chunks
     )
     app.state.index_consistency = _index_consistency
-    app.state.service_status = _check_docker_services(settings)
+    app.state.service_status = await asyncio.to_thread(_check_docker_services, settings)
     _service_status = app.state.service_status
     if _index_consistency.ok:
         logger.info("Index consistent: %d chunks across disk and Qdrant.", disk_chunks)
@@ -315,6 +316,13 @@ def create_app(settings=None, overrides=None) -> FastAPI:
             await _startup(application, runtime_settings)
             yield
         finally:
+            try:
+                llm = getattr(application.state, "llm_client", None)
+                closer = getattr(llm, "close", None)
+                if callable(closer):
+                    await closer()
+            except Exception:  # noqa: BLE001
+                logger.debug("LLM client close failed", exc_info=True)
             _active_services.reset(token)
 
     application = FastAPI(
@@ -326,6 +334,23 @@ def create_app(settings=None, overrides=None) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+    @application.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        response.headers.setdefault("Content-Security-Policy", "default-src 'self'")
+        return response
+
     application.include_router(router)
     application.add_exception_handler(IndexWriteError, cast(Any, handle_index_error))
     application.add_exception_handler(IndexReadError, cast(Any, handle_index_error))
@@ -423,7 +448,7 @@ async def _startup(application: FastAPI, settings) -> None:
             check_consistency, settings, qdrant_points, disk_chunks
         )
     if "service_status" not in service_overrides:
-        application.state.service_status = _check_docker_services(settings)
+        application.state.service_status = await asyncio.to_thread(_check_docker_services, settings)
     if getattr(application.state, "use_legacy_services", False):
         global _index_consistency, _service_status
         _index_consistency = application.state.index_consistency

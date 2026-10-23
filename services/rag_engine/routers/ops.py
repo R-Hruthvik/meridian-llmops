@@ -41,7 +41,7 @@ async def health_live():
 @router.get("/health/ready")
 async def health_ready(request: Request):
     """Return only the serving-readiness bit needed by external probes."""
-    qdrant_health = vector_store.health()
+    qdrant_health = await asyncio.to_thread(vector_store.health)
     consistency = getattr(request.app.state, "index_consistency", None)
     index_ok = consistency.ok if consistency is not None else False
     embedder = ingestion_pipeline.embedder
@@ -63,8 +63,8 @@ async def health_check(
     return {
         **response,
         # Live count, same source as /v1/documents - a boot-time snapshot went stale on ingest.
-        "storage_documents": len(ingestion_pipeline.get_documents(tenant_id=tenant_id)),
-        "vector_chunks": vector_store.count(tenant_id=tenant_id),
+        "storage_documents": len(await asyncio.to_thread(ingestion_pipeline.get_documents, tenant_id=tenant_id)),
+        "vector_chunks": await asyncio.to_thread(vector_store.count, tenant_id=tenant_id),
         "services": request.app.state.service_status,
     }
 

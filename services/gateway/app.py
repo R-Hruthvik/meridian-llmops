@@ -1,7 +1,10 @@
 """FastAPI Gateway Application."""
 
+from contextlib import asynccontextmanager
+
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from packages.core.config import get_settings, validate_production
@@ -11,6 +14,18 @@ from services.gateway.auth import validate_auth_configuration, verify_api_key
 from services.gateway.client import LiteLLMClient
 from services.gateway.guardrails.input_rails import InputGuardrails
 
+guardrails = InputGuardrails()
+litellm_client = LiteLLMClient()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    validate_auth_configuration()
+    validate_production(get_settings())
+    yield
+    await litellm_client.close()
+
+
 app = FastAPI(
     title="Meridian AI Gateway",
     version="0.1.0",
@@ -18,17 +33,8 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
+    lifespan=lifespan,
 )
-
-guardrails = InputGuardrails()
-litellm_client = LiteLLMClient()
-
-
-@app.on_event("startup")
-async def on_startup():
-    """Fail-fast: refuse to boot in production with empty/test-default secrets."""
-    validate_auth_configuration()
-    validate_production(get_settings())
 
 
 class ChatCompletionRequest(BaseModel):
@@ -39,8 +45,25 @@ class ChatCompletionRequest(BaseModel):
 
 
 class GuardrailCheckRequest(BaseModel):
-    text: str = Field(..., min_length=1)
+    text: str = Field(..., min_length=1, max_length=100000)
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    response.headers.setdefault("Content-Security-Policy", "default-src 'self'")
+    return response
 
 @app.get("/health")
 async def health_check():

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { marked } from 'marked';
 
 interface MarkdownRendererProps {
@@ -44,11 +44,14 @@ const sanitizeHtml = (html: string): string => {
 };
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
-  if (!content) return null;
-
   // Parse markdown into HTML string with GFM enabled and sanitize HTML
-  const rawHtml = marked.parse(content, { breaks: true, gfm: true }) as string;
-  const cleanHtml = sanitizeHtml(rawHtml);
+  const cleanHtml = useMemo(() => {
+    if (!content) return '';
+    const rawHtml = marked.parse(content, { breaks: true, gfm: true }) as string;
+    return sanitizeHtml(rawHtml);
+  }, [content]);
+
+  if (!content) return null;
 
   return (
     <div

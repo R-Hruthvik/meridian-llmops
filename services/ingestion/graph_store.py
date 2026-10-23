@@ -401,21 +401,54 @@ class KnowledgeGraphStore:
                 logger.warning("Neo4j delete_by_document failed for %s: %s", doc_id, e)
         return removed
 
-    def clear_all_graph(self) -> None:
-        """Clears all in-memory graph state and Neo4j if configured."""
-        self.entities.clear()
-        self.relationships.clear()
-        self._doc_entities.clear()
-        self._doc_relationships.clear()
-        self._tenant_entities.clear()
-        self._tenant_relationships.clear()
-        self._tenant_doc_entities.clear()
-        self._tenant_doc_relationships.clear()
-        self._tenant_doc_chunks.clear()
+    def clear_all_graph(self, tenant_id: str | None = None) -> None:
+        """Clears in-memory graph state and Neo4j if configured.
+
+        When ``tenant_id`` is provided, only that tenant's graph data is removed.
+        """
+        if tenant_id is None:
+            self.entities.clear()
+            self.relationships.clear()
+            self._doc_entities.clear()
+            self._doc_relationships.clear()
+            self._tenant_entities.clear()
+            self._tenant_relationships.clear()
+            self._tenant_doc_entities.clear()
+            self._tenant_doc_relationships.clear()
+            self._tenant_doc_chunks.clear()
+            if self._neo4j_available and self.driver is not None:
+                try:
+                    with self.driver.session() as session:  # type: ignore[attr-defined]
+                        session.run("MATCH (n) DETACH DELETE n")  # type: ignore[attr-defined]
+                except Exception as e:  # noqa: BLE001 - Neo4j driver may raise varied exceptions
+                    logger.warning("Neo4j clear_all failed: %s", e)
+            self._build_entity_index()
+            return
+
+        self._tenant_entities.pop(tenant_id, None)
+        self._tenant_relationships.pop(tenant_id, None)
+        for key in [key for key in list(self._tenant_doc_entities) if key[0] == tenant_id]:
+            self._tenant_doc_entities.pop(key, None)
+        for key in [key for key in list(self._tenant_doc_relationships) if key[0] == tenant_id]:
+            self._tenant_doc_relationships.pop(key, None)
+        for key in [key for key in list(self._tenant_doc_chunks) if key[0] == tenant_id]:
+            self._tenant_doc_chunks.pop(key, None)
+        # Drop global doc entries whose tenant matches is not tracked; keep others.
+        self.entities = {
+            name: entity
+            for tenant_entities in self._tenant_entities.values()
+            for name, entity in tenant_entities.items()
+        }
+        self.relationships = [
+            relation
+            for tenant_relations in self._tenant_relationships.values()
+            for relation in tenant_relations
+        ]
+        self._build_entity_index()
         if self._neo4j_available and self.driver is not None:
             try:
                 with self.driver.session() as session:  # type: ignore[attr-defined]
-                    session.run("MATCH (n) DETACH DELETE n")  # type: ignore[attr-defined]
+                    session.run("MATCH (n {tenant_id: $tenant_id}) DETACH DELETE n", tenant_id=tenant_id)  # type: ignore[attr-defined]
             except Exception as e:  # noqa: BLE001 - Neo4j driver may raise varied exceptions
                 logger.warning("Neo4j clear_all failed: %s", e)
 

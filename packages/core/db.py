@@ -18,7 +18,7 @@ def create_engine_for(url: str):
         return create_async_engine(
             url,
             poolclass=NullPool,
-            connect_args={"timeout": 30, "check_same_thread": False},
+            connect_args={"timeout": 60, "check_same_thread": False},
         )
     return create_async_engine(url, pool_size=10, max_overflow=20, pool_pre_ping=True)
 

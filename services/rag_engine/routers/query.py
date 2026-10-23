@@ -29,9 +29,9 @@ from packages.core.models import (
 )
 from services.rag_engine.deps import get_db, require_user
 from services.rag_engine.routers._state import (
+    _settings,
     agent_graph_ref,
     index_gate_ref,
-    _settings,
     input_guardrails,
     logger,
     output_guardrails,
@@ -51,7 +51,7 @@ agent_graph = agent_graph_ref
 
 
 class GuardrailCheckRequest(BaseModel):
-    text: str = Field(..., min_length=1)
+    text: str = Field(..., min_length=1, max_length=100000)
 
 
 @router.get("/v1/guardrails/check", response_model=GuardrailResult, deprecated=True)
@@ -269,6 +269,7 @@ async def _stream_query_response(
     request_id: str,
     output_guardrails_enabled: bool,
     flagged_chunk_ids: set[str] | None = None,
+    request: Request | None = None,
 ) -> AsyncIterator[str]:
     """Yield SSE frames for one agentic RAG pipeline run.
 
@@ -299,8 +300,8 @@ async def _stream_query_response(
         "debug": {},
     }
 
-    events: asyncio.Queue[Any] = asyncio.Queue()
-    token_sink: asyncio.Queue[Any] = asyncio.Queue()
+    events: asyncio.Queue[Any] = asyncio.Queue(maxsize=256)
+    token_sink: asyncio.Queue[Any] = asyncio.Queue(maxsize=256)
     retrieval_ready = asyncio.Event()
     outcome: dict[str, Any] = {"final_state": {}, "error": None}
 
@@ -349,6 +350,8 @@ async def _stream_query_response(
     graph_task = asyncio.create_task(run_graph())
     try:
         while True:
+            if request is not None and await request.is_disconnected():
+                break
             item = await events.get()
             if item is None:
                 break
@@ -437,6 +440,7 @@ async def query_stream_endpoint(
             request_id=request_id,
             output_guardrails_enabled=output_guardrails_enabled,
             flagged_chunk_ids=await _review_flags(db, tenant_id),
+            request=request,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

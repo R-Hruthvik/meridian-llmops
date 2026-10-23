@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +38,8 @@ def build_golden_case(item: ReviewItem, field: ExtractedField, document: ORMDocu
 
 @router.get("/items", response_model=list[ReviewItemResponse])
 async def list_pending_review_items(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     tenant_id: str = Depends(require_admin),
 ):
@@ -47,6 +49,8 @@ async def list_pending_review_items(
         .join(ExtractedField, ReviewItem.extracted_field_id == ExtractedField.id)
         .join(ORMDocument, ExtractedField.document_id == ORMDocument.id)
         .where(ReviewItem.status == "pending", ORMDocument.tenant_id == tenant_id)
+        .offset(offset)
+        .limit(limit)
     )
     result = await db.execute(stmt)
     rows = result.all()
@@ -146,13 +150,19 @@ async def export_golden_cases(
         )
     )
     result = await db.execute(stmt)
-    cases = []
-    for item, field, document in result.all():
-        case = build_golden_case(item, field, document)
+    rows = result.all()
+    document_ids = {document.id for _, _, document in rows}
+    chunks_by_doc: dict[str, list[str]] = {doc_id: [] for doc_id in document_ids}
+    if document_ids:
         chunk_result = await db.execute(
-            select(ORMChunk.content).where(ORMChunk.document_id == document.id)
+            select(ORMChunk.document_id, ORMChunk.content).where(ORMChunk.document_id.in_(document_ids))
         )
-        source_chunks = chunk_result.scalars().all()
+        for doc_id, content in chunk_result.all():
+            chunks_by_doc.setdefault(doc_id, []).append(content)
+    cases = []
+    for item, field, document in rows:
+        case = build_golden_case(item, field, document)
+        source_chunks = chunks_by_doc.get(document.id, [])
         phrase = " ".join(case.expected_phrases[0].casefold().split())
         if phrase and any(phrase in " ".join(chunk.casefold().split()) for chunk in source_chunks):
             cases.append(case)

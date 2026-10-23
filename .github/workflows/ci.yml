@@ -82,7 +82,7 @@ jobs:
         run: uv sync --frozen --extra dev
 
       - name: Run unit, integration, and offline generation tests
-        run: uv run --frozen pytest tests/ evals/ -v
+        run: uv run --frozen pytest tests/ evals/ -v --cov=services --cov=packages --cov-report=term-missing --cov-fail-under=80
 
       - name: Run route-auth enumeration regression
         run: >-
@@ -163,11 +163,27 @@ jobs:
 
       - name: Run pip-audit (informational)
         continue-on-error: true
-        run: uv run --frozen --with pip-audit pip-audit
+        run: uv run --frozen --with pip-audit pip-audit --format json --output pip-audit-report.json || true
+
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: pip-audit-report.json
+          if-no-files-found: ignore
 
       - name: Run npm audit (informational)
         continue-on-error: true
-        run: npm audit --prefix web --audit-level=moderate
+        run: npm audit --prefix web --audit-level=moderate --json > npm-audit-report.json || true
+
+      - name: Upload npm audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: npm-audit-report.json
+          if-no-files-found: ignore
 
   real-llm-eval:
     name: Scheduled or Manual Real LLM Quality Evaluation

@@ -21,14 +21,29 @@ def _safe_filename(name: str) -> str:
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
     """Write via temp file + os.replace so a crash never leaves a half file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        path.parent.chmod(0o700)
+    except OSError:
+        pass
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(data)
+    try:
+        os.chmod(temporary, 0o600)
+    except OSError:
+        pass
     os.replace(temporary, path)
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
 
 
 def get_default_storage_root() -> Path:
     """Returns test storage directory during pytest runs or production storage path."""
+    override = os.environ.get("MERIDIAN_STORAGE_ROOT")
+    if override:
+        return Path(override)
     if os.environ.get("APP_ENV") == "testing":
         return Path("/tmp/meridian_test_storage")
     return Path(__file__).parents[2] / "storage"
@@ -45,10 +60,13 @@ class DocumentStorageManager:
         self.originals_dir = self.root_dir / "originals"
 
         # Ensure all dedicated storage directories exist
-        self.docs_dir.mkdir(parents=True, exist_ok=True)
-        self.meta_dir.mkdir(parents=True, exist_ok=True)
-        self.chunks_dir.mkdir(parents=True, exist_ok=True)
-        self.originals_dir.mkdir(parents=True, exist_ok=True)
+        self.root_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        for d in (self.docs_dir, self.meta_dir, self.chunks_dir, self.originals_dir):
+            d.mkdir(parents=True, exist_ok=True, mode=0o700)
+            try:
+                d.chmod(0o700)
+            except OSError:
+                pass
 
     def save_document(
         self,
@@ -294,11 +312,20 @@ class DocumentStorageManager:
         self.remove_document_files(doc_id)
         return True
 
-    def clear_all(self) -> int:
-        """Removes all documents, chunks, and metadata files from dedicated storage."""
+    def clear_all(self, tenant_id: str | None = None) -> int:
+        """Removes all documents, chunks, and metadata files from dedicated storage.
+
+        When ``tenant_id`` is provided, only that tenant's documents are removed.
+        """
         count = 0
-        for meta_file in self.meta_dir.glob("*.json"):
+        for meta_file in list(self.meta_dir.glob("*.json")):
+            try:
+                data = json.loads(meta_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = {}
+            if tenant_id is not None and data.get("tenant_id", "default") != tenant_id:
+                continue
             doc_id = meta_file.stem
-            self.delete_document(doc_id)
-            count += 1
+            if self.delete_document(doc_id, tenant_id=tenant_id):
+                count += 1
         return count
