@@ -209,7 +209,14 @@ async def update_llm_settings(
             updates[f"{selected_provider}_api_key"] = updates["api_key"]
         if updates.get("base_url") is not None:
             updates[f"{selected_provider}_base_url"] = updates["base_url"]
-        _runtime_llm_settings.update(_merge_preserving_saved(dict(_runtime_llm_settings), updates))
+        # Never persist or return the submitted key under the generic ``api_key`` key.
+        updates.pop("api_key", None)
+        updates.pop("base_url", None)
+        merged = _merge_preserving_saved(dict(_runtime_llm_settings), updates)
+        # Drop any legacy generic key that may have leaked into runtime settings.
+        merged.pop("api_key", None)
+        _runtime_llm_settings.clear()
+        _runtime_llm_settings.update(merged)
 
         # Also update provider_models map if default_model and active_provider were supplied
         prov = _runtime_llm_settings.get("active_provider", "openai")
@@ -448,7 +455,7 @@ async def test_llm_connection(tenant_id: str = Depends(require_admin)):
         await llm_client.chat_completion(
             messages=[{"role": "user", "content": "Reply with OK."}],
             model=model,
-            max_tokens=1,
+            max_tokens=64,
             temperature=0,
             provider=provider,
             api_key=config["api_key"],

@@ -127,6 +127,12 @@ class LiteLLMClient:
                     content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
                 if not isinstance(content, str):
                     raise TypeError("invalid completion content")
+                if not content.strip():
+                    for key in ("reasoning", "reasoning_content"):
+                        candidate = message.get(key)
+                        if isinstance(candidate, str) and candidate.strip():
+                            content = candidate
+                            break
                 return content, model, usage
             text = choice.get("text", "")
             if isinstance(text, str):

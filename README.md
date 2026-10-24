@@ -115,3 +115,22 @@ curl -sS http://localhost:8000/v1/retrieve \
 ```
 
 `GET /health/live` is the process liveness endpoint. `GET /health/ready` reports basic service readiness; authenticated index details are available from the index-status endpoint. `GET /health` returns a minimal public service response.
+
+## CLI (Meridian)
+
+Install via `uv sync`, then:
+
+```bash
+meridian health
+meridian --json retrieve "query" --top-k 5
+meridian query "question" --top-k 5 --stream
+meridian ingest ./sample_docs --recursive
+meridian reindex
+meridian settings show
+meridian settings test
+meridian settings set-provider --provider custom --model m --base-url http://localhost:3010/v1 --api-key KEY
+meridian models list --provider openai
+meridian smoke
+```
+
+Global options: `--base-url`, `--api-key`, `--admin-key`, `--json`, `--quiet`, `--timeout`. Environment: `MERIDIAN_BASE_URL`, `MERIDIAN_API_KEY`, `MERIDIAN_ADMIN_API_KEY`.

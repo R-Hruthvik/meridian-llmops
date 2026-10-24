@@ -1848,8 +1848,10 @@ dependencies = [
     { name = "pyyaml" },
     { name = "qdrant-client" },
     { name = "rank-bm25" },
+    { name = "rich" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "tenacity" },
+    { name = "typer" },
     { name = "uvicorn" },
 ]
 
@@ -1898,9 +1900,11 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "qdrant-client", specifier = "==1.11.3" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
+    { name = "rich", specifier = ">=13.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.28" },
     { name = "tenacity", specifier = ">=8.2.0" },
+    { name = "typer", specifier = ">=0.12.0" },
     { name = "uvicorn", specifier = ">=0.28.0" },
 ]
 provides-extras = ["postgres", "dev"]

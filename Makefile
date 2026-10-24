@@ -1,4 +1,4 @@
-.PHONY: help setup up ingest retrieval-check test eval reindex
+.PHONY: help setup up ingest retrieval-check test eval reindex cli-test
 
 DIR ?= sample_docs
 PYTHON ?= uv run python
@@ -34,3 +34,6 @@ eval:
 
 reindex:
 	$(PYTHON) scripts/reindex.py
+
+cli-test:
+	$(PYTHON) -m pytest tests/test_cli_client.py tests/test_cli_commands.py -v

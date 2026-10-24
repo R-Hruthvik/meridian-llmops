@@ -11,21 +11,23 @@ interface VitestConfigExport extends UserConfig {
 const projectRoot = fileURLToPath(new URL('..', import.meta.url))
 
 function readLocalProxyEnv(): Record<string, string> {
-  try {
-    const sharedEnvPath = fileURLToPath(new URL('../../llm/.env', import.meta.url))
-    const contents = readFileSync(sharedEnvPath, 'utf8')
-    const values: Record<string, string> = {}
-    for (const line of contents.split(/\r?\n/)) {
-      const match = line.match(/^(API_KEYS|ADMIN_API_KEY)=(.*)$/)
-      if (!match) continue
-      let value = match[2]
-      if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1)
-      values[match[1]] = value
+  const values: Record<string, string> = {}
+  const paths = ['../../llm/.env', '../../llm/.env.local']
+  for (const rel of paths) {
+    try {
+      const contents = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
+      for (const line of contents.split(/\r?\n/)) {
+        const match = line.match(/^(API_KEYS|ADMIN_API_KEY)=(.*)$/)
+        if (!match) continue
+        let value = match[2]
+        if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1)
+        if (value && !values[match[1]]) values[match[1]] = value
+      }
+    } catch {
+      // ignore missing env files
     }
-    return values
-  } catch {
-    return {}
   }
+  return values
 }
 
 // https://vitejs.dev/config/

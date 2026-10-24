@@ -109,7 +109,7 @@ async def clear_all_documents_endpoint(tenant_id: str = Depends(require_admin)):
 @router.post("/v1/documents/seed-samples")
 async def seed_sample_documents_endpoint(tenant_id: str = Depends(require_admin)):
     """Seeds or resets the default sample documentation into the knowledge base."""
-    sample_docs_dir = Path(__file__).parents[2] / "sample_docs"
+    sample_docs_dir = Path(__file__).parents[3] / "sample_docs"
     count = 0
     if sample_docs_dir.exists():
         for doc_file in sample_docs_dir.glob("*.md"):

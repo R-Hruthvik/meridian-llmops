@@ -42,7 +42,13 @@ def validate_provider_url(
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         if parsed.scheme == "http":
             is_loopback_host = hostname in {"localhost", "127.0.0.1", "::1"}
-            if not allow_private or (provider != "litellm" and not is_loopback_host):
+            local_http_providers = {"litellm", "ollama", "custom", "openai_compatible"}
+            if provider not in local_http_providers:
+                raise ValueError
+            if provider == "litellm":
+                if not allow_private:
+                    raise ValueError
+            elif not allow_private or not is_loopback_host:
                 raise ValueError
         if not resolve:
             return url, hostname, port, ()

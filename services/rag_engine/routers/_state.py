@@ -249,7 +249,7 @@ def _load_persisted_settings() -> dict[str, Any]:
         except (OSError, ValueError, TypeError):
             logger.warning("Could not load settings file.")
     legacy_secrets = {k: v for k, v in saved.items() if k.endswith(SECRET_SUFFIX)}
-    settings.update({k: v for k, v in saved.items() if not k.endswith(SECRET_SUFFIX)})
+    settings.update({k: v for k, v in saved.items() if not k.endswith(SECRET_SUFFIX) and k != "api_key"})
     secrets_file = _get_secrets_file()
     secrets = load_secrets(secrets_file)
     if legacy_secrets:
@@ -308,9 +308,14 @@ async def _model_fetch_get(
             if len(body) + len(chunk) > 1024 * 1024:
                 raise ValueError("Provider response exceeds 1 MiB limit.")
             body.extend(chunk)
+        response_headers = {
+            key: value
+            for key, value in response.headers.items()
+            if key.lower() not in {"content-encoding", "content-length", "transfer-encoding"}
+        }
         return httpx.Response(
             status_code=response.status_code,
-            headers=response.headers,
+            headers=response_headers,
             content=bytes(body),
             request=httpx.Request("GET", safe_url),
         )
@@ -349,8 +354,8 @@ def _save_persisted_settings(settings: dict[str, Any]) -> None:
     incoming_secrets = {k: v for k, v in settings.items() if k.endswith(SECRET_SUFFIX)}
     secrets = _merge_preserving_saved(secrets, incoming_secrets)
     merged = _merge_preserving_saved(
-        {k: v for k, v in existing.items() if not k.endswith(SECRET_SUFFIX)},
-        {k: v for k, v in settings.items() if not k.endswith(SECRET_SUFFIX)},
+        {k: v for k, v in existing.items() if not k.endswith(SECRET_SUFFIX) and k != "api_key"},
+        {k: v for k, v in settings.items() if not k.endswith(SECRET_SUFFIX) and k != "api_key"},
     )
     try:
         if secrets:

@@ -213,18 +213,9 @@ async def handle_provider_error(request: Request, error: ProviderError) -> JSONR
 
 async def limit_model_fetch_json_body(request: Request, call_next):
     if request.url.path == "/v1/settings/llm/test-and-fetch-models" and request.method == "POST":
-        body = bytearray()
-        async for chunk in request.stream():
-            if len(body) + len(chunk) > 1024 * 1024:
-                return JSONResponse(status_code=413, content={"detail": "Request body too large."})
-            body.extend(chunk)
-
-        payload = bytes(body)
-
-        async def receive():
-            return {"type": "http.request", "body": payload, "more_body": False}
-
-        request = Request(request.scope, receive)
+        body = await request.body()
+        if len(body) > 1024 * 1024:
+            return JSONResponse(status_code=413, content={"detail": "Request body too large."})
     return await call_next(request)
 
 

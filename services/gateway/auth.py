@@ -54,7 +54,9 @@ def _configured_keys() -> dict[str, AuthIdentity]:
             configured[api_key] = AuthIdentity(tenant_id, role, hashlib.sha256(api_key.encode()).hexdigest())
 
     # Compatibility for existing local launch and test environments. Production uses API_KEYS.
-    if not configured and settings.app_env in {"development", "testing"}:
+    # Keep the legacy user key available even when only an admin key is configured.
+    has_user_key = any(identity.role == "user" for identity in configured.values())
+    if not has_user_key and settings.app_env in {"development", "testing"}:
         legacy_key = os.environ.get("API_KEY_SECRET", "")
         if not legacy_key:
             legacy_key = get_settings().api_key_secret
