@@ -97,11 +97,19 @@ class IngestionPipeline:
             raise IngestionError(
                 f"{filename} exceeds the {self.max_upload_bytes // (1024 * 1024)} MB upload limit"
             )
+
+        try:
+            parsed = parse_file(filename, data, title=title)
+        except Exception as error:
+            raise IngestionError(f"Could not parse {filename}: {error}") from error
+        if not parsed.text.strip() and not parsed.warnings:
+            raise IngestionError(f"{filename} contains no extractable text")
+
         digest = hashlib.sha256(data).hexdigest()
         existing = self.storage.find_duplicate(digest, tenant_id)
         if existing is not None:
             warnings = []
-            if not data:
+            if not data.strip():
                 warnings.append("Document contains no extractable text.")
             return IngestResult(
                 filename=filename,
@@ -110,13 +118,6 @@ class IngestionPipeline:
                 duplicate_of=existing,
                 warnings=warnings,
             )
-
-        try:
-            parsed = parse_file(filename, data, title=title)
-        except Exception as error:
-            raise IngestionError(f"Could not parse {filename}: {error}") from error
-        if not parsed.text.strip() and not parsed.warnings:
-            raise IngestionError(f"{filename} contains no extractable text")
         doc_id = f"doc-{uuid.uuid4().hex[:12]}"
         source_format = str(parsed.format.value if hasattr(parsed.format, "value") else parsed.format)
         # Captured before persisting so the new document cannot shadow it.

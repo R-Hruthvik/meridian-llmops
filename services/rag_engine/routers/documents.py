@@ -6,6 +6,7 @@ so the test suite's monkeypatches on ``routers.api`` keep taking effect.
 """
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -20,6 +21,8 @@ from services.rag_engine.routers._state import (
     retriever_ref,
     vector_store_ref,
 )
+
+logger = logging.getLogger("meridian.rag_engine.documents")
 
 router = APIRouter()
 
@@ -100,8 +103,8 @@ async def ingest_document_endpoint(
         request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
         import services.rag_engine.routers.api as _api
         _api._index_consistency = request.app.state.index_consistency
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Index consistency refresh failed: %s", error)
     return {
         **result.to_dict(),
         "title": payload.title or "Uploaded Document",
@@ -220,6 +223,6 @@ async def delete_document_endpoint(doc_id: str, request: Request, tenant_id: str
         request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
         import services.rag_engine.routers.api as _api
         _api._index_consistency = request.app.state.index_consistency
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Index consistency refresh failed: %s", error)
     return {"status": "deleted", "document_id": doc_id, "message": "Document successfully deleted"}

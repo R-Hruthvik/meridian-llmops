@@ -45,10 +45,7 @@ def validate_provider_url(
             local_http_providers = {"litellm", "ollama", "custom", "openai_compatible"}
             if provider not in local_http_providers:
                 raise ValueError
-            if provider == "litellm":
-                if not (allow_private or is_loopback_host):
-                    raise ValueError
-            elif not (allow_private or is_loopback_host):
+            if provider in local_http_providers and not (allow_private or is_loopback_host):
                 raise ValueError
         if not resolve:
             return url, hostname, port, ()
@@ -74,7 +71,7 @@ def validate_provider_url(
                 for address in parsed_addresses
             ):
                 raise ValueError
-        elif not (parsed.scheme == "http" and provider in {"ollama", "custom", "openai_compatible", "litellm"} and is_loopback_host):
+        elif not (parsed.scheme == "http" and provider in {"ollama", "custom", "openai_compatible", "litellm"} and is_loopback_host):  # noqa: SIM102
             if not all(
                 address.is_global
                 and not (
