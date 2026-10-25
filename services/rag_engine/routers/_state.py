@@ -250,6 +250,11 @@ def _load_persisted_settings() -> dict[str, Any]:
             logger.warning("Could not load settings file.")
     legacy_secrets = {k: v for k, v in saved.items() if k.endswith(SECRET_SUFFIX)}
     settings.update({k: v for k, v in saved.items() if not k.endswith(SECRET_SUFFIX) and k != "api_key"})
+    # Normalize provider_models keys to supported providers on load.
+    pm = settings.get("provider_models")
+    if isinstance(pm, dict):
+        supported = {"openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom", "litellm", "openai_compatible"}
+        settings["provider_models"] = {str(k).lower(): v for k, v in pm.items() if str(k).lower() in supported}
     secrets_file = _get_secrets_file()
     secrets = load_secrets(secrets_file)
     if legacy_secrets:
