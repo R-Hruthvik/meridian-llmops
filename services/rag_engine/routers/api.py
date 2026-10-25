@@ -73,7 +73,6 @@ from services.rag_engine.routers._state import (  # noqa: F401 - shared state re
     _ServiceProxy,
     _settings,
     _settings_lock,
-    _tested_api_keys,
     _validate_model_fetch_url,
     agent_graph,
     bind_api_module,

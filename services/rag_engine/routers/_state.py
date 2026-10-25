@@ -398,10 +398,6 @@ class _RuntimeSettings(MutableMapping[str, Any]):
 _default_runtime_settings: dict[str, Any] | None = None
 _runtime_llm_settings = _RuntimeSettings()
 
-# Session-only cache for tested API keys (not persisted to disk)
-_tested_api_keys: dict[str, str] = {}
-_tested_api_keys_lock = __import__("asyncio").Lock()
-
 _settings_lock = asyncio.Lock()
 
 
