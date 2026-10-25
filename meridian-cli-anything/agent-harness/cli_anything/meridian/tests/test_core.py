@@ -1,17 +1,14 @@
 """Unit tests for Meridian CLI harness core."""
 
 import json
-import os
-import tempfile
 
 import httpx
 import pytest
-from click.testing import CliRunner
-
 from cli_anything.meridian import client as client_module
 from cli_anything.meridian import meridian_cli
 from cli_anything.meridian.core import session as session_core
 from cli_anything.meridian.meridian_cli import app
+from click.testing import CliRunner
 
 runner = CliRunner()
 
@@ -271,7 +268,7 @@ def test_session_locked_save(tmp_path):
     proj = session_core.create_session_state(name="t")
     sess.set_project(proj)
     target = tmp_path / "nested" / "s.json"
-    saved = sess.save_session(str(target))
+    sess.save_session(str(target))
     assert target.exists()
     loaded = session_core.open_session_state(str(target))
     assert loaded["name"] == "t"

@@ -8,12 +8,12 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 if sys.platform == "win32":
@@ -107,8 +107,8 @@ def export_session_state(state: dict[str, Any], path: str) -> str:
 
 @dataclass
 class Session:
-    project: Optional[dict[str, Any]] = None
-    project_path: Optional[str] = None
+    project: dict[str, Any] | None = None
+    project_path: str | None = None
     _modified: bool = False
     _undo_stack: list[dict[str, Any]] = field(default_factory=list)
     _redo_stack: list[dict[str, Any]] = field(default_factory=list)
@@ -116,7 +116,7 @@ class Session:
     def has_project(self) -> bool:
         return self.project is not None
 
-    def set_project(self, project: dict[str, Any], path: Optional[str] = None) -> None:
+    def set_project(self, project: dict[str, Any], path: str | None = None) -> None:
         self.project = project
         self.project_path = path
         self._modified = False
@@ -168,7 +168,7 @@ class Session:
             "redo_depth": len(self._redo_stack),
         }
 
-    def save_session(self, path: Optional[str] = None) -> str:
+    def save_session(self, path: str | None = None) -> str:
         if self.project is None:
             raise RuntimeError("No session loaded")
         target = path or self.project_path

@@ -10,11 +10,9 @@ import sys
 from typing import Any
 
 import click
-
 from cli_anything.meridian import client as client_module
 from cli_anything.meridian.core import health as health_core
 from cli_anything.meridian.core import ingest as ingest_core
-from cli_anything.meridian.core import query as query_core
 from cli_anything.meridian.core import retrieve as retrieve_core
 from cli_anything.meridian.core import session as session_core
 from cli_anything.meridian.core import settings as settings_core
@@ -38,7 +36,6 @@ def get_session() -> session_core.Session:
 
 
 def _emit(ok: bool, command: str, data: Any = None, message: str = "", error: str | None = None) -> None:
-    global _json_output
     if _json_output:
         click.echo(json.dumps({"ok": ok, "command": command, "data": data, "error": error}, default=str))
         return
@@ -342,7 +339,7 @@ def session_status():
 @handle_error
 def session_undo():
     sess = get_session()
-    proj = sess.undo()
+    sess.undo()
     _emit(True, "session.undo", data=sess.status(), message="Undo complete")
 
 
@@ -350,7 +347,7 @@ def session_undo():
 @handle_error
 def session_redo():
     sess = get_session()
-    proj = sess.redo()
+    sess.redo()
     _emit(True, "session.redo", data=sess.status(), message="Redo complete")
 
 

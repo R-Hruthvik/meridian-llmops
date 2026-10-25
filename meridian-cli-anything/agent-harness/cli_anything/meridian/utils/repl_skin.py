@@ -288,7 +288,6 @@ class ReplSkin:
         Returns:
             list of (style, text) tuples for prompt_toolkit.
         """
-        accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#5fafff")
         tokens = []
 
         tokens.append(("class:icon", "◆ "))
@@ -446,7 +445,6 @@ class ReplSkin:
         print(header_line)
 
         # Separator
-        sep_parts = [self._c(_DARK_GRAY, _H_LINE * w) for w in col_widths]
         sep_line = self._c(_DARK_GRAY, f"  {'───'.join([_H_LINE * w for w in col_widths])}")
         print(sep_line)
 
@@ -491,9 +489,8 @@ class ReplSkin:
         """
         try:
             from prompt_toolkit import PromptSession
-            from prompt_toolkit.history import FileHistory
             from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-            from prompt_toolkit.formatted_text import FormattedText
+            from prompt_toolkit.history import FileHistory
 
             style = self.get_prompt_style()
 
@@ -521,8 +518,8 @@ class ReplSkin:
             User input string (stripped).
         """
         if pt_session is not None:
-            from prompt_toolkit.formatted_text import FormattedText
             tokens = self.prompt_tokens(project_name, modified, context)
+            from prompt_toolkit.formatted_text import FormattedText
             return pt_session.prompt(FormattedText(tokens)).strip()
         else:
             raw_prompt = self.prompt(project_name, modified, context)
@@ -540,13 +537,13 @@ class ReplSkin:
             A callable that returns FormattedText for the toolbar.
         """
         def toolbar():
-            from prompt_toolkit.formatted_text import FormattedText
             parts = []
             for i, (k, v) in enumerate(items.items()):
                 if i > 0:
                     parts.append(("class:bottom-toolbar.text", "  │  "))
                 parts.append(("class:bottom-toolbar.text", f" {k}: "))
                 parts.append(("class:bottom-toolbar", v))
+            from prompt_toolkit.formatted_text import FormattedText
             return FormattedText(parts)
         return toolbar
 

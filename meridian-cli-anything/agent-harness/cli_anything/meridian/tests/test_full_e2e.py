@@ -1,6 +1,5 @@
 """E2E tests for Meridian CLI harness."""
 
-import json
 import os
 import subprocess
 import sys
