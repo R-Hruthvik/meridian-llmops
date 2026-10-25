@@ -149,7 +149,7 @@ def _default_services() -> dict[str, Any]:
         service_cache = live("_build_services")(settings)
         set_live_value("_default_settings", settings)
         set_live_value("_default_service_cache", service_cache)
-    return service_cache
+    return cast(dict[str, Any], service_cache)
 
 _settings = _ServiceProxy("settings")
 vector_store = _ServiceProxy("vector_store")
@@ -199,8 +199,8 @@ _SETTINGS_FILE_GETTER = _get_settings_file
 
 def _current_settings_file() -> Path:
     if _get_settings_file is not _SETTINGS_FILE_GETTER:
-        return _get_settings_file()
-    return live("_get_settings_file")()
+        return cast(Path, _get_settings_file())
+    return cast(Path, live("_get_settings_file")())
 
 
 def _get_secrets_file() -> Path:
@@ -377,7 +377,7 @@ class _RuntimeSettings(MutableMapping[str, Any]):
         if persisted is None:
             persisted = _load_persisted_settings()
             set_live_value("_default_runtime_settings", persisted)
-        return persisted
+        return cast(dict[str, Any], persisted)
 
     def __getitem__(self, key: str) -> Any:
         return self._target()[key]
