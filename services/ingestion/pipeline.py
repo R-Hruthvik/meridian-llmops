@@ -208,6 +208,8 @@ class IngestionPipeline:
                 duplicate_of=existing,
             )
 
+        previous_id = self.storage.find_by_filename(source, tenant_id)
+
         doc_id = f"doc-{uuid.uuid4().hex[:12]}"
         source_format = str(parsed.format.value if hasattr(parsed.format, "value") else parsed.format)
 
@@ -237,6 +239,11 @@ class IngestionPipeline:
                     content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
                 )
                 created_at = meta_record.get("created_at", "")
+                if previous_id is not None and previous_id != doc_id:
+                    try:
+                        self.storage.delete_document(previous_id, tenant_id=tenant_id)
+                    except Exception:  # noqa: BLE001
+                        logger.warning("Could not delete previous document %s", previous_id)
                 self._publish_manifest()
         except Exception as error:
             self._rollback(doc_id, tenant_id)
