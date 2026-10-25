@@ -300,8 +300,8 @@ async def _stream_query_response(
         "debug": {},
     }
 
-    events: asyncio.Queue[Any] = asyncio.Queue(maxsize=256)
-    token_sink: asyncio.Queue[Any] = asyncio.Queue(maxsize=256)
+    events: asyncio.Queue[Any] = asyncio.Queue()
+    token_sink: asyncio.Queue[Any] = asyncio.Queue()
     retrieval_ready = asyncio.Event()
     outcome: dict[str, Any] = {"final_state": {}, "error": None}
 
