@@ -65,7 +65,7 @@ def test_settings_test_runs_one_token_generation(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    assert captured["max_tokens"] == 64
+    assert captured["max_tokens"] == 256
     assert captured["provider"] == "custom"
     assert captured["api_key"] == "test-key"
 

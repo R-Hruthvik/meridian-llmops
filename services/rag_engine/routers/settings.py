@@ -455,7 +455,7 @@ async def test_llm_connection(tenant_id: str = Depends(require_admin)):
         await llm_client.chat_completion(
             messages=[{"role": "user", "content": "Reply with OK."}],
             model=model,
-            max_tokens=64,
+            max_tokens=256,
             temperature=0,
             provider=provider,
             api_key=config["api_key"],

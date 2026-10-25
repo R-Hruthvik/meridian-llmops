@@ -157,7 +157,7 @@ class TestFix4FakeLatency:
         func_body = content.split("def test_llm_connection")[1].split("\n\n\n")[0]
         assert "llm_client.chat_completion" in func_body, \
             "test_llm_connection must make a real generation call through the provider client"
-        assert "max_tokens=64" in func_body, "Connectivity test should request only a small number of tokens"
+        assert "max_tokens=256" in func_body, "Connectivity test should request only a small number of tokens"
 
     def test_connection_test_returns_real_status(self):
         """When the endpoint is unreachable, status should be 'error', not always 'connected'."""
