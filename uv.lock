@@ -1825,6 +1825,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
     { name = "beautifulsoup4" },
+    { name = "certifi" },
     { name = "fastapi" },
     { name = "fastembed" },
     { name = "httpx" },
@@ -1873,6 +1874,7 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20.0" },
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.29" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
+    { name = "certifi", specifier = ">=2024.0.0" },
     { name = "deepeval", marker = "extra == 'dev'", specifier = ">=0.21.0" },
     { name = "fastapi", specifier = ">=0.110.0" },
     { name = "fastembed", specifier = "==0.9.0" },

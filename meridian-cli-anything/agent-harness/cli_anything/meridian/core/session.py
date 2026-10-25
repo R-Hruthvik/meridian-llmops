@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import cast, Any
+from typing import Any, cast
 
 
 def utc_now() -> str:

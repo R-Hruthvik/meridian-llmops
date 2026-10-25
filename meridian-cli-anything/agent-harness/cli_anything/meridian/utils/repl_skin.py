@@ -520,7 +520,6 @@ class ReplSkin:
         if pt_session is not None:
             tokens = self.prompt_tokens(project_name, modified, context)
             from prompt_toolkit.formatted_text import FormattedText
-            from prompt_toolkit.formatted_text import FormattedText
             return str(pt_session.prompt(FormattedText(tokens))).strip()
         else:
             raw_prompt = self.prompt(project_name, modified, context)
