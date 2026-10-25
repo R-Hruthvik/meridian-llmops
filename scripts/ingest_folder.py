@@ -55,18 +55,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--storage-root", type=Path, help="Override storage for an isolated benchmark")
     parser.add_argument("--qdrant-path", help="Use a local Qdrant path for an isolated benchmark")
     args = parser.parse_args(argv)
-    if not args.directory.is_dir():
-        parser.error(f"not a directory: {args.directory}")
+    target = args.directory
     if args.qdrant_path and (
         args.storage_root is None or args.storage_root.resolve() == get_default_storage_root().resolve()
     ):
         parser.error("--qdrant-path requires an isolated --storage-root")
-
-    glob = "**/*" if args.recursive else "*"
-    files = sorted(
-        path for path in args.directory.glob(glob)
-        if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES
-    )
+    if target.is_file():
+        if target.suffix.lower() not in SUPPORTED_SUFFIXES:
+            parser.error(f"unsupported file: {target}")
+        files = [target]
+    else:
+        if not target.is_dir():
+            parser.error(f"not a directory: {target}")
+        glob = "**/*" if args.recursive else "*"
+        files = sorted(
+            path for path in target.glob(glob)
+            if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES
+        )
+    # normalize filename relative to parent for single file
+    base_dir = target.parent if target.is_file() else target
     pipeline, client = build_pipeline(args.storage_root, args.qdrant_path)
     successes = duplicates = failures = indexed_chunks = 0
     started = time.perf_counter()
@@ -74,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         for path in files:
             file_started = time.perf_counter()
             fmt = path.suffix.lower().lstrip(".")
-            filename = path.relative_to(args.directory).as_posix()
+            filename = path.relative_to(base_dir).as_posix()
             try:
                 result = pipeline.ingest_file(filename, path.read_bytes(), tenant_id=args.tenant)
                 fmt = result.format or fmt

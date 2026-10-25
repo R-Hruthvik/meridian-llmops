@@ -115,6 +115,8 @@ class IngestionPipeline:
             parsed = parse_file(filename, data, title=title)
         except Exception as error:
             raise IngestionError(f"Could not parse {filename}: {error}") from error
+        if not parsed.text.strip() and not parsed.warnings:
+            raise IngestionError(f"{filename} contains no extractable text")
         doc_id = f"doc-{uuid.uuid4().hex[:12]}"
         source_format = str(parsed.format.value if hasattr(parsed.format, "value") else parsed.format)
         # Captured before persisting so the new document cannot shadow it.
@@ -190,6 +192,10 @@ class IngestionPipeline:
         tenant_id: str = "default",
     ) -> IngestResult:
         """Ingest decoded text through the same transactional path as files."""
+        parsed = parse_text(text, doc_format, title=title)
+        if not parsed.text.strip():
+            raise IngestionError("Document contains no extractable text")
+
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
         existing = self.storage.find_duplicate(digest, tenant_id)
         if existing is not None:
@@ -200,9 +206,6 @@ class IngestionPipeline:
                 duplicate_of=existing,
             )
 
-        parsed = parse_text(text, doc_format, title=title)
-        if not parsed.text.strip():
-            raise IngestionError("Document contains no extractable text")
         doc_id = f"doc-{uuid.uuid4().hex[:12]}"
         source_format = str(parsed.format.value if hasattr(parsed.format, "value") else parsed.format)
 

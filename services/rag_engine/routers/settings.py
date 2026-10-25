@@ -427,8 +427,6 @@ async def test_and_fetch_models(
                 _runtime_llm_settings["provider_available_models"] = {}
             _runtime_llm_settings["provider_available_models"][provider] = models
             if api_key and not _is_masked(api_key):
-                if provider in ["groq", "openrouter", "deepseek", "custom"]:
-                    _runtime_llm_settings["custom_api_key"] = api_key
                 _runtime_llm_settings[f"{provider}_api_key"] = api_key
             if base_url and provider in ["openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom"] and not _is_masked(base_url):
                 _runtime_llm_settings[f"{provider}_base_url"] = base_url

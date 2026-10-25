@@ -128,7 +128,7 @@ def measure(retriever: HybridRetriever, queries: list[str], tenant: str, workers
 
 def profile_dense_payload(store: QdrantChunkStore, query_vectors: list[list[float]], tenant: str) -> dict[str, dict[str, float]]:
     """Compare Qdrant's full-payload query with ID/score-only diagnostic calls."""
-    samples = {"raw_full_payload": [], "raw_no_payload": [], "payload_to_chunk": []}
+    samples: dict[str, list[float]] = {"raw_full_payload": [], "raw_no_payload": [], "payload_to_chunk": []}
     query_filter = store._filter(tenant)
     for vector in query_vectors:
         started = time.perf_counter()
