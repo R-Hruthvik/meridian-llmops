@@ -133,6 +133,13 @@ class LiteLLMClient:
                         if isinstance(candidate, str) and candidate.strip():
                             content = candidate
                             break
+                    if not content.strip():
+                        details = message.get("reasoning_details")
+                        if isinstance(details, list):
+                            pieces = [d.get("text", "") for d in details if isinstance(d, dict)]
+                            joined = "".join(pieces).strip()
+                            if joined:
+                                content = joined
                 return content, model, usage
             text = choice.get("text", "")
             if isinstance(text, str):
