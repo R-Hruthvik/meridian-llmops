@@ -197,11 +197,13 @@ def run(args: argparse.Namespace) -> dict:
             queries = make_queries(QUERY_COUNT, args.docs, args.chunks_per_doc)
             reports = {}
             for label, workers in (("single_thread", 1), ("4_concurrent", 4), ("8_concurrent", CONCURRENCY)):
+                print(f"Benchmarking {label} ({workers} workers)...", file=sys.stderr, flush=True)
                 # Warm each execution mode independently so concurrent measurements
                 # do not include the first concurrent embedder/Qdrant calls.
                 measure(retriever, queries[:WARMUP_COUNT], tenant, workers)
                 samples = measure(retriever, queries, tenant, workers)
                 reports[label] = summarize(samples)
+                print(f"  done: {label}", file=sys.stderr, flush=True)
             diagnostic_vectors = [embedder.embed_query(query).tolist() for query in queries]
             dense_payload_diagnostic = profile_dense_payload(store, diagnostic_vectors, tenant)
             point_count = store.count(tenant_id=tenant)
