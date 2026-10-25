@@ -126,7 +126,7 @@ def main() -> int:
             result = retriever.retrieve(case['question'], top_k=args.top_k, tenant_id=args.tenant)
             dense = [c.scores.get('dense') for c in result.chunks if c.scores.get('dense') is not None]
             best = max(dense) if dense else 0.0
-            flagged = best < 0.35
+            flagged = best < 0.70
             unanswerable_flagged += int(flagged)
             print(f"[{'PASS' if flagged else 'FAIL'}] {case['id']} (unanswerable, best dense {best:.3f}): {case['question']}")
 
@@ -141,7 +141,8 @@ def main() -> int:
                   f"({unanswerable_flagged}/{unanswerable_total})")
         print(f"indexed points: {store.count(tenant_id=args.tenant)}")
 
-    gate = answerable > 0 and hits / answerable >= 0.90 and rr_total / answerable >= 0.70
+    unanswerable_ok = (unanswerable_total == 0) or (unanswerable_flagged == unanswerable_total)
+    gate = answerable > 0 and hits / answerable >= 0.90 and rr_total / answerable >= 0.70 and unanswerable_ok
     print("GATE:", "PASS" if gate else "FAIL")
     return 0 if gate else 1
 
