@@ -116,6 +116,7 @@ class DocumentStorageManager:
             "title": doc.title,
             "format": doc_format_str,
             "source": doc.source,
+            "metadata": getattr(doc, "metadata", {}) or {},
             "filename": original_name,
             "original_path": str(original_path),
             "content_hash": content_hash,
@@ -128,6 +129,7 @@ class DocumentStorageManager:
             "entities": [e.name for e in entities],
             "relationships": [f"{r.source_entity} -[{r.relation_type}]-> {r.target_entity}" for r in relationships],
             "snippet": doc.text[:220] + ("..." if len(doc.text) > 220 else ""),
+            "text": doc.text,
         }
         meta_file_path = self.meta_dir / f"{doc.id}.json"
         atomic_write_bytes(meta_file_path, json.dumps(meta_record, indent=2).encode("utf-8"))
@@ -196,17 +198,20 @@ class DocumentStorageManager:
             # Load raw document text
             filename = meta.get("filename")
             raw_text = ""
-            original_path = meta.get("original_path")
-            if original_path and Path(original_path).exists():
-                raw_text = Path(original_path).read_text(encoding="utf-8", errors="ignore")
-            elif filename:
-                for candidate in self.originals_dir.glob(f"*/{doc_id}/{filename}"):
-                    raw_text = candidate.read_text(encoding="utf-8", errors="ignore")
-                    break
-                else:
-                    legacy = self.docs_dir / filename
-                    if legacy.exists():
-                        raw_text = legacy.read_text(encoding="utf-8", errors="ignore")
+            if isinstance(meta.get("text"), str) and meta.get("text"):
+                raw_text = meta["text"]
+            else:
+                original_path = meta.get("original_path")
+                if original_path and Path(original_path).exists():
+                    raw_text = Path(original_path).read_text(encoding="utf-8", errors="ignore")
+                elif filename:
+                    for candidate in self.originals_dir.glob(f"*/{doc_id}/{filename}"):
+                        raw_text = candidate.read_text(encoding="utf-8", errors="ignore")
+                        break
+                    else:
+                        legacy = self.docs_dir / filename
+                        if legacy.exists():
+                            raw_text = legacy.read_text(encoding="utf-8", errors="ignore")
 
             meta["chunks"] = chunks  # type: ignore[typeddict-unknown-key]
             meta["text"] = raw_text  # type: ignore[typeddict-unknown-key]
