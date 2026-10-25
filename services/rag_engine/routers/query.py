@@ -326,6 +326,7 @@ async def _stream_query_response(
                         final_state.update(node_update)
                     if node_name == "retrieve":
                         chunks = (node_update or {}).get("retrieved_chunks", [])
+                        retrieval_ready.set()
                         await events.put(
                             _sse_event(
                                 "retrieval_complete",
@@ -335,7 +336,6 @@ async def _stream_query_response(
                                 },
                             )
                         )
-                        retrieval_ready.set()
         except Exception as exc:  # noqa: BLE001 - surfaced to the client as an error frame
             outcome["error"] = exc
         finally:
