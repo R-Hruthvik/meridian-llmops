@@ -371,3 +371,26 @@ def test_scanned_pdf_style_document_warns_without_indexing_garbage(tmp_path):
     # The document is still catalogued so the operator can see the warning.
     docs = pipeline.storage.list_documents()
     assert len(docs) == 1 and docs[0]["chunk_count"] == 0
+
+def test_ingest_text_replaces_the_document_with_the_same_source(tmp_path):
+    pipeline, store = build_pipeline(tmp_path)
+    first = pipeline.ingest_text(text=DOC_TEXT, title="Handbook", source="handbook.md")
+    second = pipeline.ingest_text(
+        text=DOC_TEXT + " New policy.", title="Handbook", source="handbook.md"
+    )
+
+    documents = pipeline.storage.list_documents()
+    assert [doc["id"] for doc in documents] == [second.document_id]
+    assert first.document_id != second.document_id
+    assert store.count(tenant_id="default") == second.chunks
+    assert pipeline.storage.find_by_filename("handbook.md", "default") == second.document_id
+
+
+def test_ingest_text_manual_documents_replace_by_title_and_format(tmp_path):
+    pipeline, store = build_pipeline(tmp_path)
+    first = pipeline.ingest_text(text="Draft one.", title="Notes")
+    second = pipeline.ingest_text(text="Draft two.", title="Notes")
+
+    assert [doc["id"] for doc in pipeline.storage.list_documents()] == [second.document_id]
+    assert first.filename == second.filename == "Notes.md"
+    assert store.count(tenant_id="default") == second.chunks

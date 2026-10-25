@@ -141,14 +141,7 @@ class IngestionPipeline:
             )
             # Publish the final count before replacement. If publication fails,
             # the old version is still intact and the new one can be rolled back.
-            if previous_id is not None and previous_id != doc_id:
-                previous = self.storage.get_document(previous_id)
-                previous_chunks = len(previous.get("chunks", [])) if previous else 0
-                final_count = len(self.storage.load_all_chunks()) - previous_chunks
-                self._publish_manifest(chunk_count=final_count)
-                self._delete_document(previous_id, publish_manifest=False)
-            else:
-                self._publish_manifest()
+            self._replace_previous(doc_id, previous_id)
         except Exception as error:
             self._rollback(doc_id, tenant_id)
             if previous_id is not None:
@@ -187,11 +180,19 @@ class IngestionPipeline:
         parsed = parse_text(text, doc_format, title=title)
         doc_id = f"doc-{uuid.uuid4().hex[:12]}"
         source_format = str(parsed.format.value if hasattr(parsed.format, "value") else parsed.format)
+        # An explicit source is the identity; a manual document is known by
+        # the name storage gives it (title and format), so ingesting it again
+        # replaces the previous copy instead of piling up duplicates.
+        stored_source = source if source != "manual" else f"{parsed.title}.{source_format}"
+        # Captured before persisting so the new document cannot shadow it.
+        previous_id = (
+            self.storage.find_by_filename(stored_source, tenant_id) if persist else None
+        )
 
         chunks = self.chunker.chunk_document(
             parsed,
             doc_id=doc_id,
-            source=source,
+            source=stored_source,
             source_format=source_format,
             tenant_id=tenant_id,
         )
@@ -202,7 +203,11 @@ class IngestionPipeline:
             created_at = ""
             if persist:
                 document = Document(
-                    id=doc_id, title=parsed.title, text=parsed.text, format=parsed.format, source=source
+                    id=doc_id,
+                    title=parsed.title,
+                    text=parsed.text,
+                    format=parsed.format,
+                    source=stored_source,
                 )
                 meta_record = self.storage.save_document(
                     doc=document,
@@ -213,13 +218,18 @@ class IngestionPipeline:
                     content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
                 )
                 created_at = meta_record.get("created_at", "")
-                self._publish_manifest()
+                self._replace_previous(doc_id, previous_id)
         except Exception as error:
             self._rollback(doc_id, tenant_id)
+            if previous_id is not None:
+                try:
+                    self._publish_manifest()
+                except Exception as manifest_error:  # noqa: BLE001 - preserve the ingest error
+                    logger.error("Could not restore manifest after failed update: %s", manifest_error)
             raise IngestionError(f"Failed to ingest text {title!r}: {error}") from error
 
         return IngestResult(
-            filename=source if source != "manual" else f"{title}.{source_format}",
+            filename=stored_source,
             status="indexed_with_warnings" if parsed.warnings or injection_found else "indexed",
             document_id=doc_id,
             format=source_format,
@@ -232,6 +242,17 @@ class IngestionPipeline:
             relationships_extracted=len(relations),
             created_at=created_at,
         )
+
+    def _replace_previous(self, doc_id: str, previous_id: str | None) -> None:
+        """Publish the manifest for the saved document, then drop the one it replaces."""
+        if previous_id is not None and previous_id != doc_id:
+            previous = self.storage.get_document(previous_id)
+            previous_chunks = len(previous.get("chunks", [])) if previous else 0
+            final_count = len(self.storage.load_all_chunks()) - previous_chunks
+            self._publish_manifest(chunk_count=final_count)
+            self._delete_document(previous_id, publish_manifest=False)
+        else:
+            self._publish_manifest()
 
     # ------------------------------------------------------------------ index
 
