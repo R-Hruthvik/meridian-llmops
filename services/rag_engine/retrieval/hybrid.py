@@ -182,7 +182,7 @@ class HybridRetriever:
 
         if self.reranker is not None and candidates:
             stage = time.perf_counter()
-            rerank_candidates = candidates[: max(20, 4 * top_k)]
+            rerank_candidates = candidates[: max(20, 2 * top_k)]
             with self._span("rerank", tenant_id=tenant_id):
                 reranked = self.reranker.rerank(
                     query=query,
