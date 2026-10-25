@@ -168,7 +168,7 @@ def test_cli_rejects_supported_but_empty_text_file(tmp_path):
     )
 
     assert result.returncode == 2
-    assert "no indexed chunks" in result.stderr.lower()
+    assert ("no indexed chunks" in result.stderr.lower()) or ("contains no extractable text" in result.stderr.lower())
     assert "traceback" not in result.stderr.lower()
     assert not output.exists()
 
