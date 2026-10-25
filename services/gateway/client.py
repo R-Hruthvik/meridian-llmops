@@ -223,11 +223,11 @@ class LiteLLMClient:
             self._safe_transport.address_backend.pin(host, port, addresses)
             self._get_client()
 
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 resp = await self._get_client().post(endpoint, headers=headers, json=payload)
-                if resp.status_code in (429, *range(500, 600)) and attempt == 0:
-                    await asyncio.sleep(0.1)
+                if resp.status_code in (429, *range(500, 600)) and attempt < 2:
+                    await asyncio.sleep(0.5 * (attempt + 1))
                     continue
                 if resp.status_code < 200 or resp.status_code >= 300:
                     provider_message = self._redact_literal(resp.text, target_key)[:500]
