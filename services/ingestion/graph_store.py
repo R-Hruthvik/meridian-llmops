@@ -427,12 +427,16 @@ class KnowledgeGraphStore:
 
         self._tenant_entities.pop(tenant_id, None)
         self._tenant_relationships.pop(tenant_id, None)
+        tenant_docs = [key[1] for key in list(self._tenant_doc_entities) if key[0] == tenant_id]
         for key in [key for key in list(self._tenant_doc_entities) if key[0] == tenant_id]:
             self._tenant_doc_entities.pop(key, None)
         for key in [key for key in list(self._tenant_doc_relationships) if key[0] == tenant_id]:
             self._tenant_doc_relationships.pop(key, None)
         for key in [key for key in list(self._tenant_doc_chunks) if key[0] == tenant_id]:
             self._tenant_doc_chunks.pop(key, None)
+        for doc_id in tenant_docs:
+            self._doc_entities.pop(doc_id, None)
+            self._doc_relationships.pop(doc_id, None)
         # Drop global doc entries whose tenant matches is not tracked; keep others.
         self.entities = {
             name: entity

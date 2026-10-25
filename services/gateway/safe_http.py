@@ -5,7 +5,6 @@ import socket
 import threading
 from urllib.parse import urlsplit
 
-import httpcore
 import httpx
 
 

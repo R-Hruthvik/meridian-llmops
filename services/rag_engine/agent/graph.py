@@ -179,7 +179,7 @@ def build_rag_agent_graph(
     graph_store: KnowledgeGraphStore,
     llm_client: LiteLLMClient | None = None,
     llm_config_getter: Callable[[], Mapping[str, Any]] | None = None,
-    min_dense_score: float = 0.70,
+    min_dense_score: float = 0.60,
     graph_enabled: bool = False,
     graph_context_enabled: bool = False,
     debug_log_prompts: bool = False,

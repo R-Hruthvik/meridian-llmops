@@ -241,7 +241,7 @@ class IngestionPipeline:
                 created_at = meta_record.get("created_at", "")
                 if previous_id is not None and previous_id != doc_id:
                     try:
-                        self.storage.delete_document(previous_id, tenant_id=tenant_id)
+                        self._delete_document(previous_id, publish_manifest=False, tenant_id=tenant_id)
                     except Exception:  # noqa: BLE001
                         logger.warning("Could not delete previous document %s", previous_id)
                 self._publish_manifest()

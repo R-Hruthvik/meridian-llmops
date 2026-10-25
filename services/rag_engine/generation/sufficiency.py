@@ -81,7 +81,7 @@ def _has_required_evidence(query: str, chunk: dict[str, Any]) -> bool:
 def has_sufficient_context(
     query: str,
     chunks: list[dict[str, Any]],
-    min_dense_score: float = 0.70,
+    min_dense_score: float = 0.60,
 ) -> bool:
     """Require useful retrieval evidence and concrete support for narrow fact requests."""
     query_terms = _tokens(query)
