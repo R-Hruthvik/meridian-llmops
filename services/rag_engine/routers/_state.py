@@ -426,6 +426,7 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
             "groq": ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
             "ollama": ("http://localhost:11434/v1", "llama3:latest"),
             "custom": ("", ""),
+            "litellm": ("http://localhost:4000", "gpt-4o-mini"),
         }
         default_url, default_model = defaults.get(provider, ("", ""))
         return {
@@ -440,6 +441,13 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
 
     if provider == "openai_compatible":
         provider = "custom"
+    if provider == "litellm":
+        return {
+            "provider": "litellm",
+            "model": configured_model or settings.get("default_model") or "gpt-4o-mini",
+            "api_key": _settings.litellm_master_key or settings.get("litellm_master_key"),
+            "base_url": _settings.litellm_base_url or settings.get("litellm_base_url") or "http://localhost:4000",
+        }
     if provider not in PROVIDERS:
         return {"provider": provider, "model": configured_model or "", "api_key": None, "base_url": ""}
     default_models = {"openai": "gpt-4o-mini", "anthropic": "claude-3-5-sonnet-20241022", "openrouter": "meta-llama/llama-3.3-70b-instruct", "deepseek": "deepseek-chat", "groq": "llama-3.3-70b-versatile", "ollama": "llama3:latest", "custom": ""}
