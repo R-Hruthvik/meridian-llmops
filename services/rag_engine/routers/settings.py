@@ -466,6 +466,9 @@ async def test_llm_connection(tenant_id: str = Depends(require_admin)):
     except ProviderError as e:
         is_success = False
         status_msg = e.message
+    except Exception as e:  # noqa: BLE001
+        is_success = False
+        status_msg = f"Connection failed: {e}"
 
     latency = (time.time() - start) * 1000
     return {
