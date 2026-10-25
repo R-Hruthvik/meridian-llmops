@@ -96,6 +96,7 @@ class HybridRetriever:
         self.reranker = reranker
         self.tracer = tracer
         self._bm25_lock = threading.Lock()
+        self._embed_lock = threading.Lock()
 
     def update_chunks(self, chunks: list[Chunk]) -> None:
         """Rebuild the lexical corpus from the caller's chunk records.
@@ -126,7 +127,7 @@ class HybridRetriever:
         stage = time.perf_counter()
         if self.embedder is None:
             raise RuntimeError('Embedder must be initialized at startup or explicitly injected')
-        with self._span("embed_query", tenant_id=tenant_id):
+        with self._embed_lock, self._span("embed_query", tenant_id=tenant_id):
             query_vector = self.embedder.embed_query(query)
         timings["embed"] = _ms(stage)
 
