@@ -262,21 +262,29 @@ class DocumentStorageManager:
     def has_legacy_embeddings(self) -> bool:
         """Legacy disk vectors cannot prove semantic index provenance."""
         for path in self.chunks_dir.glob("*.json"):
-            records = json.loads(path.read_text(encoding="utf-8"))
-            if any("embedding" in record for record in records):
+            try:
+                records = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(records, list) and any(isinstance(r, dict) and "embedding" in r for r in records):
                 return True
         return False
 
     def remove_legacy_embeddings(self) -> None:
         """Strip old vectors only after a successful reindex."""
         for path in self.chunks_dir.glob("*.json"):
-            records = json.loads(path.read_text(encoding="utf-8"))
-            if any("embedding" in record for record in records):
-                for record in records:
+            try:
+                records = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(records, list) or not any(isinstance(r, dict) and "embedding" in r for r in records):
+                continue
+            for record in records:
+                if isinstance(record, dict):
                     record.pop("embedding", None)
-                temporary = path.with_suffix(".json.tmp")
-                temporary.write_text(json.dumps(records, indent=2), encoding="utf-8")
-                temporary.replace(path)
+            temporary = path.with_suffix(".json.tmp")
+            temporary.write_text(json.dumps(records, indent=2), encoding="utf-8")
+            temporary.replace(path)
 
     def remove_document_files(self, doc_id: str) -> None:
         """Remove every disk artifact of a document (transaction rollback and delete)."""

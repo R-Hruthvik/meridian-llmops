@@ -335,6 +335,11 @@ class IngestionPipeline:
             self.vector_store.clear(tenant_id=None)
         except Exception:  # noqa: BLE001 - collection may not exist yet
             logger.debug("Vector store clear skipped during hydration.")
+        # Always clear graph state to avoid stale data on empty stores.
+        try:
+            self.graph_store.clear_all_graph()
+        except Exception:  # noqa: BLE001
+            logger.debug("Graph clear skipped during hydration.")
         if all_chunks:
             self._index_chunks(all_chunks)
             # Hydrate the in-memory knowledge graph from persisted documents.
