@@ -145,7 +145,7 @@ async def test_prompt_sufficiency_is_rechecked_after_budget_selection():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["empty", "runtime"])
+@pytest.mark.parametrize("failure", ["runtime"])
 async def test_generation_failures_are_typed_provider_errors(failure):
     chunk = Chunk(id="c-source", document_id="d", text="Qdrant stores vectors.")
 
@@ -176,10 +176,35 @@ async def test_generation_failures_are_typed_provider_errors(failure):
         await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
 
     assert error.value.status == 502
-    if failure == "empty":
-        assert "empty completion" in error.value.message
-    else:
-        assert error.value.provider_message == "connection refused"
+    assert error.value.provider_message == "connection refused"
+
+
+@pytest.mark.asyncio
+async def test_empty_completion_returns_insufficient_context():
+    chunk = Chunk(id="c-source", document_id="d", text="Qdrant stores vectors.")
+
+    class Retriever:
+        def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
+            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+
+    class FailingClient:
+        async def chat_completion(self, **kwargs):
+            return {"choices": [{"message": {"content": "  "}}]}
+
+    graph = build_rag_agent_graph(
+        Retriever(),
+        KnowledgeGraphStore(in_memory=True),
+        llm_client=FailingClient(),
+        llm_config_getter=lambda: {"provider": "custom", "model": "test"},
+    )
+    state = {
+        "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
+        "retrieved_chunks": [], "entities": [], "draft_answer": "",
+        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
+        "tenant_id": "test",
+    }
+    final = await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
+    assert final.get("answer_status") == "insufficient_context"
 
 
 @pytest.mark.asyncio

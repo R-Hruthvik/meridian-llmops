@@ -384,7 +384,11 @@ def build_rag_agent_graph(
             if debug_log_prompts:
                 _log_debug_payload("response", state.get("request_id", ""), response.get("raw_response", response), api_key)
             if not draft.strip():
-                raise ProviderError(provider, 502, f"Provider {provider} returned an empty completion")
+                return {
+                    "draft_answer": insufficient_answer,
+                    "answer_status": "insufficient_context",
+                    "verification_result": VerificationResult(status="unchecked", scope="unchecked"),
+                }
         except ProviderError:
             raise
         except Exception as exc:
