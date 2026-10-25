@@ -92,20 +92,20 @@ class CrossEncoderReranker:
         candidates = chunks[: max(20, 2 * top_k)]
         try:
             scores = self._model.rerank(query, [chunk.text for chunk in candidates], batch_size=64)
+            ranked = [
+                SearchResult(
+                    chunk_id=chunk.id,
+                    document_id=chunk.document_id,
+                    text=chunk.text,
+                    score=float(score),
+                    retrieval_method="cross_encoder_rerank",
+                    metadata=chunk.metadata,
+                )
+                for chunk, score in zip(candidates, scores, strict=False)
+            ]
         except Exception as error:  # noqa: BLE001 - degrade gracefully at query time
             logger.warning("Cross-encoder scoring failed; using lexical fallback: %s", error)
             return self._lexical.rerank(query, chunks, top_k)
 
-        ranked = [
-            SearchResult(
-                chunk_id=chunk.id,
-                document_id=chunk.document_id,
-                text=chunk.text,
-                score=float(score),
-                retrieval_method="cross_encoder_rerank",
-                metadata=chunk.metadata,
-            )
-            for chunk, score in zip(candidates, scores, strict=True)
-        ]
         ranked.sort(key=lambda result: result.score, reverse=True)
         return ranked[:top_k]
