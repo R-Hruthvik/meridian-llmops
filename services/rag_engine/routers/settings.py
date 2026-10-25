@@ -223,12 +223,19 @@ async def update_llm_settings(
         _runtime_llm_settings.update(merged)
 
         # Also update provider_models map if default_model and active_provider were supplied
-        prov = _runtime_llm_settings.get("active_provider", "openai")
+        prov = str(_runtime_llm_settings.get("active_provider", "openai")).lower()
         model = _runtime_llm_settings.get("default_model")
         if prov and model:
             if "provider_models" not in _runtime_llm_settings:
                 _runtime_llm_settings["provider_models"] = {}
             _runtime_llm_settings["provider_models"][prov] = model
+        # Normalize provider_models keys to supported providers (lowercase).
+        supported = {"openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom", "litellm", "openai_compatible"}
+        pm = _runtime_llm_settings.get("provider_models")
+        if isinstance(pm, dict):
+            _runtime_llm_settings["provider_models"] = {
+                str(k).lower(): v for k, v in pm.items() if str(k).lower() in supported
+            }
 
         await asyncio.to_thread(_save_persisted_settings, dict(_runtime_llm_settings))
 

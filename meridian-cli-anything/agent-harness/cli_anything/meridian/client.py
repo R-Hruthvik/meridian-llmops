@@ -132,7 +132,11 @@ class MeridianClient:
         client = self._http()
         with client.stream("POST", "/v1/query/stream", json=payload, headers=headers, timeout=self.timeout) as response:
             if response.status_code >= 400:
-                raise MeridianAPIError(f"HTTP {response.status_code}", status_code=response.status_code)
+                try:
+                    detail = response.json()
+                except Exception:  # noqa: BLE001
+                    detail = response.text
+                raise MeridianAPIError(f"HTTP {response.status_code}: {detail}", status_code=response.status_code)
             event = "message"
             for line in response.iter_lines():
                 if not line:
