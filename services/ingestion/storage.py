@@ -202,15 +202,18 @@ class DocumentStorageManager:
                 raw_text = meta["text"]
             else:
                 original_path = meta.get("original_path")
-                if original_path and Path(original_path).exists():
-                    raw_text = Path(original_path).read_text(encoding="utf-8", errors="ignore")
-                elif filename:
+                if original_path:
+                    candidate_path = Path(original_path).resolve()
+                    storage_root = self.root_dir.resolve()
+                    if candidate_path.is_file() and storage_root in candidate_path.parents:
+                        raw_text = candidate_path.read_text(encoding="utf-8", errors="ignore")
+                if not raw_text and filename:
                     for candidate in self.originals_dir.glob(f"*/{doc_id}/{filename}"):
                         raw_text = candidate.read_text(encoding="utf-8", errors="ignore")
                         break
                     else:
                         legacy = self.docs_dir / filename
-                        if legacy.exists():
+                        if legacy.exists() and self.root_dir.resolve() in legacy.resolve().parents:
                             raw_text = legacy.read_text(encoding="utf-8", errors="ignore")
 
             meta["chunks"] = chunks  # type: ignore[typeddict-unknown-key]

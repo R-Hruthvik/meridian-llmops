@@ -120,7 +120,7 @@ class PinnedAddressBackend:
         for address in addresses:
             try:
                 return await self._network_backend.connect_tcp(address, port, **kwargs)
-            except (httpcore.ConnectError, httpcore.ConnectTimeout) as error:
+            except Exception as error:  # noqa: BLE001
                 last_error = error
         if last_error:
             raise last_error

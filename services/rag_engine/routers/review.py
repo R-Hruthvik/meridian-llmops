@@ -49,6 +49,7 @@ async def list_pending_review_items(
         .join(ExtractedField, ReviewItem.extracted_field_id == ExtractedField.id)
         .join(ORMDocument, ExtractedField.document_id == ORMDocument.id)
         .where(ReviewItem.status == "pending", ORMDocument.tenant_id == tenant_id)
+        .order_by(ReviewItem.id)
         .offset(offset)
         .limit(limit)
     )
@@ -148,6 +149,7 @@ async def export_golden_cases(
             ReviewItem.status.in_(VERIFIED_REVIEW_STATUSES),
             ORMDocument.tenant_id == tenant_id,
         )
+        .order_by(ReviewItem.id)
     )
     result = await db.execute(stmt)
     rows = result.all()
@@ -184,6 +186,7 @@ async def review_flagged_chunk_ids(db: AsyncSession, tenant_id: str) -> set[str]
             ExtractedField.provenance_chunk_id.is_not(None),
             ORMDocument.tenant_id == tenant_id,
         )
+        .order_by(ReviewItem.id)
     )
     result = await db.execute(stmt)
     return {chunk_id for chunk_id in result.scalars().all() if chunk_id}

@@ -70,6 +70,20 @@ async def upload_documents_endpoint(
                     "error": str(error),
                 }
             )
+        except Exception as error:  # noqa: BLE001
+            results.append(
+                {
+                    "filename": filename,
+                    "status": "rejected",
+                    "document_id": None,
+                    "format": None,
+                    "pages": 0,
+                    "chunks": 0,
+                    "warnings": [],
+                    "duplicate_of": None,
+                    "error": str(error),
+                }
+            )
     retriever.update_chunks(vector_store.get_all_chunks(None))
     try:
         settings = request.app.state.settings
