@@ -412,8 +412,12 @@ async def test_and_fetch_models(
                 else:
                     status_msg = f"Endpoint error (HTTP {resp.status_code})."
 
-    except (httpx.HTTPError, httpx.RequestError, OSError, ValueError, KeyError):
-        status_msg = f"Connection Failed: Could not reach {provider} endpoint."
+    except (httpx.HTTPError, httpx.RequestError, OSError, ValueError, KeyError) as exc:
+        detail = str(exc).strip()
+        if detail:
+            status_msg = f"Connection Failed: Could not reach {provider} endpoint ({detail})."
+        else:
+            status_msg = f"Connection Failed: Could not reach {provider} endpoint."
         is_success = False
 
     if is_success and models:
