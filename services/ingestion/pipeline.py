@@ -334,6 +334,21 @@ class IngestionPipeline:
             logger.debug("Vector store clear skipped during hydration.")
         if all_chunks:
             self._index_chunks(all_chunks)
+            # Hydrate the in-memory knowledge graph from persisted documents.
+            try:
+                for doc in self.storage.list_documents():
+                    doc_id = doc.get("id")
+                    if not doc_id:
+                        continue
+                    full = self.storage.get_document(doc_id)
+                    if not full:
+                        continue
+                    tenant_id = str(full.get("tenant_id", "default"))
+                    text = full.get("text", "")
+                    chunks = self.storage.get_document_chunks(doc_id)
+                    self.graph_store.extract_and_store(doc_id, text, tenant_id=tenant_id, chunks=chunks)
+            except Exception as error:  # noqa: BLE001
+                logger.warning("Graph hydration failed: %s", error)
             total_chunks = len(all_chunks)
             logger.info(
                 "Hydrated %d documents (%d chunks) from dedicated storage.",
