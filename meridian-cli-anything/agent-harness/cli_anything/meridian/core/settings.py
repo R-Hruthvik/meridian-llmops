@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import cast, Any
 
 from cli_anything.meridian.client import MeridianClient
 
 
 def show(client: MeridianClient) -> dict[str, Any]:
-    return client.settings_show()
+    return cast(dict[str, Any], client.settings_show())
 
 
 def test(client: MeridianClient) -> dict[str, Any]:
-    return client.settings_test()
+    return cast(dict[str, Any], client.settings_test())
 
 
 def set_provider(
@@ -22,7 +22,7 @@ def set_provider(
     base_url: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
-    return client.settings_set_provider(provider, model, base_url=base_url, api_key=api_key)
+    return cast(dict[str, Any], client.settings_set_provider(provider, model, base_url=base_url, api_key=api_key))
 
 
 def list_models(
@@ -31,4 +31,4 @@ def list_models(
     base_url: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
-    return client.models_list(provider, base_url=base_url, api_key=api_key)
+    return cast(dict[str, Any], client.models_list(provider, base_url=base_url, api_key=api_key))

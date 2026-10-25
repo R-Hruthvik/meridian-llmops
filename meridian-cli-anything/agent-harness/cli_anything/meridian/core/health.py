@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import cast, Any
 
 from cli_anything.meridian.client import MeridianClient
 
 
 def health(client: MeridianClient) -> dict[str, Any]:
-    return client.health()
+    return cast(dict[str, Any], client.health())

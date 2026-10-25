@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -113,17 +113,17 @@ class MeridianClient:
     def health(self) -> dict[str, Any]:
         response = self.get("/health")
         self._raise_for_status(response)
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def retrieve(self, query: str, top_k: int = 5, debug: bool = False) -> dict[str, Any]:
         response = self.post("/v1/retrieve", json={"query": query, "top_k": top_k, "debug": debug})
         self._raise_for_status(response)
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def query(self, query: str, top_k: int = 5) -> dict[str, Any]:
         response = self.post("/v1/query", json={"query": query, "top_k": top_k})
         self._raise_for_status(response)
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def query_stream(self, query: str, top_k: int = 5) -> Iterator[tuple[str, dict[str, Any]]]:
         payload = {"query": query, "top_k": top_k}
@@ -152,12 +152,12 @@ class MeridianClient:
     def settings_show(self) -> dict[str, Any]:
         response = self.get("/v1/settings/llm", admin=True)
         self._raise_for_status(response)
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def settings_test(self) -> dict[str, Any]:
         response = self.post("/v1/settings/llm/test", admin=True)
         self._raise_for_status(response)
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def settings_set_provider(
         self,
@@ -177,7 +177,7 @@ class MeridianClient:
             payload["api_key"] = api_key
         response = self.post("/v1/settings/llm", json=payload, admin=True)
         self._raise_for_status(response)
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def models_list(
         self,
@@ -192,7 +192,7 @@ class MeridianClient:
             payload["api_key"] = api_key
         response = self.post("/v1/settings/llm/test-and-fetch-models", json=payload, admin=True)
         self._raise_for_status(response)
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def ingest_text(
         self,
@@ -210,9 +210,9 @@ class MeridianClient:
             payload["format"] = fmt
         response = self.post("/v1/ingest", json=payload)
         self._raise_for_status(response)
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def reindex(self) -> dict[str, Any]:
         response = self.post("/v1/reindex", admin=True)
         self._raise_for_status(response)
-        return response.json()
+        return cast(dict[str, Any], response.json())

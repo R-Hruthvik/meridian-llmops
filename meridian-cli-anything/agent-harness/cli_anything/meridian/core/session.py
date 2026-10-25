@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import cast, Any
 
 
 def utc_now() -> str:
@@ -74,7 +74,7 @@ def create_session_state(
 
 def open_session_state(path: str) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        return cast(dict[str, Any], json.load(f))
 
 
 def save_session_state(state: dict[str, Any], path: str) -> str:
