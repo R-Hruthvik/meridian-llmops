@@ -1,3 +1,4 @@
+import re
 """Live Index & Storage inspection for the operations dashboard.
 
 Every number here is read from a real query against the subsystem the app is
@@ -217,6 +218,8 @@ async def _read_relational(db: Any) -> tuple[RelationalIndexStatus, BackendHealt
 
         tables: list[TableRowCount] = []
         for name in sorted(table_names):
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                continue
             result = await db.execute(text(f'SELECT COUNT(*) AS c FROM "{name}"'))
             tables.append(TableRowCount(name=name, row_count=int(result.scalar() or 0)))
 
