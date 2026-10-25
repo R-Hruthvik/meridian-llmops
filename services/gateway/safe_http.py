@@ -140,8 +140,9 @@ class PinnedAsyncHTTPTransport(httpx.AsyncHTTPTransport):
     def __init__(self):
         try:
             import certifi
+            import ssl
 
-            verify = certifi.where()
+            verify = ssl.create_default_context(cafile=certifi.where())
         except Exception:  # noqa: BLE001
             verify = True
         super().__init__(trust_env=False, verify=verify)
