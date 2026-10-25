@@ -41,12 +41,15 @@ async def health_live():
 @router.get("/health/ready")
 async def health_ready(request: Request):
     """Return only the serving-readiness bit needed by external probes."""
-    qdrant_health = await asyncio.to_thread(vector_store.health)
-    consistency = getattr(request.app.state, "index_consistency", None)
-    index_ok = consistency.ok if consistency is not None else False
-    embedder = ingestion_pipeline.embedder
-    ready = qdrant_health["status"] == "ready" and index_ok and embedder is not None
-    return {"ready": ready}
+    try:
+        qdrant_health = await asyncio.to_thread(vector_store.health)
+        consistency = getattr(request.app.state, "index_consistency", None)
+        index_ok = consistency.ok if consistency is not None else False
+        embedder = getattr(ingestion_pipeline, "embedder", None)
+        ready = qdrant_health.get("status") == "ready" and index_ok and embedder is not None
+        return {"ready": bool(ready)}
+    except Exception:  # noqa: BLE001
+        return {"ready": False}
 
 
 async def _count_vector_chunks(store, tenant_id: str) -> int:
