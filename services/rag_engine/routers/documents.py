@@ -9,10 +9,11 @@ import asyncio
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 
 from packages.core.errors import IndexReadError, IndexWriteError, IngestionError
 from packages.core.models import DocumentFormat, IngestDocumentRequest
+from services.ingestion.manifest import check_consistency
 from services.rag_engine.deps import require_admin, require_user
 from services.rag_engine.routers._state import (
     ingestion_pipeline_ref,
@@ -72,6 +73,7 @@ async def upload_documents_endpoint(
 @router.post("/v1/ingest")
 async def ingest_document_endpoint(
     payload: IngestDocumentRequest,
+    request: Request,
     tenant_id: str = Depends(require_user),
 ):
     """Ingests text into dedicated disk storage, the Qdrant vector store, and the graph."""
@@ -91,6 +93,15 @@ async def ingest_document_endpoint(
             raise cause from None
         raise HTTPException(status_code=400, detail=str(error)) from error
     retriever.update_chunks(vector_store.get_all_chunks(None))
+    try:
+        settings = request.app.state.settings
+        disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
+        qdrant_points = vector_store.count()
+        request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
+        import services.rag_engine.routers.api as _api
+        _api._index_consistency = request.app.state.index_consistency
+    except Exception:  # noqa: BLE001
+        pass
     return {
         **result.to_dict(),
         "title": payload.title or "Uploaded Document",
@@ -192,7 +203,7 @@ async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(re
 
 
 @router.delete("/v1/documents/{doc_id}")
-async def delete_document_endpoint(doc_id: str, tenant_id: str = Depends(require_user)):
+async def delete_document_endpoint(doc_id: str, request: Request, tenant_id: str = Depends(require_user)):
     """Deletes a document and evicts its chunks from vector, lexical, and graph stores."""
     doc = await asyncio.to_thread(ingestion_pipeline.get_document, doc_id, tenant_id=tenant_id)
     if not doc:
@@ -202,4 +213,13 @@ async def delete_document_endpoint(doc_id: str, tenant_id: str = Depends(require
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
     retriever.remove_chunks(chunk_ids)
+    try:
+        settings = request.app.state.settings
+        disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
+        qdrant_points = vector_store.count()
+        request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
+        import services.rag_engine.routers.api as _api
+        _api._index_consistency = request.app.state.index_consistency
+    except Exception:  # noqa: BLE001
+        pass
     return {"status": "deleted", "document_id": doc_id, "message": "Document successfully deleted"}
