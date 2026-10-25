@@ -98,7 +98,7 @@ def test_generic_settings_fields_accept_constructor_names():
 
 
 def test_min_dense_score_defaults_to_calibrated_round_value():
-    assert Settings(_env_file=None).min_dense_score == 0.70
+    assert Settings(_env_file=None).min_dense_score == 0.60
 
 
 def test_canonical_settings_test_route_runs_generation(monkeypatch):

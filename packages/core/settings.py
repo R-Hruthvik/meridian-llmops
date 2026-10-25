@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     # Relational Database & Human-in-the-Loop Review Queue
     database_url: str = Field(default_factory=lambda: os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./verified_rag.db"))
     confidence_threshold: float = 0.85
-    min_dense_score: float = Field(default=0.70, ge=0.0, le=1.0)
+    min_dense_score: float = Field(default=0.60, ge=0.0, le=1.0)
     retrieval_default_top_k: int = Field(default=5, ge=1, le=20)
     max_cycles: int = Field(default=2, ge=1, le=4)
     debug_log_prompts: bool = False
