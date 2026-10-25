@@ -12,6 +12,8 @@ SUPPORTED_SUFFIXES = {".md", ".txt", ".html", ".htm", ".pdf", ".docx"}
 
 def _collect_files(path: Path, recursive: bool) -> list[Path]:
     if path.is_file():
+        if path.suffix.lower() not in SUPPORTED_SUFFIXES:
+            raise FileNotFoundError(f"Unsupported file type: {path}")
         return [path]
     if not path.is_dir():
         raise FileNotFoundError(str(path))
