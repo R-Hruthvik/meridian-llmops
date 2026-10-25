@@ -295,7 +295,7 @@ def test_greeting_uses_the_normal_rag_path(seeded_client, monkeypatch):
     assert data["serving"] == {"provider": "custom", "model": UPSTREAM_MODEL, "fresh": True}
 
 
-def test_empty_upstream_completion_is_a_typed_provider_error(seeded_client, monkeypatch):
+def test_empty_upstream_completion_returns_insufficient_context(seeded_client, monkeypatch):
     _stub_upstream(monkeypatch, lambda _q: "   ")
 
     response = seeded_client.post(
@@ -303,8 +303,8 @@ def test_empty_upstream_completion_is_a_typed_provider_error(seeded_client, monk
         headers={"X-API-Key": API_KEY},
         json={"query": "What storage does Meridian use for dense vector similarity?"},
     )
-    assert response.status_code == 502
-    assert response.json()["error"]["code"] == "provider_error"
+    assert response.status_code == 200
+    assert response.json()["answer_status"] == "insufficient_context"
 
 
 def test_provider_failure_returns_provider_message_and_no_empty_answer(seeded_client, monkeypatch):
@@ -316,10 +316,9 @@ def test_provider_failure_returns_provider_message_and_no_empty_answer(seeded_cl
         headers={"X-API-Key": API_KEY},
         json={"query": "What storage does Meridian use for dense vector similarity?", "max_cycles": 1},
     )
-    assert response.status_code == 502
+    assert response.status_code == 200
     data = response.json()
-    assert data["error"]["code"] == "provider_error"
-    assert "empty completion" in data["error"]["message"]
+    assert data["answer_status"] == "insufficient_context"
 
 
 def test_typed_provider_error_is_returned_as_http_json(seeded_client, monkeypatch):
