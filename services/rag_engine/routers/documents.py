@@ -78,8 +78,8 @@ async def upload_documents_endpoint(
         request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
         import services.rag_engine.routers.api as _api
         _api._index_consistency = request.app.state.index_consistency
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Index consistency refresh failed: %s", error)
     return {"results": results}
 
 

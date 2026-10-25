@@ -337,6 +337,7 @@ class IngestionPipeline:
             self._index_chunks(all_chunks)
             # Hydrate the in-memory knowledge graph from persisted documents.
             try:
+                self.graph_store.clear_all_graph()
                 for doc in self.storage.list_documents():
                     doc_id = doc.get("id")
                     if not doc_id:

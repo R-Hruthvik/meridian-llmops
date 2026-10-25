@@ -8,7 +8,7 @@ from services.ingestion.parsers.base import Block, ParsedDocument
 
 def decode_text(data: bytes) -> tuple[str, str | None]:
     """Decode bytes as utf-8, then utf-8-sig, then latin-1 (with a warning)."""
-    for encoding in ("utf-8", "utf-8-sig"):
+    for encoding in ("utf-8-sig", "utf-8"): 
         try:
             return data.decode(encoding), None
         except UnicodeDecodeError:
