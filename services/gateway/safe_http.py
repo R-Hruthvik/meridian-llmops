@@ -138,6 +138,12 @@ class PinnedAsyncHTTPTransport(httpx.AsyncHTTPTransport):
     """HTTPX transport that disables ambient proxies and pins validated DNS."""
 
     def __init__(self):
-        super().__init__(trust_env=False)
+        try:
+            import certifi
+
+            verify = certifi.where()
+        except Exception:  # noqa: BLE001
+            verify = True
+        super().__init__(trust_env=False, verify=verify)
         self.address_backend = PinnedAddressBackend(self._pool._network_backend)
         self._pool._network_backend = self.address_backend
