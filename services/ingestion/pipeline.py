@@ -158,6 +158,8 @@ class IngestionPipeline:
                     logger.error("Could not restore manifest after failed update: %s", manifest_error)
             raise IngestionError(f"Failed to ingest {filename}: {error}") from error
         warnings = [*parsed.warnings]
+        if not parsed.text.strip():
+            warnings.append("Document contains no extractable text.")
         if injection_found:
             warnings.append("Possible prompt injection detected in one or more chunks.")
         status = "indexed_with_warnings" if warnings else "indexed"
@@ -195,6 +197,8 @@ class IngestionPipeline:
             )
 
         parsed = parse_text(text, doc_format, title=title)
+        if not parsed.text.strip():
+            raise IngestionError("Document contains no extractable text")
         doc_id = f"doc-{uuid.uuid4().hex[:12]}"
         source_format = str(parsed.format.value if hasattr(parsed.format, "value") else parsed.format)
 
