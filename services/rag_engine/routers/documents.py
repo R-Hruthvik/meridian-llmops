@@ -36,6 +36,7 @@ retriever = retriever_ref
 @router.post("/v1/documents")
 async def upload_documents_endpoint(
     files: Annotated[list[UploadFile], File()],
+    request: Request,
     tenant_id: str = Depends(require_user),
 ):
     """Multipart upload (field ``files``, repeatable); one result row per file.
@@ -70,6 +71,15 @@ async def upload_documents_endpoint(
                 }
             )
     retriever.update_chunks(vector_store.get_all_chunks(None))
+    try:
+        settings = request.app.state.settings
+        disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
+        qdrant_points = vector_store.count()
+        request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
+        import services.rag_engine.routers.api as _api
+        _api._index_consistency = request.app.state.index_consistency
+    except Exception:  # noqa: BLE001
+        pass
     return {"results": results}
 
 
