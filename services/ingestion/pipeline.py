@@ -100,11 +100,15 @@ class IngestionPipeline:
         digest = hashlib.sha256(data).hexdigest()
         existing = self.storage.find_duplicate(digest, tenant_id)
         if existing is not None:
+            warnings = []
+            if not data:
+                warnings.append("Document contains no extractable text.")
             return IngestResult(
                 filename=filename,
                 status="duplicate",
                 document_id=existing,
                 duplicate_of=existing,
+                warnings=warnings,
             )
 
         try:

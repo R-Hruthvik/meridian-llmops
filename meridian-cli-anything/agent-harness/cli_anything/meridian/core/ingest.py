@@ -30,32 +30,51 @@ def ingest_path(client: MeridianClient, path: str, recursive: bool = False) -> d
     if not files:
         raise FileNotFoundError(f"No supported files found in {path}")
     results: list[dict[str, Any]] = []
+    skipped: list[dict[str, str]] = []
     for f in files:
-        suffix = f.suffix.lower()
-        if suffix == ".pdf":
-            try:
-                from pypdf import PdfReader
-            except Exception:  # noqa: BLE001
-                from PyPDF2 import PdfReader  # type: ignore
-            reader = PdfReader(str(f))
-            text = "\n".join((page.extract_text() or "") for page in reader.pages)
-            fmt = "md"
-        elif suffix == ".docx":
-            from docx import Document as DocxDocument
-            doc = DocxDocument(str(f))
-            parts = [p.text for p in doc.paragraphs]
-            for table in getattr(doc, "tables", []):
-                for row in table.rows:
-                    parts.append(" | ".join(cell.text for cell in row.cells))
-            text = "\n".join(parts)
-            fmt = "md"
-        else:
-            text = f.read_text(encoding="utf-8", errors="ignore")
-            fmt = suffix.lstrip(".").lower()
-            if fmt == "htm":
-                fmt = "html"
-            if fmt not in {"md", "txt", "html"}:
-                fmt = "txt"
-        data = client.ingest_text(text, title=f.stem, source=str(f), fmt=fmt)
-        results.append(data)
-    return {"ingested": len(results), "files": results}
+        try:
+            suffix = f.suffix.lower()
+            if suffix == ".pdf":
+                try:
+                    from pypdf import PdfReader
+                except Exception:  # noqa: BLE001
+                    from PyPDF2 import PdfReader  # type: ignore
+                reader = PdfReader(str(f))
+                if getattr(reader, "is_encrypted", False):
+                    try:
+                        reader.decrypt("")
+                    except Exception:  # noqa: BLE001
+                        skipped.append({"file": str(f), "reason": "encrypted PDF"})
+                        continue
+                text = "\n".join((page.extract_text() or "") for page in reader.pages)
+                if not text.strip():
+                    skipped.append({"file": str(f), "reason": "no extractable text (scanned/empty)"})
+                    continue
+                fmt = "md"
+            elif suffix == ".docx":
+                from docx import Document as DocxDocument
+                doc = DocxDocument(str(f))
+                parts = [p.text for p in doc.paragraphs]
+                for table in getattr(doc, "tables", []):
+                    for row in table.rows:
+                        parts.append(" | ".join(cell.text for cell in row.cells))
+                text = "\n".join(parts)
+                if not text.strip():
+                    skipped.append({"file": str(f), "reason": "no extractable text"})
+                    continue
+                fmt = "md"
+            else:
+                text = f.read_text(encoding="utf-8", errors="ignore")
+                fmt = suffix.lstrip(".").lower()
+                if fmt == "htm":
+                    fmt = "html"
+                if fmt not in {"md", "txt", "html"}:
+                    fmt = "txt"
+                if not text.strip():
+                    skipped.append({"file": str(f), "reason": "empty file"})
+                    continue
+            data = client.ingest_text(text, title=f.stem, source=str(f), fmt=fmt)
+            results.append(data)
+        except Exception as exc:  # noqa: BLE001
+            skipped.append({"file": str(f), "reason": str(exc)})
+    return {"ingested": len(results), "files": results, "skipped": skipped}
