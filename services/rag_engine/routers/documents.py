@@ -148,7 +148,7 @@ async def seed_sample_documents_endpoint(request: Request, tenant_id: str = Depe
     if sample_docs_dir.exists():
         for doc_file in sample_docs_dir.glob("*.md"):
             title = doc_file.stem.replace("_", " ").title()
-            await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 ingestion_pipeline.ingest_text,
                 text=doc_file.read_text(encoding="utf-8", errors="ignore"),
                 title=title,
@@ -156,7 +156,8 @@ async def seed_sample_documents_endpoint(request: Request, tenant_id: str = Depe
                 source=str(doc_file.name),
                 tenant_id=tenant_id,
             )
-            count += 1
+            if getattr(result, "status", "") != "duplicate":
+                count += 1
     retriever.update_chunks(vector_store.get_all_chunks(None))
     try:
         settings = request.app.state.settings
@@ -198,9 +199,8 @@ async def catalog_alias_endpoint(tenant_id: str = Depends(require_user)):
     """
     # Keep this static alias before the /{doc_id} routes below.
     response = _get_document_list_response(tenant_id)
-    response["Deprecation"] = "true"
-    response["Sunset"] = "2027-01-01"
-    return response
+    from fastapi.responses import JSONResponse
+    return JSONResponse(content=response, headers={"Deprecation": "true", "Sunset": "2027-01-01"})
 
 
 @router.get("/v1/documents/{doc_id}/chunks")

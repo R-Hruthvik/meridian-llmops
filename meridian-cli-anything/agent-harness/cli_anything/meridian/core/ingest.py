@@ -7,7 +7,7 @@ from typing import Any
 
 from cli_anything.meridian.client import MeridianClient
 
-SUPPORTED_SUFFIXES = {".md", ".txt", ".html", ".htm", ".pdf", ".docx"}
+SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".html", ".htm", ".pdf", ".docx"}
 
 
 def _collect_files(path: Path, recursive: bool) -> list[Path]:
