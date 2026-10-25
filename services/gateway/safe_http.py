@@ -48,7 +48,7 @@ def validate_provider_url(
             if provider == "litellm":
                 if not allow_private:
                     raise ValueError
-            elif not allow_private or not is_loopback_host:
+            elif not (allow_private or is_loopback_host):
                 raise ValueError
         if not resolve:
             return url, hostname, port, ()
@@ -62,6 +62,7 @@ def validate_provider_url(
         )
         if not addresses:
             raise ValueError
+        is_loopback_host = hostname in {"localhost", "127.0.0.1", "::1"}
         parsed_addresses = [ipaddress.ip_address(address) for address in addresses]
         if allow_private:
             if any(
@@ -73,19 +74,20 @@ def validate_provider_url(
                 for address in parsed_addresses
             ):
                 raise ValueError
-        elif not all(
-            address.is_global
-            and not (
-                address.is_private
-                or address.is_loopback
-                or address.is_link_local
-                or address.is_unspecified
-                or address.is_multicast
-                or address.is_reserved
-            )
-            for address in parsed_addresses
-        ):
-            raise ValueError
+        elif not (parsed.scheme == "http" and provider in {"ollama", "custom", "openai_compatible", "litellm"} and is_loopback_host):
+            if not all(
+                address.is_global
+                and not (
+                    address.is_private
+                    or address.is_loopback
+                    or address.is_link_local
+                    or address.is_unspecified
+                    or address.is_multicast
+                    or address.is_reserved
+                )
+                for address in parsed_addresses
+            ):
+                raise ValueError
         if parsed.scheme == "http" and provider != "litellm" and not all(
             address.is_loopback for address in parsed_addresses
         ):
