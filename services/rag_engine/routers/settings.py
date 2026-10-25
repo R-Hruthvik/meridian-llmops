@@ -43,10 +43,10 @@ router = APIRouter()
 
 # Resolve shared services through the aggregation module at call time so tests
 # that rebind ``routers.api.<name>`` are honoured.
-graph_store = graph_store_ref
-retriever = retriever_ref
-llm_client = llm_client_ref
-tracer = tracer_ref
+graph_store: Any = graph_store_ref
+retriever: Any = retriever_ref
+llm_client: Any = llm_client_ref
+tracer: Any = tracer_ref
 _runtime_llm_settings = runtime_llm_settings_ref
 
 
@@ -244,7 +244,7 @@ async def update_llm_settings(
         try:
             import services.rag_engine.routers.api as _api
 
-            _api.llm_client = new_llm_client
+            setattr(_api, "llm_client", new_llm_client)
         except (ImportError, RuntimeError):
             pass
         new_agent_graph = build_rag_agent_graph(
