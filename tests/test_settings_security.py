@@ -168,14 +168,14 @@ def test_local_providers_allow_loopback_urls(provider, url, monkeypatch):
     assert result["success"] is True
 
 
-def test_local_provider_model_fetch_requires_private_url_flag(monkeypatch):
+def test_local_provider_model_fetch_allows_loopback_without_private_flag(monkeypatch):
     from services.rag_engine import app as rag_app
 
     _resolved_to(monkeypatch, "127.0.0.1")
     monkeypatch.setattr(rag_app._settings, "allow_private_provider_urls", False)
     result, calls, _ = _call_fetch(monkeypatch, "ollama", "http://localhost:11434")
-    assert calls == []
-    assert result["success"] is False
+    assert calls == ["http://localhost:11434/api/tags"]
+    assert result["success"] is True
 
 
 def test_custom_model_fetch_allows_public_https_endpoint(monkeypatch):
