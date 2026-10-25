@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     api_key_secret: str = Field(default_factory=lambda: os.environ.get("API_KEY_SECRET", ""))
     api_keys: SecretStr = Field(default=SecretStr(""), validation_alias="API_KEYS")
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="ADMIN_API_KEY")
-    rate_limit_per_minute: int = 60
+    rate_limit_per_minute: int = Field(60, ge=1)
     max_upload_mb: int = Field(default=25, gt=0)
     ocr_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="OCR_API_KEY")
     allow_private_provider_urls: bool = False
