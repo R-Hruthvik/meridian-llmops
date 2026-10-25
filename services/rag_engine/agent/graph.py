@@ -281,9 +281,10 @@ def build_rag_agent_graph(
                 entities = tenant_entities[:10]
 
         timings = dict(state.get("timings_ms") or {})
-        timings["retrieve"] = timings.get("retrieve", 0.0) + result.timings_ms.get(
-            "total", (time.perf_counter() - started) * 1000
-        )
+        for stage, value in (result.timings_ms or {}).items():
+            timings[stage] = timings.get(stage, 0.0) + (value or 0.0)
+        if "retrieve" not in timings:
+            timings["retrieve"] = (time.perf_counter() - started) * 1000
         return {
             "retrieved_chunks": sources,
             "entities": entities,
