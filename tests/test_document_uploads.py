@@ -149,3 +149,22 @@ async def test_oversized_upload_stops_reading_at_limit(upload_client):
     assert result["results"][0]["status"] == "rejected"
     assert upload.consumed <= 17
     assert pipeline.storage.list_documents() == []
+
+
+def test_upload_unexpected_error_returns_generic_message(upload_client, monkeypatch):
+    client, pipeline = upload_client
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("secret internal details")
+
+    monkeypatch.setattr(pipeline, "ingest_file", boom)
+    response = client.post(
+        "/v1/documents",
+        headers=HEADERS,
+        files=[("files", ("x.txt", b"hello"))],
+    )
+    assert response.status_code == 200
+    row = response.json()["results"][0]
+    assert row["status"] == "rejected"
+    assert row["error"] == "Internal error while processing upload."
+    assert "secret internal details" not in response.text
