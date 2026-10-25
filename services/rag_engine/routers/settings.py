@@ -244,7 +244,7 @@ async def update_llm_settings(
         try:
             import services.rag_engine.routers.api as _api
 
-            setattr(_api, "llm_client", new_llm_client)
+            _api.llm_client = new_llm_client  # type: ignore[assignment]
         except (ImportError, RuntimeError):
             pass
         new_agent_graph = build_rag_agent_graph(

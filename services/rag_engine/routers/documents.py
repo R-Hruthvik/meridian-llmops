@@ -70,7 +70,7 @@ async def upload_documents_endpoint(
                     "error": str(error),
                 }
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception:
             logger.exception("Unexpected error while ingesting upload %s", filename)
             results.append(
                 {
