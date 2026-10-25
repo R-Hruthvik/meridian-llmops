@@ -105,22 +105,21 @@ async def test_generation_rejects_link_local_litellm_proxy_without_opt_in(monkey
 
 
 @pytest.mark.asyncio
-async def test_generation_rejects_loopback_litellm_proxy_without_private_opt_in(monkeypatch):
+async def test_generation_allows_loopback_litellm_proxy_without_private_opt_in(monkeypatch):
     _resolve_to(monkeypatch, "127.0.0.1")
     client = LiteLLMClient(allow_private_provider_urls=False)
     fake_http = _HTTPClient()
     monkeypatch.setattr(client, "_get_client", lambda: fake_http)
 
-    with pytest.raises(ProviderConfigError, match="URL is not allowed"):
-        await client.chat_completion(
-            [{"role": "user", "content": "hello"}],
-            provider="litellm",
-            model="test-model",
-            api_key="test-key",
-            base_url="http://localhost:4000/v1",
-        )
-
-    assert fake_http.requests == []
+    result = await client.chat_completion(
+        [{"role": "user", "content": "hello"}],
+        provider="litellm",
+        model="test-model",
+        api_key="test-key",
+        base_url="http://localhost:4000/v1",
+    )
+    assert result["choices"][0]["message"]["content"] == "ok"
+    assert fake_http.requests
 
 
 @pytest.mark.asyncio

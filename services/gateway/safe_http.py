@@ -46,7 +46,7 @@ def validate_provider_url(
             if provider not in local_http_providers:
                 raise ValueError
             if provider == "litellm":
-                if not allow_private:
+                if not (allow_private or is_loopback_host):
                     raise ValueError
             elif not (allow_private or is_loopback_host):
                 raise ValueError
