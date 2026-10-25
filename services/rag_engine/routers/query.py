@@ -366,6 +366,7 @@ async def _stream_query_response(
     error = outcome["error"]
     if error is not None:
         yield _sse_event("error", {"message": str(error)})
+        return
 
     raw_answer = final_state.get("draft_answer", "")
     if output_guardrails_enabled and not final_state.get("is_refusal", False):
