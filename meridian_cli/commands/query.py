@@ -51,6 +51,8 @@ def query(
             data = client.query(question, top_k=top_k)
             answer = data.get("answer", "")
             emit(ctx, True, data=data, human=answer)
+    except typer.Exit:
+        raise
     except Exception as exc:  # noqa: BLE001
         emit(ctx, False, error=str(exc))
         raise typer.Exit(1)
