@@ -24,6 +24,10 @@ def list_models(
     except Exception as exc:  # noqa: BLE001
         emit(ctx, False, error=str(exc))
         raise typer.Exit(1)
+    if not (data.get("success") or data.get("status") == "success"):
+        message = data.get("message") or "Model fetch failed"
+        emit(ctx, False, data=data, error=message)
+        raise typer.Exit(1)
     models = data.get("models", [])
-    human = f"Fetched {len(models)} models for {provider}"
+    human = data.get("message") or f"Fetched {len(models)} models for {provider}"
     emit(ctx, True, data=data, human=human)

@@ -264,8 +264,10 @@ def models_group():
 def models_list(provider, base_url, api_key):
     client = _make_client()
     data = settings_core.list_models(client, provider, base_url=base_url, api_key=api_key)
+    if not (data.get("success") or data.get("status") == "success"):
+        raise click.ClickException(data.get("message") or "Model fetch failed")
     models = data.get("models", [])
-    _emit(True, "models.list", data=data, message=f"Fetched {len(models)} models for {provider}")
+    _emit(True, "models.list", data=data, message=data.get("message") or f"Fetched {len(models)} models for {provider}")
 
 
 # smoke
