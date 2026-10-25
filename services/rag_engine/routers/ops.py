@@ -49,6 +49,13 @@ async def health_ready(request: Request):
     return {"ready": ready}
 
 
+async def _count_vector_chunks(store, tenant_id: str) -> int:
+    try:
+        return await asyncio.to_thread(store.count, tenant_id=tenant_id)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 @router.get("/health")
 async def health_check(
     request: Request,
@@ -64,7 +71,7 @@ async def health_check(
         **response,
         # Live count, same source as /v1/documents - a boot-time snapshot went stale on ingest.
         "storage_documents": len(await asyncio.to_thread(ingestion_pipeline.get_documents, tenant_id=tenant_id)),
-        "vector_chunks": await asyncio.to_thread(vector_store.count, tenant_id=tenant_id),
+        "vector_chunks": await _count_vector_chunks(vector_store, tenant_id=tenant_id),
         "services": request.app.state.service_status,
     }
 
