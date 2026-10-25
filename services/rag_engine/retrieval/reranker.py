@@ -89,7 +89,7 @@ class CrossEncoderReranker:
         if self._model is None:
             return self._lexical.rerank(query, chunks, top_k)
 
-        candidates = chunks[: max(20, 2 * top_k)]
+        candidates = chunks[: max(20, 4 * top_k)]
         try:
             scores = self._model.rerank(query, [chunk.text for chunk in candidates], batch_size=64)
             scores = list(scores)

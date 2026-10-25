@@ -191,6 +191,7 @@ class IngestionPipeline:
         doc_format: DocumentFormat = DocumentFormat.MARKDOWN,
         persist: bool = True,
         tenant_id: str = "default",
+        metadata: dict[str, Any] | None = None,
     ) -> IngestResult:
         """Ingest decoded text through the same transactional path as files."""
         parsed = parse_text(text, doc_format, title=title)
@@ -224,7 +225,8 @@ class IngestionPipeline:
             created_at = ""
             if persist:
                 document = Document(
-                    id=doc_id, title=parsed.title, text=parsed.text, format=parsed.format, source=source
+                    id=doc_id, title=parsed.title, text=parsed.text, format=parsed.format, source=source,
+                    metadata=metadata or {},
                 )
                 meta_record = self.storage.save_document(
                     doc=document,

@@ -325,6 +325,18 @@ class LiteLLMClient:
             piece = delta.get("content", "")
             if isinstance(piece, list):
                 piece = "".join(part.get("text", "") for part in piece if isinstance(part, dict))
+            if not isinstance(piece, str) or not piece.strip():
+                for key in ("reasoning", "reasoning_content"):
+                    candidate = delta.get(key)
+                    if isinstance(candidate, str) and candidate.strip():
+                        piece = candidate
+                        break
+                if not (isinstance(piece, str) and piece.strip()):
+                    details = delta.get("reasoning_details")
+                    if isinstance(details, list):
+                        joined = "".join(d.get("text", "") for d in details if isinstance(d, dict)).strip()
+                        if joined:
+                            piece = joined
             if not isinstance(piece, str):
                 raise TypeError("stream content must be text")
             pieces.append(piece)

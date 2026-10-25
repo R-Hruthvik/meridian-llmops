@@ -98,6 +98,7 @@ async def ingest_document_endpoint(
             source=payload.filename or payload.source or "manual",
             doc_format=DocumentFormat(payload.format) if payload.format else DocumentFormat.MARKDOWN,
             tenant_id=tenant_id,
+            metadata=payload.metadata,
         )
     except IngestionError as error:
         cause = error.__cause__
