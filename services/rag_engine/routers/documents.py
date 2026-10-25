@@ -71,6 +71,7 @@ async def upload_documents_endpoint(
                 }
             )
         except Exception as error:  # noqa: BLE001
+            logger.exception("Unexpected error while ingesting upload %s", filename)
             results.append(
                 {
                     "filename": filename,
@@ -81,7 +82,7 @@ async def upload_documents_endpoint(
                     "chunks": 0,
                     "warnings": [],
                     "duplicate_of": None,
-                    "error": str(error),
+                    "error": "Internal error while processing upload.",
                 }
             )
     retriever.update_chunks(vector_store.get_all_chunks(None))
