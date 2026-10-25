@@ -7,7 +7,7 @@ from typing import Any
 
 from cli_anything.meridian.client import MeridianClient
 
-SUPPORTED_SUFFIXES = {".md", ".txt", ".html", ".htm"}
+SUPPORTED_SUFFIXES = {".md", ".txt", ".html", ".htm", ".pdf", ".docx"}
 
 
 def _collect_files(path: Path, recursive: bool) -> list[Path]:
@@ -29,12 +29,27 @@ def ingest_path(client: MeridianClient, path: str, recursive: bool = False) -> d
         raise FileNotFoundError(f"No supported files found in {path}")
     results: list[dict[str, Any]] = []
     for f in files:
-        text = f.read_text(encoding="utf-8", errors="ignore")
-        fmt = f.suffix.lstrip(".").lower()
-        if fmt == "htm":
-            fmt = "html"
-        if fmt not in {"md", "txt", "html"}:
-            fmt = "txt"
+        suffix = f.suffix.lower()
+        if suffix == ".pdf":
+            try:
+                from pypdf import PdfReader
+            except Exception:  # noqa: BLE001
+                from PyPDF2 import PdfReader  # type: ignore
+            reader = PdfReader(str(f))
+            text = "\n".join((page.extract_text() or "") for page in reader.pages)
+            fmt = "md"
+        elif suffix == ".docx":
+            from docx import Document as DocxDocument
+            doc = DocxDocument(str(f))
+            text = "\n".join(p.text for p in doc.paragraphs)
+            fmt = "md"
+        else:
+            text = f.read_text(encoding="utf-8", errors="ignore")
+            fmt = suffix.lstrip(".").lower()
+            if fmt == "htm":
+                fmt = "html"
+            if fmt not in {"md", "txt", "html"}:
+                fmt = "txt"
         data = client.ingest_text(text, title=f.stem, source=str(f), fmt=fmt)
         results.append(data)
     return {"ingested": len(results), "files": results}
