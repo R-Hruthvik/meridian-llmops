@@ -390,7 +390,13 @@ def build_rag_agent_graph(
                     "answer_status": "insufficient_context",
                     "verification_result": VerificationResult(status="unchecked", scope="unchecked"),
                 }
-        except ProviderError:
+        except ProviderError as error:
+            if "empty completion" in str(error.message if hasattr(error, "message") else error).lower():
+                return {
+                    "draft_answer": insufficient_answer,
+                    "answer_status": "insufficient_context",
+                    "verification_result": VerificationResult(status="unchecked", scope="unchecked"),
+                }
             raise
         except Exception as exc:
             provider_message = str(exc)
