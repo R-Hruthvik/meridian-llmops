@@ -123,7 +123,7 @@ class UpdateLLMSettingsRequest(BaseModel):
     deepseek_base_url: str | None = None
     ollama_base_url: str | None = None
     custom_base_url: str | None = None
-    active_provider: str | None = None
+    active_provider: str | None = Field(None, pattern=r"^[a-z0-9_-]+$", description="Active LLM provider identifier")
     openai_org_id: str | None = None
     default_model: str | None = None
     model: str | None = None

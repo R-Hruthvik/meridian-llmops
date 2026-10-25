@@ -11,7 +11,7 @@ import time
 from typing import Any, cast
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from packages.core.errors import ProviderError
@@ -204,6 +204,10 @@ async def update_llm_settings(
     updates = payload.model_dump(exclude_none=True)
 
     async with _settings_lock:
+        if "active_provider" in updates and updates.get("active_provider") is not None:
+            candidate = str(updates["active_provider"]).lower()
+            if candidate not in {"openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom", "openai_compatible", "litellm"}:
+                raise HTTPException(status_code=400, detail=f"Unsupported active_provider: {candidate}")
         selected_provider = (updates.get("active_provider") or _runtime_llm_settings.get("active_provider", "openai")).lower()
         if updates.get("api_key") is not None:
             updates[f"{selected_provider}_api_key"] = updates["api_key"]
