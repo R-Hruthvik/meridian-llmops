@@ -161,7 +161,7 @@ class HybridRetriever:
                 chunk = dense_hit.chunk
             else:
                 # BM25-only hit: materialize from the disk-record corpus.
-                chunk = self.bm25_index.chunk_of(candidate.chunk_id)
+                chunk = bm25_index.chunk_of(candidate.chunk_id)
             if chunk is None:
                 continue
             if str(chunk.metadata.get("tenant_id", "default")) != tenant_id:
