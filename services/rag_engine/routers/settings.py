@@ -241,6 +241,12 @@ async def update_llm_settings(
 
         new_llm_client = LiteLLMClient(allow_private_provider_urls=_settings.allow_private_provider_urls)
         llm_client = new_llm_client
+        try:
+            import services.rag_engine.routers.api as _api
+
+            _api.llm_client = new_llm_client
+        except (ImportError, RuntimeError):
+            pass
         new_agent_graph = build_rag_agent_graph(
             retriever=retriever,
             graph_store=cast(Any, graph_store),

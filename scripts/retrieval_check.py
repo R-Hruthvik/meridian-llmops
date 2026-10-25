@@ -126,7 +126,7 @@ def main() -> int:
             result = retriever.retrieve(case['question'], top_k=args.top_k, tenant_id=args.tenant)
             dense = [c.scores.get('dense') for c in result.chunks if c.scores.get('dense') is not None]
             best = max(dense) if dense else 0.0
-            flagged = best < 0.70
+            flagged = best < settings.min_dense_score
             unanswerable_flagged += int(flagged)
             print(f"[{'PASS' if flagged else 'FAIL'}] {case['id']} (unanswerable, best dense {best:.3f}): {case['question']}")
 

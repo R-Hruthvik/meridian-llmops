@@ -66,6 +66,8 @@ def ingest_path(client: MeridianClient, path: str, recursive: bool = False) -> d
             else:
                 text = f.read_text(encoding="utf-8", errors="ignore")
                 fmt = suffix.lstrip(".").lower()
+                if fmt == "markdown":
+                    fmt = "md"
                 if fmt == "htm":
                     fmt = "html"
                 if fmt not in {"md", "txt", "html"}:

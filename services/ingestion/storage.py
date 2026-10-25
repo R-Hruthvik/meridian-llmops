@@ -209,11 +209,17 @@ class DocumentStorageManager:
                         raw_text = candidate_path.read_text(encoding="utf-8", errors="ignore")
                 if not raw_text and filename:
                     for candidate in self.originals_dir.glob(f"*/{doc_id}/{filename}"):
-                        raw_text = candidate.read_text(encoding="utf-8", errors="ignore")
-                        break
+                        cand_resolved = candidate.resolve()
+                        if self.root_dir.resolve() in cand_resolved.parents or cand_resolved == self.root_dir.resolve():
+                            raw_text = cand_resolved.read_text(encoding="utf-8", errors="ignore")
+                            break
                     else:
                         legacy = self.docs_dir / filename
-                        if legacy.exists() and self.root_dir.resolve() in legacy.resolve().parents:
+                        try:
+                            legacy_resolved = legacy.resolve()
+                        except (OSError, RuntimeError):
+                            legacy_resolved = None
+                        if legacy.exists() and legacy_resolved is not None and (self.root_dir.resolve() in legacy_resolved.parents):
                             raw_text = legacy.read_text(encoding="utf-8", errors="ignore")
 
             meta["chunks"] = chunks  # type: ignore[typeddict-unknown-key]
@@ -285,9 +291,7 @@ class DocumentStorageManager:
             for record in records:
                 if isinstance(record, dict):
                     record.pop("embedding", None)
-            temporary = path.with_suffix(".json.tmp")
-            temporary.write_text(json.dumps(records, indent=2), encoding="utf-8")
-            temporary.replace(path)
+            atomic_write_bytes(path, json.dumps(records, indent=2).encode("utf-8"))
 
     def remove_document_files(self, doc_id: str) -> None:
         """Remove every disk artifact of a document (transaction rollback and delete)."""

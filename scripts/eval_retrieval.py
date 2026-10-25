@@ -17,7 +17,7 @@ from scripts.retrieval_check import build_engine, hit_at_k, reciprocal_rank
 from services.rag_engine.retrieval.reranker import CrossEncoderReranker, LexicalReranker
 
 
-def evaluate(retriever, cases: list[dict], top_k: int) -> tuple[float, float, float]:
+def evaluate(retriever, cases: list[dict], top_k: int, min_dense_score: float = 0.60) -> tuple[float, float, float]:
     answerable = [case for case in cases if case.get("answerable", True)]
     hits = 0
     reciprocal_ranks = 0.0
