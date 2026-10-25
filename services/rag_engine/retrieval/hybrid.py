@@ -96,7 +96,7 @@ class HybridRetriever:
         self.reranker = reranker
         self.tracer = tracer
         self._bm25_lock = threading.Lock()
-        self._embed_lock = threading.Lock()
+        self._embed_lock = threading.Semaphore(2)
 
     def update_chunks(self, chunks: list[Chunk]) -> None:
         """Rebuild the lexical corpus from the caller's chunk records.
