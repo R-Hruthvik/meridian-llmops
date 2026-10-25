@@ -1,4 +1,3 @@
-import re
 """Live Index & Storage inspection for the operations dashboard.
 
 Every number here is read from a real query against the subsystem the app is
@@ -7,6 +6,7 @@ and this module never raises: describing degraded state is the whole job.
 """
 
 import logging
+import re
 from typing import Any
 
 from sqlalchemy import inspect, text

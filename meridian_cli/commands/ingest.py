@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 def ingest(
     ctx: typer.Context,
-    path: Path = typer.Argument(..., help="Directory to ingest"),
+    path: Path = typer.Argument(..., help="File or directory to ingest"),
     recursive: bool = typer.Option(False, "--recursive", "-r", help="Recurse into subdirectories"),
 ) -> None:
     script = PROJECT_ROOT / "scripts" / "ingest_folder.py"

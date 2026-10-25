@@ -123,15 +123,24 @@ async def ingest_document_endpoint(
 
 
 @router.delete("/v1/documents")
-async def clear_all_documents_endpoint(tenant_id: str = Depends(require_admin)):
+async def clear_all_documents_endpoint(request: Request, tenant_id: str = Depends(require_admin)):
     """Clears all documents and chunks from dedicated storage and active memory."""
     count = await asyncio.to_thread(ingestion_pipeline.clear_all, tenant_id=tenant_id)
     retriever.update_chunks(vector_store.get_all_chunks(None))
+    try:
+        settings = request.app.state.settings
+        disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
+        qdrant_points = vector_store.count()
+        request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
+        import services.rag_engine.routers.api as _api
+        _api._index_consistency = request.app.state.index_consistency
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Index consistency refresh failed: %s", error)
     return {"status": "cleared", "deleted_count": count, "message": f"All {count} documents removed from storage"}
 
 
 @router.post("/v1/documents/seed-samples")
-async def seed_sample_documents_endpoint(tenant_id: str = Depends(require_admin)):
+async def seed_sample_documents_endpoint(request: Request, tenant_id: str = Depends(require_admin)):
     """Seeds or resets the default sample documentation into the knowledge base."""
     sample_docs_dir = Path(__file__).parents[3] / "sample_docs"
     count = 0
@@ -148,6 +157,15 @@ async def seed_sample_documents_endpoint(tenant_id: str = Depends(require_admin)
             )
             count += 1
     retriever.update_chunks(vector_store.get_all_chunks(None))
+    try:
+        settings = request.app.state.settings
+        disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
+        qdrant_points = vector_store.count()
+        request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
+        import services.rag_engine.routers.api as _api
+        _api._index_consistency = request.app.state.index_consistency
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Index consistency refresh failed: %s", error)
     return {"status": "seeded", "documents_seeded": count}
 
 
