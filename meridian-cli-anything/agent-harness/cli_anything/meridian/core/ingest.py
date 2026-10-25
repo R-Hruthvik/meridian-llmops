@@ -43,7 +43,11 @@ def ingest_path(client: MeridianClient, path: str, recursive: bool = False) -> d
         elif suffix == ".docx":
             from docx import Document as DocxDocument
             doc = DocxDocument(str(f))
-            text = "\n".join(p.text for p in doc.paragraphs)
+            parts = [p.text for p in doc.paragraphs]
+            for table in getattr(doc, "tables", []):
+                for row in table.rows:
+                    parts.append(" | ".join(cell.text for cell in row.cells))
+            text = "\n".join(parts)
             fmt = "md"
         else:
             text = f.read_text(encoding="utf-8", errors="ignore")
