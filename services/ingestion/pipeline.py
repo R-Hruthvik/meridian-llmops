@@ -184,6 +184,16 @@ class IngestionPipeline:
         tenant_id: str = "default",
     ) -> IngestResult:
         """Ingest decoded text through the same transactional path as files."""
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        existing = self.storage.find_duplicate(digest, tenant_id)
+        if existing is not None:
+            return IngestResult(
+                filename=title or "manual",
+                status="duplicate",
+                document_id=existing,
+                duplicate_of=existing,
+            )
+
         parsed = parse_text(text, doc_format, title=title)
         doc_id = f"doc-{uuid.uuid4().hex[:12]}"
         source_format = str(parsed.format.value if hasattr(parsed.format, "value") else parsed.format)
