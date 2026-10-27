@@ -128,6 +128,90 @@ async def _review_flags(db: AsyncSession, tenant_id: str) -> set[str]:
         return set()
 
 
+class _FinalizedQueryResult(tuple):
+    """Carrier for :func:`_finalize_query_result` output."""
+
+    def __new__(cls, final_answer: Any, verification: Any, final_state: dict[str, Any] | None = None):
+        obj = super().__new__(cls, (final_answer, verification))
+        obj.final_answer = final_answer
+        obj.answer = final_answer
+        obj.verification = verification
+        obj.final_state = final_state if final_state is not None else {}
+        return obj
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, str):
+            if key in ("final_answer", "answer"):
+                return self[0]
+            if key == "verification":
+                return self[1]
+            if key == "final_state":
+                return self.final_state
+            if isinstance(self.final_state, dict) and key in self.final_state:
+                return self.final_state[key]
+            raise KeyError(key)
+        return super().__getitem__(key)
+
+
+def _resolve_output_guardrails(candidate: Any) -> Any:
+    guardrails = candidate
+    if guardrails is not None and not hasattr(guardrails, "evaluate"):
+        guardrails = None
+    if guardrails is None:
+        guardrails = globals().get("output_guardrails")
+    if guardrails is None or not hasattr(guardrails, "evaluate"):
+        try:
+            from services.rag_engine.routers import _state as _state_mod
+
+            guardrails = getattr(_state_mod, "output_guardrails", None)
+        except Exception:  # noqa: BLE001
+            guardrails = None
+    if guardrails is None or not hasattr(guardrails, "evaluate"):
+        try:
+            import sys
+
+            api_mod = sys.modules.get("services.rag_engine.routers.api")
+            if api_mod is not None:
+                guardrails = getattr(api_mod, "output_guardrails", None)
+        except Exception:  # noqa: BLE001
+            guardrails = None
+    return guardrails
+
+
+def _finalize_query_result(
+    final_state: dict[str, Any],
+    output_guardrails_enabled: bool = True,
+    output_guardrails: Any = None,
+    raw_answer_override: Any = None,
+) -> _FinalizedQueryResult:
+    """Apply output guardrails and compute the verification summary."""
+    if not isinstance(final_state, dict):
+        final_state = {}
+    guardrails = _resolve_output_guardrails(output_guardrails)
+    raw_answer = (
+        raw_answer_override
+        if isinstance(raw_answer_override, str)
+        else final_state.get("draft_answer", "")
+    )
+    if output_guardrails_enabled and not final_state.get("is_refusal", False):
+        out_result = guardrails.evaluate(raw_answer)
+        final_answer = out_result.sanitized_text
+        if not out_result.allowed:
+            final_state["answer_status"] = "refused"
+            final_state["is_refusal"] = True
+            final_state["verification_result"] = VerificationSummary(
+                status="unchecked", scope="unchecked"
+            )
+    else:
+        final_answer = raw_answer
+
+    verification_result = final_state.get("verification_result")
+    verification = VerificationSummary.model_validate(
+        verification_result.model_dump() if verification_result is not None else {}
+    )
+    return _FinalizedQueryResult(final_answer, verification, final_state)
+
+
 @router.post("/v1/query", response_model=QueryResponse)
 async def query_endpoint(
     req: QueryRequest,
@@ -187,7 +271,7 @@ async def query_endpoint(
             }
             final_state = await agent_graph.ainvoke(
                 initial_state,
-                config={"configurable": {"top_k": req.top_k}},
+                config={"configurable": {"top_k": req.top_k, "token_sink": None}},
             )
             span.set_attribute("cycle_count", final_state["cycle_count"])
             verification_result = final_state.get("verification_result")
@@ -197,18 +281,11 @@ async def query_endpoint(
             )
 
         # 3. Output Guardrails
-        raw_answer = final_state.get("draft_answer", "")
-        if output_guardrails_enabled and not final_state.get("is_refusal", False):
-            with trace.span("output-guardrails") as span:
-                out_result = output_guardrails.evaluate(raw_answer)
-                span.set_attribute("allowed", out_result.allowed)
-                final_answer = out_result.sanitized_text
-                if not out_result.allowed:
-                    final_state["answer_status"] = "refused"
-                    final_state["is_refusal"] = True
-                    final_state["verification_result"] = VerificationSummary(status="unchecked", scope="unchecked")
-        else:
-            final_answer = raw_answer
+        with trace.span("output-guardrails") as span:
+            finalized = _finalize_query_result(final_state, output_guardrails_enabled)
+            final_answer = finalized.final_answer
+            verification = finalized.verification
+            span.set_attribute("allowed", not final_state.get("is_refusal", False))
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     timings_ms = dict(final_state.get("timings_ms") or {})
@@ -364,21 +441,9 @@ async def _stream_query_response(
         yield _sse_event("error", {"message": str(error)})
         return
 
-    raw_answer = final_state.get("draft_answer", "")
-    if output_guardrails_enabled and not final_state.get("is_refusal", False):
-        out_result = output_guardrails.evaluate(raw_answer)
-        final_answer = out_result.sanitized_text
-        if not out_result.allowed:
-            final_state["answer_status"] = "refused"
-            final_state["is_refusal"] = True
-            final_state["verification_result"] = VerificationSummary(status="unchecked", scope="unchecked")
-    else:
-        final_answer = raw_answer
-
-    verification_result = final_state.get("verification_result")
-    verification = VerificationSummary.model_validate(
-        verification_result.model_dump() if verification_result is not None else {}
-    )
+    finalized = _finalize_query_result(final_state, output_guardrails_enabled)
+    final_answer = finalized.final_answer
+    verification = finalized.verification
     yield _sse_event(
         "verification_complete",
         {

@@ -117,6 +117,8 @@ from services.rag_engine.routers.ops import router as ops_router
 from services.rag_engine.routers.query import (
     GuardrailCheckRequest,  # noqa: F401 - re-exported for import compatibility
     RetrieveRequest,  # noqa: F401 - re-exported for import compatibility
+    _FinalizedQueryResult,  # noqa: F401 - re-exported for import compatibility
+    _finalize_query_result,  # noqa: F401 - re-exported for import compatibility
     _review_flags,  # noqa: F401 - re-exported for import compatibility
     _sse_event,  # noqa: F401 - re-exported for test/import compatibility
     _stream_query_response,  # noqa: F401 - re-exported for test/import compatibility
