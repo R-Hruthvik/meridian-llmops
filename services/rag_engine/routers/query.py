@@ -81,6 +81,7 @@ class RetrieveRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Search query")
     top_k: int = Field(5, ge=1, le=20, description="Number of chunks to return")
     debug: bool = Field(False, description="Include per-stage score detail")
+    session_id: str | None = Field(None, description="Session ID for conversation grouping")
 
 
 @router.post("/v1/retrieve")
@@ -105,6 +106,7 @@ async def retrieve_endpoint(
         tenant_id=tenant_id,
         debug=payload.debug,
         flagged_chunk_ids=flagged_chunk_ids,
+        session_id=payload.session_id,
     )
     return {
         "query": result.query,
@@ -268,6 +270,7 @@ async def query_endpoint(
                 "serving_model": None,
                 "usage": None,
                 "debug": {},
+                "session_id": req.session_id,
             }
             final_state = await agent_graph.ainvoke(
                 initial_state,
@@ -371,9 +374,8 @@ async def _stream_query_response(
         "serving_model": None,
         "usage": None,
         "debug": {},
+        "session_id": req.session_id,
     }
-
-    events: asyncio.Queue[Any] = asyncio.Queue()
     token_sink: asyncio.Queue[Any] = asyncio.Queue()
     retrieval_ready = asyncio.Event()
     outcome: dict[str, Any] = {"final_state": {}, "error": None}

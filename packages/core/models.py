@@ -164,6 +164,7 @@ class QueryRequest(BaseModel):
     top_k: int = Field(default_factory=_default_retrieval_top_k, ge=1, le=20, description="Number of chunks to retrieve")
     max_cycles: int = Field(default_factory=_default_max_cycles, ge=1, le=4, description="Maximum total retrieval and generation attempts")
     enforce_guardrails: bool = Field(True, description="Whether to enforce input/output rails")
+    session_id: str | None = Field(None, description="Session ID for conversation grouping")
 
 
 class ServingProvenance(BaseModel):

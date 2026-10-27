@@ -97,6 +97,8 @@ class HybridRetriever:
         self.tracer = tracer
         self._bm25_lock = threading.Lock()
         self._embed_lock = threading.Semaphore(2)
+        self._session_chunks: dict[str, list[str]] = {}  # session_id -> list of chunk_ids seen
+        self._session_lock = threading.Lock()
 
     def update_chunks(self, chunks: list[Chunk]) -> None:
         """Rebuild the lexical corpus from the caller's chunk records.
@@ -106,6 +108,23 @@ class HybridRetriever:
         """
         with self._bm25_lock:
             self.bm25_index = BM25Index(chunks)
+
+    def record_session_chunks(self, session_id: str, chunk_ids: list[str]) -> None:
+        """Record chunks seen in a session for grouping bias."""
+        if not session_id:
+            return
+        with self._session_lock:
+            existing = self._session_chunks.setdefault(session_id, [])
+            for cid in chunk_ids:
+                if cid not in existing:
+                    existing.append(cid)
+
+    def session_chunks(self, session_id: str) -> list[str]:
+        """Return chunks seen in a session."""
+        if not session_id:
+            return []
+        with self._session_lock:
+            return list(self._session_chunks.get(session_id, []))
 
     def remove_chunks(self, chunk_ids: list[str]) -> None:
         """Evict chunks from the lexical index when their documents are deleted."""
@@ -119,6 +138,7 @@ class HybridRetriever:
         tenant_id: str = "default",
         debug: bool = False,
         flagged_chunk_ids: set[str] | None = None,
+        session_id: str | None = None,
     ) -> RetrievalResult:
         pool = max(self.pool_min, 4 * top_k)
         timings: dict[str, float] = {name: 0.0 for name in ("embed", "dense", "bm25", "fusion", "rerank")}
@@ -205,10 +225,24 @@ class HybridRetriever:
             ]
             candidates.sort(key=lambda item: item[1]["final"], reverse=True)
 
+        # Session-aware grouping bias: boost chunks from same session
+        if session_id:
+            seen_session = set(self.session_chunks(session_id))
+            if seen_session:
+                candidates = [
+                    (chunk, {**scores, "session_boost": 0.1 if chunk.id in seen_session else 0.0,
+                             "final": scores["final"] + (0.01 if chunk.id in seen_session else 0.0)})
+                    for chunk, scores in candidates
+                ]
+                candidates.sort(key=lambda item: item[1]["final"], reverse=True)
+
         chunks = [
             RankedChunk(chunk=chunk, rank=position, scores=scores)
             for position, (chunk, scores) in enumerate(candidates[:top_k], start=1)
         ]
+        # Record session chunks for grouping bias
+        if session_id and chunks:
+            self.record_session_chunks(session_id, [c.chunk_id for c in chunks])
         timings["total"] = _ms(started)
         return RetrievalResult(query=query, top_k=top_k, chunks=chunks, timings_ms=timings)
 
