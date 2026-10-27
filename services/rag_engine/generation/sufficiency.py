@@ -86,7 +86,16 @@ def has_sufficient_context(
     """Require useful retrieval evidence and concrete support for narrow fact requests."""
     query_terms = _tokens(query)
     substantive = [term for term in query_terms if term not in _STOP_WORDS and len(term) > 1]
-    required_matches = math.ceil(len(substantive) / 2) if substantive else 1
+    # Tune thresholds per question type: short/simple questions require less
+    # lexical overlap than multi-facet questions.
+    if len(substantive) <= 4 or re.match(
+        r"^(what|which|who|where|when|how many|how much|is|are|does|do)\b",
+        query.strip(),
+        re.IGNORECASE,
+    ):
+        required_matches = max(1, math.ceil(len(substantive) / 3)) if substantive else 1
+    else:
+        required_matches = math.ceil(len(substantive) / 2) if substantive else 1
 
     for chunk in chunks:
         scores = _scores(chunk)
@@ -117,4 +126,32 @@ def has_sufficient_context(
                 and _has_required_evidence(query, chunk)
             ):
                 return True
+
+    # Allow generation when a chunk is a borderline high-confidence match: a
+    # dense score just below the gate or strong lexical support is enough if the
+    # chunk also carries the required evidence for the question.
+    for chunk in chunks:
+        scores = _scores(chunk)
+        dense = scores.get("dense")
+        bm25 = scores.get("bm25")
+        text_terms = set(_tokens(str(chunk.get("text", ""))))
+        coverage = sum(term in text_terms for term in substantive)
+        if (
+            _has_required_evidence(query, chunk)
+            and coverage >= max(1, required_matches - 1)
+            and (
+                (
+                    isinstance(dense, (int, float))
+                    and not isinstance(dense, bool)
+                    and dense >= max(0.4, min_dense_score - 0.15)
+                )
+                or (
+                    isinstance(bm25, (int, float))
+                    and not isinstance(bm25, bool)
+                    and bm25 > 0
+                    and coverage >= 1
+                )
+            )
+        ):
+            return True
     return False
