@@ -61,7 +61,16 @@ _CITATION_AFTER_PUNCTUATION_RE = re.compile(r"([.!?])\s*(\[\d+\](?:\s*\[\d+\])*)
 
 def _sentences(answer: str) -> list[str]:
     answer = _CITATION_AFTER_PUNCTUATION_RE.sub(r" \2\1 ", answer.strip())
-    return [sentence.strip() for sentence in _SENTENCE_BOUNDARY_RE.split(answer) if sentence.strip()]
+    result: list[str] = []
+    for sentence in _SENTENCE_BOUNDARY_RE.split(answer):
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        # Drop stray punctuation-only fragments produced by citation movement.
+        if not re.search(r"[\w\[]", sentence):
+            continue
+        result.append(sentence)
+    return result
 
 
 def _normalized_values(text: str) -> tuple[set[str], list[tuple[str, str]], dict[str, str]]:
@@ -114,17 +123,46 @@ def _verify_citations(answer: str, sources: Sequence[VerificationSource], answer
     numeric_mismatches: set[str] = set()
 
     sentences = _sentences(answer)
-    for sentence in sentences:
-        citations = [int(value) for value in _CITATION_RE.findall(sentence)]
+    sentence_citations = [
+        [int(value) for value in _CITATION_RE.findall(sentence)] for sentence in sentences
+    ]
+    for index, sentence in enumerate(sentences):
+        citations = sentence_citations[index]
         if not citations:
-            if answer_status != "insufficient_context":
+            has_later_citation = any(
+                sentence_citations[later] for later in range(index + 1, len(sentences))
+            )
+            if answer_status != "insufficient_context" and not has_later_citation:
                 uncited_claims.append(sentence)
+            if answer_status == "insufficient_context" or not has_later_citation:
+                continue
+
+            # Allow trailing/collective citations: verify this sentence's numbers
+            # against the sources cited by later sentences.
+            later_citations = [
+                citation
+                for later in range(index + 1, len(sentences))
+                for citation in sentence_citations[later]
+            ]
+            valid_later_citations = [
+                citation for citation in later_citations if citation in valid_sources
+            ]
+            sentence_numbers, sentence_dates, sentence_displays = _normalized_values(sentence)
+            cited_text = "\n".join(
+                valid_sources[citation] for citation in valid_later_citations
+            )
+            source_numbers, source_dates, _ = _normalized_values(cited_text)
+            numeric_mismatches.update(
+                sentence_displays[value] for value in sentence_numbers - source_numbers
+            )
+            if not _date_sequence_is_supported(sentence_dates, source_dates):
+                numeric_mismatches.update(display for _, display in sentence_dates)
             continue
 
-        valid_citations = [index for index in citations if index in valid_sources]
-        invalid_citations.update(index for index in citations if index not in valid_sources)
+        valid_citations = [citation for citation in citations if citation in valid_sources]
+        invalid_citations.update(citation for citation in citations if citation not in valid_sources)
         sentence_numbers, sentence_dates, sentence_displays = _normalized_values(sentence)
-        cited_text = "\n".join(valid_sources[index] for index in valid_citations)
+        cited_text = "\n".join(valid_sources[citation] for citation in valid_citations)
         source_numbers, source_dates, _ = _normalized_values(cited_text)
         numeric_mismatches.update(
             sentence_displays[value] for value in sentence_numbers - source_numbers
