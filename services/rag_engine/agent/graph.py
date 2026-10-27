@@ -465,10 +465,16 @@ def build_rag_agent_graph(
 
         timings = dict(state.get("timings_ms") or {})
         timings["generate"] = timings.get("generate", 0.0) + (time.perf_counter() - started) * 1000
+        draft_status = (
+            "insufficient_context"
+            if isinstance(draft, str)
+            and (draft.strip() == insufficient_answer or draft.strip().startswith(insufficient_answer))
+            else "answered"
+        )
         return {
             "draft_answer": draft,
             "retrieved_chunks": [SearchResult.model_validate(item) for item in selected_chunks],
-            "answer_status": "answered",
+            "answer_status": draft_status,
             "verification_result": None,
             "is_refusal": False,
             "serving_provider": response.get("provider", provider),
@@ -484,8 +490,17 @@ def build_rag_agent_graph(
         logger.debug("request_id=%s %s=%s", request_id, kind, serialized)
 
     async def verify_node(state: RagAgentState) -> dict[str, Any]:
-        if state.get("answer_status") == "insufficient_context":
-            return {"verification_result": VerificationResult(status="unchecked", scope="unchecked")}
+        if state.get("answer_status") == "insufficient_context" or (
+            isinstance(state.get("draft_answer"), str)
+            and (
+                state.get("draft_answer", "").strip() == insufficient_answer
+                or state.get("draft_answer", "").strip().startswith(insufficient_answer)
+            )
+        ):
+            return {
+                "answer_status": "insufficient_context",
+                "verification_result": VerificationResult(status="unchecked", scope="unchecked"),
+            }
         sources = [
             VerificationSource(index=index, text=source.text, chunk_id=source.chunk_id)
             for index, source in enumerate(state.get("retrieved_chunks", []), start=1)
@@ -560,6 +575,12 @@ def build_rag_agent_graph(
 
     def route_after_verification(state: RagAgentState) -> str:
         result = state.get("verification_result")
+        draft = state.get("draft_answer", "")
+        if state.get("answer_status") == "insufficient_context" or (
+            isinstance(draft, str)
+            and (draft.strip() == insufficient_answer or draft.strip().startswith(insufficient_answer))
+        ):
+            return "end"
         if result is None or result.status not in {"citations_failed", "unsupported"}:
             return "end"
         if state.get("cycle_count", 0) < state.get("max_cycles", 1):
@@ -570,7 +591,13 @@ def build_rag_agent_graph(
 
     def exhausted_attempts_node(state: RagAgentState) -> dict[str, Any]:
         result = state.get("verification_result")
-        status = "unverified" if result and result.status == "citations_failed" else "refused"
+        draft = state.get("draft_answer", "")
+        if isinstance(draft, str) and (
+            draft.strip() == insufficient_answer or draft.strip().startswith(insufficient_answer)
+        ):
+            status = "insufficient_context"
+        else:
+            status = "unverified" if result and result.status == "citations_failed" else "refused"
         update: dict[str, Any] = {"answer_status": status, "is_refusal": status == "refused"}
         if status == "refused":
             update["draft_answer"] = refusal_generator.generate(state["query"])
