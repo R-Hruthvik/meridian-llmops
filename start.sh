@@ -42,9 +42,16 @@ print_help() {
 
 ensure_python_deps() {
     if command -v uv >/dev/null 2>&1; then
-        if ! $PYTHON_CMD -c 'import fastapi, uvicorn' >/dev/null 2>&1; then
+        if [ ! -f "$ROOT_DIR/.venv/bin/python" ]; then
             echo -e "${BLUE}Installing Python dependencies...${NC}"
             uv sync --frozen --no-dev
+        elif ! "$ROOT_DIR/.venv/bin/python" -c 'import fastapi, uvicorn' >/dev/null 2>&1; then
+            echo -e "${BLUE}Installing Python dependencies...${NC}"
+            uv sync --frozen --no-dev
+        fi
+    elif command -v python3 >/dev/null 2>&1; then
+        if ! python3 -c 'import fastapi, uvicorn' >/dev/null 2>&1; then
+            echo -e "${YELLOW}Python dependencies may be missing; install them with 'uv sync --frozen --no-dev' or pip.${NC}"
         fi
     fi
 }
