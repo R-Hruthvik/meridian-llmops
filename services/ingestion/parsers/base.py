@@ -54,3 +54,8 @@ class ParsedDocument:
             else:
                 parts.append(block.text)
         return "\n\n".join(parts)
+
+
+# Parser/normalizer provenance versions tracked in the index manifest.
+PARSER_VERSION = "v1"
+NORMALIZER_VERSION = "v1"
