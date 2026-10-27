@@ -11,10 +11,13 @@ from dataclasses import dataclass
 
 from packages.core.models import Chunk, Document, DocumentFormat
 from services.ingestion.parsers.base import ParsedDocument
+from services.ingestion.parsers.base import NORMALIZER_VERSION, PARSER_VERSION
 from services.ingestion.parsers.md import parse_markdown
 
 # Per-format chunking parameters (target_tokens, max_tokens, overlap_tokens)
 CHUNKER_VERSION = "token-aware-v1"
+PARSER_VERSION = PARSER_VERSION
+NORMALIZER_VERSION = NORMALIZER_VERSION
 FORMAT_CHUNK_PARAMS: dict[str, tuple[int, int, int]] = {
     "md": (350, 450, 50),
     "txt": (300, 400, 40),
@@ -56,7 +59,18 @@ def _split_units(text: str, kind: str) -> list[_Unit]:
         pieces = text.split("\n")
     else:
         pieces = _SENTENCE_RE.split(text)
-    return [_Unit(text=piece.strip(), tokens=count_tokens(piece)) for piece in pieces if piece.strip()]
+    units: list[_Unit] = []
+    for piece in pieces:
+        if not piece.strip():
+            continue
+        # Preserve leading indentation for code blocks; trim table rows.
+        if kind == "code":
+            cleaned = piece.rstrip()
+        else:
+            cleaned = piece.strip()
+        if cleaned.strip():
+            units.append(_Unit(text=cleaned, tokens=count_tokens(cleaned)))
+    return units
 
 
 class TokenAwareChunker:
@@ -68,7 +82,16 @@ class TokenAwareChunker:
         max_tokens: int = 450,
         overlap_tokens: int = 50,
         source_format: str = "default",
+        format: str | None = None,
+        doc_format: str | None = None,
     ):
+        if format is not None:
+            source_format = format
+        if doc_format is not None:
+            source_format = doc_format
+        # Accept DocumentFormat-like values.
+        source_format = getattr(source_format, "value", source_format)
+        source_format = str(source_format).lower() if source_format else "default"
         params = FORMAT_CHUNK_PARAMS.get(source_format, FORMAT_CHUNK_PARAMS["default"])
         self.target_tokens = target_tokens if target_tokens != 350 else params[0]
         self.max_tokens = max_tokens if max_tokens != 450 else params[1]
@@ -96,14 +119,26 @@ class TokenAwareChunker:
         source_format: str = "",
         title: str | None = None,
         tenant_id: str = "default",
+        format: str | None = None,
     ) -> list[Chunk]:
+        if format is not None:
+            source_format = format
+        source_format = getattr(source_format, "value", source_format)
+        source_format = str(source_format).lower() if source_format not in (None, "") else ""
+        if source_format and source_format not in FORMAT_CHUNK_PARAMS:
+            source_format = "default" if not source_format else source_format
         resolved_title = title or parsed.title
-        # Use format-specific chunker params when available
-        if source_format and source_format != self.source_format:
+        # Use format-specific chunker params when available, without clobbering
+        # explicitly configured budgets.
+        if source_format and source_format in FORMAT_CHUNK_PARAMS and source_format != self.source_format:
             fmt_params = FORMAT_CHUNK_PARAMS.get(source_format, FORMAT_CHUNK_PARAMS["default"])
-            self.target_tokens = fmt_params[0]
-            self.max_tokens = fmt_params[1]
-            self.overlap_tokens = fmt_params[2]
+            defaults = FORMAT_CHUNK_PARAMS["default"]
+            if self.target_tokens == defaults[0]:
+                self.target_tokens = fmt_params[0]
+            if self.max_tokens == defaults[1]:
+                self.max_tokens = fmt_params[1]
+            if self.overlap_tokens == defaults[2]:
+                self.overlap_tokens = fmt_params[2]
             self.source_format = source_format
         heading_chain: list[tuple[int, str]] = []
         pending: list[tuple[str, str, int | None]] = []  # (text, kind, page)
@@ -132,7 +167,7 @@ class TokenAwareChunker:
                     page_end=max(pages) if pages else None,
                     title=resolved_title,
                     source=source,
-                    source_format=source_format,
+                    source_format=source_format or self.source_format,
                     tenant_id=tenant_id,
                 )
             )

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from packages.core.settings import Settings
 from services.ingestion.chunker import CHUNKER_VERSION
+from services.ingestion.parsers.base import NORMALIZER_VERSION, PARSER_VERSION
 from services.ingestion.storage import DocumentStorageManager, get_default_storage_root
 
 
@@ -16,8 +17,8 @@ class IndexManifest:
     chunker_version: str
     created_at: str
     chunk_count: int
-    parser_version: str = "v1"
-    normalizer_version: str = "v1"
+    parser_version: str = PARSER_VERSION
+    normalizer_version: str = NORMALIZER_VERSION
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,8 @@ def check_consistency(
     *,
     storage_root: Path | str | None = None,
     chunker_version: str = CHUNKER_VERSION,
+    parser_version: str = PARSER_VERSION,
+    normalizer_version: str = NORMALIZER_VERSION,
 ) -> ConsistencyReport:
     reasons: list[str] = []
     if qdrant_count is None:
@@ -69,6 +72,10 @@ def check_consistency(
             reasons.append(f'dim mismatch: {manifest.embedding_dim} != {settings.qdrant_vector_dim}')
         if manifest.chunker_version != chunker_version:
             reasons.append(f'chunker version mismatch: {manifest.chunker_version} != {chunker_version}')
+        if manifest.parser_version != parser_version:
+            reasons.append(f'parser version mismatch: {manifest.parser_version} != {parser_version}')
+        if manifest.normalizer_version != normalizer_version:
+            reasons.append(f'normalizer version mismatch: {manifest.normalizer_version} != {normalizer_version}')
         if manifest.chunk_count != disk_count:
             reasons.append(f'count mismatch: manifest={manifest.chunk_count}, disk={disk_count}')
     try:

@@ -16,7 +16,7 @@ from typing import Any
 from packages.core.errors import IngestionError
 from packages.core.guardrails import has_possible_prompt_injection
 from packages.core.models import Chunk, Document, DocumentFormat
-from services.ingestion.chunker import CHUNKER_VERSION, TokenAwareChunker, embedded_text
+from services.ingestion.chunker import (CHUNKER_VERSION, NORMALIZER_VERSION, PARSER_VERSION, TokenAwareChunker, embedded_text)
 from services.ingestion.embedder import Embedder
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.manifest import IndexManifest, write_manifest
@@ -127,10 +127,10 @@ class IngestionPipeline:
             parsed, doc_id=doc_id, source=filename, source_format=source_format, tenant_id=tenant_id
         )
         logger.info(
-            "Chunked %s: %d chunks, avg %.0f tokens",
+            "Chunked %s: %d chunks; chunk preview: %s",
             filename,
             len(chunks),
-            (sum(c.metadata.get("token_count", 0) for c in chunks) / len(chunks)) if chunks else 0,
+            (chunks[0].text[:200] if chunks else ""),
         )
         injection_found = self._flag_possible_injection(chunks)
         try:
@@ -225,6 +225,12 @@ class IngestionPipeline:
             source=source,
             source_format=source_format,
             tenant_id=tenant_id,
+        )
+        logger.info(
+            "Chunked %s: %d chunks; chunk preview: %s",
+            source,
+            len(chunks),
+            (chunks[0].text[:200] if chunks else ""),
         )
         injection_found = self._flag_possible_injection(chunks)
         try:
@@ -333,12 +339,12 @@ class IngestionPipeline:
                 embedding_model=settings.embedding_model,
                 embedding_dim=settings.qdrant_vector_dim,
                 chunker_version=CHUNKER_VERSION,
+                parser_version=PARSER_VERSION,
+                normalizer_version=NORMALIZER_VERSION,
                 created_at=datetime.now(UTC).isoformat(),
                 chunk_count=(
                     len(self.storage.load_all_chunks()) if chunk_count is None else chunk_count
                 ),
-                parser_version="v1",
-                normalizer_version="v1",
             ),
         )
 
