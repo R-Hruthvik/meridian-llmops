@@ -35,7 +35,7 @@ MIN_TOP_K = 1
 MAX_TOP_K = 20
 MAX_GRAPH_FACTS = 5
 _REFORMULATE_PROMPT = (
-    "Rewrite the source question as one standalone, keyword-rich search query. Preserve proper nouns, "
+    "Rewrite the source question as one concise, keyword-rich search query (at most 12 words). Preserve proper nouns, "
     "numbers, product names, and error codes exactly. Add 2–4 likely topic keywords without changing "
     "the question's meaning. Do not answer the question. Return only the query text."
 )
@@ -152,6 +152,69 @@ async def _stream_completion(
     }
 
 
+_SHORT_FACTUAL_MAX_CHARS = 50
+_REFORMULATION_META_MARKERS = (
+    "source question",
+    "rewrite the",
+    "keyword-rich",
+    "proper nouns",
+    "return only the query",
+    "do not answer",
+)
+
+
+def _is_short_factual_query(query: str) -> bool:
+    text = (query or "").strip()
+    if not text:
+        return True
+    if len(text) < _SHORT_FACTUAL_MAX_CHARS:
+        return True
+    words = text.split()
+    if len(words) <= 8 and re.match(
+        r"^(what|which|who|where|when|how many|how much|is|are|does|do|can|could)\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return True
+    # Identifier-like queries (codes, names, dotted/underscored identifiers).
+    if len(words) <= 3 and any(re.search(r"[\d_.-]", word) for word in words):
+        return True
+    return False
+
+
+def _first_pass_retrieval_weak(chunks: Any, min_dense_score: float = 0.60) -> bool:
+    if not chunks:
+        return True
+    for chunk in chunks:
+        data = _result_dict(chunk)
+        scores = data.get("scores")
+        if not isinstance(scores, dict):
+            scores = {key: data.get(key) for key in ("dense", "bm25")}
+        dense = scores.get("dense")
+        if isinstance(dense, (int, float)) and not isinstance(dense, bool) and dense >= min_dense_score:
+            return False
+        bm25 = scores.get("bm25")
+        if isinstance(bm25, (int, float)) and not isinstance(bm25, bool) and bm25 > 0:
+            return False
+    return True
+
+
+def _guard_reformulated_query(original: str, rewritten: Any) -> str:
+    text = re.sub(r"\s+", " ", str(rewritten or "")).strip().strip('"').strip("'")
+    if not text:
+        return original
+    lowered = text.lower()
+    if any(marker in lowered for marker in _REFORMULATION_META_MARKERS):
+        return original
+    if len(text) > max(120, len(original.strip()) + 40):
+        return original
+    original_tokens = {token for token in re.findall(r"\w+", original.lower()) if len(token) > 2}
+    rewritten_tokens = set(re.findall(r"\w+", text.lower()))
+    if original_tokens and not (original_tokens & rewritten_tokens):
+        return original
+    return text
+
+
 async def _rewrite_query(
     query: str,
     client: LiteLLMClient,
@@ -171,7 +234,7 @@ async def _rewrite_query(
     )
     content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
     rewritten = re.sub(r"\s+", " ", content).strip().strip('"')
-    return rewritten or query
+    return _guard_reformulated_query(query, rewritten)
 
 
 def build_rag_agent_graph(
@@ -463,7 +526,13 @@ def build_rag_agent_graph(
         cfg = _active_llm_config(llm_config_getter)
         llm_available = bool(cfg.get("api_key") or cfg.get("base_url"))
         top_k = state.get("base_top_k", DEFAULT_TOP_K)
-        use_llm_reformulation = bool(reformulate_fn or mode == "llm" or llm_available)
+        short_query = _is_short_factual_query(query)
+        retrieval_weak = _first_pass_retrieval_weak(state.get("retrieved_chunks", []), min_dense_score)
+        use_llm_reformulation = (
+            (not short_query)
+            and retrieval_weak
+            and bool(reformulate_fn or mode == "llm" or llm_available)
+        )
         next_top_k = state.get("retry_top_k", top_k)
         if not use_llm_reformulation:
             next_top_k = min(max(next_top_k * 2, MIN_TOP_K), MAX_TOP_K)
@@ -472,6 +541,7 @@ def build_rag_agent_graph(
                 if reformulate_fn:
                     value = reformulate_fn(query, llm_client=client, llm_config=cfg)
                     rewritten = await value if hasattr(value, "__await__") else value
+                    rewritten = _guard_reformulated_query(query, rewritten)
                 else:
                     rewritten = await _rewrite_query(query, client, cfg)
             except Exception as exc:  # noqa: BLE001 - a failed rewrite falls back to broader retrieval.
