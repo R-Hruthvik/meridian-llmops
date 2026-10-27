@@ -40,6 +40,22 @@ print_help() {
     echo ""
 }
 
+ensure_python_deps() {
+    if command -v uv >/dev/null 2>&1; then
+        if ! $PYTHON_CMD -c 'import fastapi, uvicorn' >/dev/null 2>&1; then
+            echo -e "${BLUE}Installing Python dependencies...${NC}"
+            uv sync --frozen --no-dev
+        fi
+    fi
+}
+
+ensure_frontend_deps() {
+    if [ ! -d "$ROOT_DIR/web/node_modules" ]; then
+        echo -e "${BLUE}Installing frontend dependencies...${NC}"
+        npm --prefix web ci --no-audit --no-fund
+    fi
+}
+
 # Bring up Qdrant if Docker is available.
 # `up -d` is idempotent: no-op if already running. Left running on exit (persistent data layer).
 start_docker_stack() {
@@ -212,6 +228,7 @@ print_banner
 start_docker_stack
 
 if [ "$MODE" != "gateway" ]; then
+    ensure_python_deps
     preflight_app_dependencies
 fi
 
@@ -230,6 +247,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if [ "$MODE" = "prod" ]; then
+    ensure_python_deps
+    ensure_frontend_deps
     echo -e "${YELLOW}Building web frontend into web/dist...${NC}"
     npm --prefix web run build
 
@@ -241,6 +260,7 @@ if [ "$MODE" = "prod" ]; then
     $PYTHON_CMD -m uvicorn services.rag_engine.app:app --host "$HOST" --port "$PORT"
 
 elif [ "$MODE" = "backend" ]; then
+    ensure_python_deps
     echo -e "${BLUE}Starting RAG Engine Backend at http://${HOST}:${PORT}${NC}"
     echo -e "${BLUE}API Documentation: http://localhost:${PORT}/docs${NC}"
     echo -e "${YELLOW}Press Ctrl+C to stop.${NC}\n"
@@ -248,6 +268,7 @@ elif [ "$MODE" = "backend" ]; then
     $PYTHON_CMD -m uvicorn services.rag_engine.app:app --host "$HOST" --port "$PORT" --reload
 
 elif [ "$MODE" = "gateway" ]; then
+    ensure_python_deps
     echo -e "${BLUE}Starting AI Gateway at http://${HOST}:${GATEWAY_PORT}${NC}"
     echo -e "${BLUE}API Documentation: http://localhost:${GATEWAY_PORT}/docs${NC}"
     echo -e "${YELLOW}Press Ctrl+C to stop.${NC}\n"
@@ -255,6 +276,8 @@ elif [ "$MODE" = "gateway" ]; then
     $PYTHON_CMD -m uvicorn services.gateway.app:app --host "$HOST" --port "$GATEWAY_PORT" --reload
 
 elif [ "$MODE" = "dev" ]; then
+    ensure_python_deps
+    ensure_frontend_deps
     echo -e "${BLUE}Starting in Development Mode (Hot-Reload Enabled)${NC}\n"
 
     # Start backend
