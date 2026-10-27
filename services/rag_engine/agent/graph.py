@@ -177,9 +177,7 @@ def _is_short_factual_query(query: str) -> bool:
     ):
         return True
     # Identifier-like queries (codes, names, dotted/underscored identifiers).
-    if len(words) <= 3 and any(re.search(r"[\d_.-]", word) for word in words):
-        return True
-    return False
+    return len(words) <= 3 and any(re.search(r"[\d_.-]", word) for word in words)
 
 
 def _first_pass_retrieval_weak(chunks: Any, min_dense_score: float = 0.60) -> bool:
@@ -192,9 +190,6 @@ def _first_pass_retrieval_weak(chunks: Any, min_dense_score: float = 0.60) -> bo
             scores = {key: data.get(key) for key in ("dense", "bm25")}
         dense = scores.get("dense")
         if isinstance(dense, (int, float)) and not isinstance(dense, bool) and dense >= min_dense_score:
-            return False
-        bm25 = scores.get("bm25")
-        if isinstance(bm25, (int, float)) and not isinstance(bm25, bool) and bm25 > 0:
             return False
     return True
 

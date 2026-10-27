@@ -56,11 +56,11 @@ _NUMBER_RE = re.compile(
     re.IGNORECASE,
 )
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+|\n+")
-_CITATION_AFTER_PUNCTUATION_RE = re.compile(r"([.!?])[ \t]*((?:\[\d+\][ \t]*)+)")
+_CITATION_AFTER_PUNCTUATION_RE = re.compile(r"([.!?])\s*(\[\d+\](?:\s*\[\d+\])*)")
 
 
 def _sentences(answer: str) -> list[str]:
-    answer = _CITATION_AFTER_PUNCTUATION_RE.sub(r"\2\1", answer.strip())
+    answer = _CITATION_AFTER_PUNCTUATION_RE.sub(r" \2\1 ", answer.strip())
     return [sentence.strip() for sentence in _SENTENCE_BOUNDARY_RE.split(answer) if sentence.strip()]
 
 
