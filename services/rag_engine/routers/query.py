@@ -223,10 +223,6 @@ async def query_endpoint(
         SearchResult.model_validate(chunk)
         for chunk in final_state.get("retrieved_chunks", [])
     ]
-    verification_result = final_state.get("verification_result")
-    verification = VerificationSummary.model_validate(
-        verification_result.model_dump() if verification_result is not None else {}
-    )
 
     degraded_reason: str | None = final_state.get("generation_error")
     flagged_chunk_ids = await _review_flags(db, tenant_id) & {chunk.chunk_id for chunk in chunks_data}
