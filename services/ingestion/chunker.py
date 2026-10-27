@@ -13,7 +13,16 @@ from packages.core.models import Chunk, Document, DocumentFormat
 from services.ingestion.parsers.base import ParsedDocument
 from services.ingestion.parsers.md import parse_markdown
 
+# Per-format chunking parameters (target_tokens, max_tokens, overlap_tokens)
 CHUNKER_VERSION = "token-aware-v1"
+FORMAT_CHUNK_PARAMS: dict[str, tuple[int, int, int]] = {
+    "md": (350, 450, 50),
+    "txt": (300, 400, 40),
+    "html": (300, 400, 40),
+    "pdf": (400, 500, 50),
+    "docx": (350, 450, 50),
+    "default": (350, 450, 50),
+}
 CONTEXT_HEADER_MAX_TOKENS = 50
 
 _TOKEN_RE = re.compile(r"\w+|[^\w\s]")
@@ -53,10 +62,18 @@ def _split_units(text: str, kind: str) -> list[_Unit]:
 class TokenAwareChunker:
     """Splits parsed blocks into chunks bounded by an approximate token budget."""
 
-    def __init__(self, target_tokens: int = 350, max_tokens: int = 450, overlap_tokens: int = 50):
-        self.target_tokens = target_tokens
-        self.max_tokens = max_tokens
-        self.overlap_tokens = overlap_tokens
+    def __init__(
+        self,
+        target_tokens: int = 350,
+        max_tokens: int = 450,
+        overlap_tokens: int = 50,
+        source_format: str = "default",
+    ):
+        params = FORMAT_CHUNK_PARAMS.get(source_format, FORMAT_CHUNK_PARAMS["default"])
+        self.target_tokens = target_tokens if target_tokens != 350 else params[0]
+        self.max_tokens = max_tokens if max_tokens != 450 else params[1]
+        self.overlap_tokens = overlap_tokens if overlap_tokens != 50 else params[2]
+        self.source_format = source_format
 
     # ------------------------------------------------------------------ API
 
@@ -81,6 +98,13 @@ class TokenAwareChunker:
         tenant_id: str = "default",
     ) -> list[Chunk]:
         resolved_title = title or parsed.title
+        # Use format-specific chunker params when available
+        if source_format and source_format != self.source_format:
+            fmt_params = FORMAT_CHUNK_PARAMS.get(source_format, FORMAT_CHUNK_PARAMS["default"])
+            self.target_tokens = fmt_params[0]
+            self.max_tokens = fmt_params[1]
+            self.overlap_tokens = fmt_params[2]
+            self.source_format = source_format
         heading_chain: list[tuple[int, str]] = []
         pending: list[tuple[str, str, int | None]] = []  # (text, kind, page)
         pending_tokens = 0

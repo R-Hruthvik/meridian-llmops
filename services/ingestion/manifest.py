@@ -16,6 +16,8 @@ class IndexManifest:
     chunker_version: str
     created_at: str
     chunk_count: int
+    parser_version: str = "v1"
+    normalizer_version: str = "v1"
 
 
 @dataclass(frozen=True)

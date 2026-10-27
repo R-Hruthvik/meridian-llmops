@@ -126,6 +126,12 @@ class IngestionPipeline:
         chunks = self.chunker.chunk_document(
             parsed, doc_id=doc_id, source=filename, source_format=source_format, tenant_id=tenant_id
         )
+        logger.info(
+            "Chunked %s: %d chunks, avg %.0f tokens",
+            filename,
+            len(chunks),
+            (sum(c.metadata.get("token_count", 0) for c in chunks) / len(chunks)) if chunks else 0,
+        )
         injection_found = self._flag_possible_injection(chunks)
         try:
             entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id, chunks=chunks)
@@ -331,6 +337,8 @@ class IngestionPipeline:
                 chunk_count=(
                     len(self.storage.load_all_chunks()) if chunk_count is None else chunk_count
                 ),
+                parser_version="v1",
+                normalizer_version="v1",
             ),
         )
 
