@@ -16,7 +16,7 @@ CATEGORIES = {
     "unanswerable",
     "multi_chunk",
 }
-FIELDS = {
+REQUIRED_FIELDS = {
     "id",
     "category",
     "question",
@@ -25,6 +25,13 @@ FIELDS = {
     "expected_phrases",
     "notes",
 }
+OPTIONAL_FIELDS = {
+    "expected_answer_status",
+    "expected_verified",
+    "expected_cycle_count",
+    "expected_verification_status",
+}
+FIELDS = REQUIRED_FIELDS | OPTIONAL_FIELDS
 
 
 def _normalize(text: str) -> str:
@@ -48,7 +55,7 @@ def validate_dataset(dataset_path: Path, docs_dir: Path) -> list[str]:
         if not isinstance(case, dict):
             errors.append(f"{label} must be an object")
             continue
-        missing = FIELDS - case.keys()
+        missing = REQUIRED_FIELDS - case.keys()
         extra = case.keys() - FIELDS
         if missing:
             errors.append(f"{label} missing fields: {', '.join(sorted(missing))}")
