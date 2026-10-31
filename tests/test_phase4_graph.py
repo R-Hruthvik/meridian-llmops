@@ -164,7 +164,9 @@ async def test_llm_reformulation_uses_active_provider_and_keeps_requested_top_k(
         verify_mode="citations",
     )
     state = _state(max_cycles=2)
-    state["query"] = "What storage backend does Meridian use for vector embeddings and document chunks in production?"
+    state["query"] = (
+        "What storage backend does Meridian use for vector embeddings and document chunks in production?"
+    )
     state["current_search_query"] = state["query"]
     result = await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
 
