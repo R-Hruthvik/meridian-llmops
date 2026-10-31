@@ -47,11 +47,22 @@ class LiteLLMClient:
 
     def served_snapshot(self) -> tuple[int, str | None, str | None, str | None, bool]:
         served = self._last_served or {}
-        return (self._served_seq, served.get("provider"), served.get("model"), served.get("requested"), bool(served.get("has_content")))
+        return (
+            self._served_seq,
+            served.get("provider"),
+            served.get("model"),
+            served.get("requested"),
+            bool(served.get("has_content")),
+        )
 
     def _record_served(self, provider: str, model: str, requested: str, has_content: bool) -> None:
         self._served_seq += 1
-        self._last_served = {"provider": provider, "model": model, "requested": requested, "has_content": has_content}
+        self._last_served = {
+            "provider": provider,
+            "model": model,
+            "requested": requested,
+            "has_content": has_content,
+        }
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -82,7 +93,11 @@ class LiteLLMClient:
             base = base_url.rstrip("/")
             if base.endswith("/chat/completions"):
                 return base
-            return f"{base}/chat/completions" if base.endswith("/v1") else f"{base}/v1/chat/completions"
+            return (
+                f"{base}/chat/completions"
+                if base.endswith("/v1")
+                else f"{base}/v1/chat/completions"
+            )
         spec = PROVIDERS[provider]
         base = base_url.rstrip("/")
         if base.endswith(spec["path"]):
@@ -108,12 +123,16 @@ class LiteLLMClient:
         return value.replace(secret, "[REDACTED]") if secret else value
 
     @staticmethod
-    def _extract(data: dict[str, Any], provider: str) -> tuple[str, str | None, dict[str, Any] | None]:
+    def _extract(
+        data: dict[str, Any], provider: str
+    ) -> tuple[str, str | None, dict[str, Any] | None]:
         model = data.get("model") if isinstance(data.get("model"), str) else None
         usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
         if provider == "anthropic":
             content_blocks = data.get("content")
-            content = "".join(block.get("text", "") for block in content_blocks or [] if isinstance(block, dict))
+            content = "".join(
+                block.get("text", "") for block in content_blocks or [] if isinstance(block, dict)
+            )
             return content, model, usage
         choices = data.get("choices")
         if isinstance(choices, list) and choices:
@@ -124,7 +143,9 @@ class LiteLLMClient:
             if isinstance(message, dict):
                 content = message.get("content", "")
                 if isinstance(content, list):
-                    content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+                    content = "".join(
+                        part.get("text", "") for part in content if isinstance(part, dict)
+                    )
                 if not isinstance(content, str):
                     raise TypeError("invalid completion content")
                 if not content.strip():
@@ -174,9 +195,13 @@ class LiteLLMClient:
         target_base = configured_base.rstrip("/")
         target_key = (api_key or self.master_key) if is_proxy else api_key
         if spec is not None and spec["auth_style"] != "none" and not target_key:
-            raise ProviderConfigError(target_provider, f"API key is required for provider {target_provider}")
+            raise ProviderConfigError(
+                target_provider, f"API key is required for provider {target_provider}"
+            )
         if not target_base:
-            raise ProviderConfigError(target_provider, f"Base URL is required for provider {target_provider}")
+            raise ProviderConfigError(
+                target_provider, f"Base URL is required for provider {target_provider}"
+            )
         endpoint = self._endpoint(target_provider, target_base)
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if target_key and (spec is None or spec["auth_style"] != "none"):
@@ -186,12 +211,26 @@ class LiteLLMClient:
                 headers["Authorization"] = f"Bearer {target_key}"
         if spec is not None and spec["request_format"] == "anthropic":
             payload_messages = [m for m in messages if m.get("role") != "system"]
-            payload: dict[str, Any] = {"model": model, "messages": payload_messages, "max_tokens": max_tokens, "temperature": temperature, "stream": stream}
-            system_prompt = "\n".join(m.get("content", "") for m in messages if m.get("role") == "system")
+            payload: dict[str, Any] = {
+                "model": model,
+                "messages": payload_messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": stream,
+            }
+            system_prompt = "\n".join(
+                m.get("content", "") for m in messages if m.get("role") == "system"
+            )
             if system_prompt:
                 payload["system"] = system_prompt
         else:
-            payload = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": stream}
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": stream,
+            }
         return endpoint, headers, payload, target_key, target_provider
 
     async def chat_completion(
@@ -232,7 +271,12 @@ class LiteLLMClient:
                 if resp.status_code < 200 or resp.status_code >= 300:
                     provider_message = self._redact_literal(resp.text, target_key)[:500]
                     status = 429 if resp.status_code == 429 else 502
-                    raise ProviderError(target_provider, status, f"Provider {target_provider} returned HTTP {resp.status_code}", provider_message)
+                    raise ProviderError(
+                        target_provider,
+                        status,
+                        f"Provider {target_provider} returned HTTP {resp.status_code}",
+                        provider_message,
+                    )
                 try:
                     if resp.text.lstrip().startswith("data:") or "\ndata:" in resp.text:
                         parts: list[str] = []
@@ -245,7 +289,11 @@ class LiteLLMClient:
                             chunk = self._redact(json.loads(line[5:].strip()), target_key)
                             if not isinstance(chunk, dict):
                                 raise TypeError("stream chunk must be a JSON object")
-                            if upstream_model is None and isinstance(chunk.get("model"), str) and chunk["model"].strip():
+                            if (
+                                upstream_model is None
+                                and isinstance(chunk.get("model"), str)
+                                and chunk["model"].strip()
+                            ):
                                 upstream_model = chunk["model"].strip()
                             choices = chunk.get("choices", [])
                             if not isinstance(choices, list):
@@ -258,13 +306,21 @@ class LiteLLMClient:
                                     raise TypeError("stream delta must be a JSON object")
                                 piece = delta.get("content", "")
                                 if isinstance(piece, list):
-                                    piece = "".join(part.get("text", "") for part in piece if isinstance(part, dict))
+                                    piece = "".join(
+                                        part.get("text", "")
+                                        for part in piece
+                                        if isinstance(part, dict)
+                                    )
                                 if not isinstance(piece, str):
                                     raise TypeError("stream content must be text")
                                 parts.append(piece)
                             if isinstance(chunk.get("usage"), dict):
                                 usage = chunk["usage"]
-                        data = {"choices": [{"message": {"content": "".join(parts)}}], "usage": usage, "model": upstream_model}
+                        data = {
+                            "choices": [{"message": {"content": "".join(parts)}}],
+                            "usage": usage,
+                            "model": upstream_model,
+                        }
                         content = "".join(parts)
                     else:
                         data = resp.json()
@@ -273,23 +329,52 @@ class LiteLLMClient:
                         data = self._redact(data, target_key)
                         content, upstream_model, usage = self._extract(data, target_provider)
                 except (json.JSONDecodeError, ValueError, TypeError) as exc:
-                    raise ProviderError(target_provider, 502, f"Provider {target_provider} returned an invalid completion response", str(exc)) from exc
+                    raise ProviderError(
+                        target_provider,
+                        502,
+                        f"Provider {target_provider} returned an invalid completion response",
+                        str(exc),
+                    ) from exc
                 served_model = upstream_model or model
                 self._record_served(target_provider, served_model, model, bool(content.strip()))
-                self.last_response = {"provider": target_provider, "requested_model": model, "model": served_model, "raw": data}
+                self.last_response = {
+                    "provider": target_provider,
+                    "requested_model": model,
+                    "model": served_model,
+                    "raw": data,
+                }
                 if not content.strip():
-                    raise ProviderError(target_provider, 502, f"Provider {target_provider} returned an empty completion")
+                    raise ProviderError(
+                        target_provider,
+                        502,
+                        f"Provider {target_provider} returned an empty completion",
+                    )
                 return {
-                    "id": data.get("id", "cmpl-response"), "object": "chat.completion", "model": served_model,
-                    "provider": target_provider, "requested_model": model, "raw_response": data,
-                    "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+                    "id": data.get("id", "cmpl-response"),
+                    "object": "chat.completion",
+                    "model": served_model,
+                    "provider": target_provider,
+                    "requested_model": model,
+                    "raw_response": data,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": content},
+                            "finish_reason": "stop",
+                        }
+                    ],
                     "usage": usage,
                 }
             except ProviderError:
                 raise
             except httpx.HTTPError as exc:
                 self._client = None
-                raise ProviderError(target_provider, 502, f"Provider {target_provider} request failed", self._redact_literal(str(exc), target_key)) from exc
+                raise ProviderError(
+                    target_provider,
+                    502,
+                    f"Provider {target_provider} request failed",
+                    self._redact_literal(str(exc), target_key),
+                ) from exc
         raise ProviderError(target_provider, 502, f"Provider {target_provider} request failed")
 
     @staticmethod
@@ -334,7 +419,9 @@ class LiteLLMClient:
                 if not (isinstance(piece, str) and piece.strip()):
                     details = delta.get("reasoning_details")
                     if isinstance(details, list):
-                        joined = "".join(d.get("text", "") for d in details if isinstance(d, dict)).strip()
+                        joined = "".join(
+                            d.get("text", "") for d in details if isinstance(d, dict)
+                        ).strip()
                         if joined:
                             piece = joined
             if not isinstance(piece, str):
@@ -376,12 +463,19 @@ class LiteLLMClient:
         upstream_model: str | None = None
         has_content = False
         try:
-            async with self._get_client().stream("POST", endpoint, headers=headers, json=payload) as response:
+            async with self._get_client().stream(
+                "POST", endpoint, headers=headers, json=payload
+            ) as response:
                 if response.status_code < 200 or response.status_code >= 300:
                     body = (await response.aread()).decode("utf-8", "replace")
                     provider_message = self._redact_literal(body, target_key)[:500]
                     status = 429 if response.status_code == 429 else 502
-                    raise ProviderError(target_provider, status, f"Provider {target_provider} returned HTTP {response.status_code}", provider_message)
+                    raise ProviderError(
+                        target_provider,
+                        status,
+                        f"Provider {target_provider} returned HTTP {response.status_code}",
+                        provider_message,
+                    )
                 async for line in response.aiter_lines():
                     stripped = line.strip()
                     if not stripped.startswith("data:"):
@@ -392,14 +486,29 @@ class LiteLLMClient:
                     try:
                         chunk = self._redact(json.loads(raw), target_key)
                     except json.JSONDecodeError as exc:
-                        raise ProviderError(target_provider, 502, f"Provider {target_provider} returned an invalid completion response", str(exc)) from exc
+                        raise ProviderError(
+                            target_provider,
+                            502,
+                            f"Provider {target_provider} returned an invalid completion response",
+                            str(exc),
+                        ) from exc
                     if not isinstance(chunk, dict):
-                        raise ProviderError(target_provider, 502, f"Provider {target_provider} returned an invalid completion response", "stream chunk must be a JSON object")
+                        raise ProviderError(
+                            target_provider,
+                            502,
+                            f"Provider {target_provider} returned an invalid completion response",
+                            "stream chunk must be a JSON object",
+                        )
                     upstream_model = upstream_model or self._stream_model(chunk, target_provider)
                     try:
                         pieces = self._stream_deltas(chunk, target_provider)
                     except TypeError as exc:
-                        raise ProviderError(target_provider, 502, f"Provider {target_provider} returned an invalid completion response", str(exc)) from exc
+                        raise ProviderError(
+                            target_provider,
+                            502,
+                            f"Provider {target_provider} returned an invalid completion response",
+                            str(exc),
+                        ) from exc
                     for piece in pieces:
                         if piece:
                             has_content = True
@@ -408,7 +517,12 @@ class LiteLLMClient:
             raise
         except httpx.HTTPError as exc:
             self._client = None
-            raise ProviderError(target_provider, 502, f"Provider {target_provider} request failed", self._redact_literal(str(exc), target_key)) from exc
+            raise ProviderError(
+                target_provider,
+                502,
+                f"Provider {target_provider} request failed",
+                self._redact_literal(str(exc), target_key),
+            ) from exc
         self._record_served(target_provider, upstream_model or model, model, has_content)
         self.last_response = {
             "provider": target_provider,

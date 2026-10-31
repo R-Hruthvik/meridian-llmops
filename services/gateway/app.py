@@ -56,6 +56,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     response = await call_next(request)
@@ -64,6 +65,7 @@ async def security_headers(request, call_next):
     response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     response.headers.setdefault("Content-Security-Policy", "default-src 'self'")
     return response
+
 
 @app.get("/health")
 async def health_check():

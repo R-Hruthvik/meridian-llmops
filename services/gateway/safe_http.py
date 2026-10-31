@@ -70,7 +70,11 @@ def validate_provider_url(
                 for address in parsed_addresses
             ):
                 raise ValueError
-        elif not (parsed.scheme == "http" and provider in {"ollama", "custom", "openai_compatible", "litellm"} and is_loopback_host):  # noqa: SIM102
+        elif not (
+            parsed.scheme == "http"
+            and provider in {"ollama", "custom", "openai_compatible", "litellm"}
+            and is_loopback_host
+        ):  # noqa: SIM102
             if not all(
                 address.is_global
                 and not (
@@ -84,12 +88,16 @@ def validate_provider_url(
                 for address in parsed_addresses
             ):
                 raise ValueError
-        if parsed.scheme == "http" and provider != "litellm" and not all(
-            address.is_loopback for address in parsed_addresses
+        if (
+            parsed.scheme == "http"
+            and provider != "litellm"
+            and not all(address.is_loopback for address in parsed_addresses)
         ):
             raise ValueError
-        if parsed.scheme == "http" and provider == "litellm" and not all(
-            address.is_private or address.is_loopback for address in parsed_addresses
+        if (
+            parsed.scheme == "http"
+            and provider == "litellm"
+            and not all(address.is_private or address.is_loopback for address in parsed_addresses)
         ):
             raise ValueError
     except (OSError, ValueError, IndexError):
