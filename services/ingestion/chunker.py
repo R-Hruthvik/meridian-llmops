@@ -403,10 +403,15 @@ class TokenAwareChunker:
             metadata["prev_chunk_id"] = chunks[index - 1].id if index > 0 else None
             metadata["previous_chunk_id"] = metadata["prev_chunk_id"]
             metadata["prev_id"] = metadata["prev_chunk_id"]
+            metadata["previous"] = metadata["prev_chunk_id"]
+            metadata["prev"] = metadata["prev_chunk_id"]
             metadata["next_chunk_id"] = (
                 chunks[index + 1].id if index + 1 < len(chunks) else None
             )
             metadata["next_id"] = metadata["next_chunk_id"]
+            metadata["next"] = metadata["next_chunk_id"]
+            metadata["previous_chunk"] = metadata["prev_chunk_id"]
+            metadata["next_chunk"] = metadata["next_chunk_id"]
             key = (
                 chunk.document_id,
                 str(metadata.get("heading_path") or chunk.section_heading or ""),
@@ -415,18 +420,26 @@ class TokenAwareChunker:
             if len(siblings) > 1 and chunk.id == siblings[0].id:
                 metadata["parent_id"] = None
                 metadata["parent_chunk_id"] = None
+                metadata["parent"] = None
                 metadata["child_ids"] = [item.id for item in siblings[1:]]
                 metadata["children"] = list(metadata["child_ids"])
+                metadata["child_chunks"] = list(metadata["child_ids"])
             elif len(siblings) > 1:
                 metadata["parent_id"] = siblings[0].id
                 metadata["parent_chunk_id"] = siblings[0].id
+                metadata["parent"] = siblings[0].id
+                metadata["parent_chunk"] = siblings[0].id
                 metadata["child_ids"] = []
                 metadata["children"] = []
+                metadata["child_chunks"] = []
             else:
                 metadata["parent_id"] = None
                 metadata["parent_chunk_id"] = None
+                metadata["parent"] = None
+                metadata["parent_chunk"] = None
                 metadata["child_ids"] = []
                 metadata["children"] = []
+                metadata["child_chunks"] = []
             metadata["group_key"] = f"{chunk.document_id}::{metadata.get('heading_path') or chunk.section_heading or ''}"
             metadata["group"] = metadata["group_key"]
             metadata["sibling_count"] = len(siblings)
