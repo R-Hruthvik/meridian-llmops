@@ -258,7 +258,8 @@ class LiteLLMClient:
         if self._transport is None:
             if self._safe_transport is None:
                 self._safe_transport = PinnedAsyncHTTPTransport()
-            assert self._safe_transport is not None
+            if self._safe_transport is None:
+                raise RuntimeError("safe transport is not initialized")
             self._safe_transport.address_backend.pin(host, port, addresses)
             self._get_client()
 
@@ -456,7 +457,8 @@ class LiteLLMClient:
         if self._transport is None:
             if self._safe_transport is None:
                 self._safe_transport = PinnedAsyncHTTPTransport()
-            assert self._safe_transport is not None
+            if self._safe_transport is None:
+                raise RuntimeError("safe transport is not initialized")
             self._safe_transport.address_backend.pin(host, port, addresses)
             self._get_client()
 
