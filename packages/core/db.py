@@ -31,6 +31,7 @@ AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_co
 async def init_db(url: str | None = None):
     """Initializes relational database schema."""
     from packages.core.db_models import Base
+
     target = create_engine_for(url) if url is not None else engine
     async with target.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -44,7 +45,9 @@ def _migrate_document_tenant(connection) -> None:
     columns = {column["name"] for column in inspect(connection).get_columns("documents")}
     if "tenant_id" not in columns:
         connection.execute(
-            text("ALTER TABLE documents ADD COLUMN tenant_id VARCHAR(255) NOT NULL DEFAULT 'default'")
+            text(
+                "ALTER TABLE documents ADD COLUMN tenant_id VARCHAR(255) NOT NULL DEFAULT 'default'"
+            )
         )
 
 

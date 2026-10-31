@@ -30,8 +30,12 @@ class ORMDocument(Base):
     processing_status: Mapped[str] = mapped_column(String(50), default="processed")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
-    chunks: Mapped[list["ORMChunk"]] = relationship("ORMChunk", back_populates="document", cascade="all, delete-orphan")
-    extracted_fields: Mapped[list["ExtractedField"]] = relationship("ExtractedField", back_populates="document", cascade="all, delete-orphan")
+    chunks: Mapped[list["ORMChunk"]] = relationship(
+        "ORMChunk", back_populates="document", cascade="all, delete-orphan"
+    )
+    extracted_fields: Mapped[list["ExtractedField"]] = relationship(
+        "ExtractedField", back_populates="document", cascade="all, delete-orphan"
+    )
 
 
 class ORMChunk(Base):
@@ -62,20 +66,28 @@ class ExtractedField(Base):
     review_status: Mapped[str] = mapped_column(String(50), default="auto_approved")
 
     document: Mapped["ORMDocument"] = relationship("ORMDocument", back_populates="extracted_fields")
-    review_item: Mapped["ReviewItem | None"] = relationship("ReviewItem", back_populates="extracted_field", uselist=False)
+    review_item: Mapped["ReviewItem | None"] = relationship(
+        "ReviewItem", back_populates="extracted_field", uselist=False
+    )
 
 
 class ReviewItem(Base):
     __tablename__ = "review_items"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    extracted_field_id: Mapped[str] = mapped_column(String(36), ForeignKey("extracted_fields.id"), nullable=False)
-    status: Mapped[str] = mapped_column(String(50), default="pending")  # pending, approved, rejected, corrected
+    extracted_field_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("extracted_fields.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(50), default="pending"
+    )  # pending, approved, rejected, corrected
     corrected_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    extracted_field: Mapped["ExtractedField"] = relationship("ExtractedField", back_populates="review_item")
+    extracted_field: Mapped["ExtractedField"] = relationship(
+        "ExtractedField", back_populates="review_item"
+    )
 
 
 class ORMAnswer(Base):
@@ -89,7 +101,9 @@ class ORMAnswer(Base):
     latency_ms: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
-    claims: Mapped[list["ORMClaim"]] = relationship("ORMClaim", back_populates="answer", cascade="all, delete-orphan")
+    claims: Mapped[list["ORMClaim"]] = relationship(
+        "ORMClaim", back_populates="answer", cascade="all, delete-orphan"
+    )
 
 
 class ORMClaim(Base):
@@ -101,7 +115,9 @@ class ORMClaim(Base):
     verification_status: Mapped[str] = mapped_column(String(50), default="supported")
 
     answer: Mapped["ORMAnswer"] = relationship("ORMAnswer", back_populates="claims")
-    citations: Mapped[list["ORMCitation"]] = relationship("ORMCitation", back_populates="claim", cascade="all, delete-orphan")
+    citations: Mapped[list["ORMCitation"]] = relationship(
+        "ORMCitation", back_populates="claim", cascade="all, delete-orphan"
+    )
 
 
 class ORMCitation(Base):

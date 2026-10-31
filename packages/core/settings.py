@@ -40,12 +40,20 @@ class Settings(BaseSettings):
 
     # LiteLLM AI Gateway
     litellm_base_url: str = "http://localhost:4000"
-    litellm_master_key: str = Field(default_factory=lambda: os.environ.get("LITELLM_MASTER_KEY", ""))
+    litellm_master_key: str = Field(
+        default_factory=lambda: os.environ.get("LITELLM_MASTER_KEY", "")
+    )
     default_llm_model: str = "gpt-4o-mini"
     # Generic provider environment settings intentionally override saved UI settings.
-    provider: str | None = Field(default=None, validation_alias=AliasChoices("PROVIDER", "LLM_PROVIDER"))
-    api_key: str | None = Field(default=None, validation_alias=AliasChoices("API_KEY", "LLM_API_KEY"))
-    base_url: str | None = Field(default=None, validation_alias=AliasChoices("BASE_URL", "LLM_BASE_URL"))
+    provider: str | None = Field(
+        default=None, validation_alias=AliasChoices("PROVIDER", "LLM_PROVIDER")
+    )
+    api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("API_KEY", "LLM_API_KEY")
+    )
+    base_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("BASE_URL", "LLM_BASE_URL")
+    )
     model: str | None = Field(default=None, validation_alias=AliasChoices("MODEL", "LLM_MODEL"))
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
@@ -75,8 +83,8 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     qdrant_collection: str = "meridian_documents"
     qdrant_vector_dim: int = 384
-    vector_backend: Literal['qdrant', 'qdrant_local'] = 'qdrant'
-    qdrant_local_path: str = 'storage/qdrant'
+    vector_backend: Literal["qdrant", "qdrant_local"] = "qdrant"
+    qdrant_local_path: str = "storage/qdrant"
 
     # Neo4j Knowledge Graph
     neo4j_uri: str = "bolt://localhost:7687"
@@ -89,8 +97,12 @@ class Settings(BaseSettings):
 
     # Langfuse Observability
     langfuse_host: str = "http://localhost:3000"
-    langfuse_public_key: str | None = Field(default_factory=lambda: os.environ.get("LANGFUSE_PUBLIC_KEY"))
-    langfuse_secret_key: str | None = Field(default_factory=lambda: os.environ.get("LANGFUSE_SECRET_KEY"))
+    langfuse_public_key: str | None = Field(
+        default_factory=lambda: os.environ.get("LANGFUSE_PUBLIC_KEY")
+    )
+    langfuse_secret_key: str | None = Field(
+        default_factory=lambda: os.environ.get("LANGFUSE_SECRET_KEY")
+    )
     enable_langfuse: bool = False
 
     # Guardrails
@@ -99,7 +111,11 @@ class Settings(BaseSettings):
     allow_client_disable_guardrails: bool = False
 
     # Relational Database & Human-in-the-Loop Review Queue
-    database_url: str = Field(default_factory=lambda: os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./verified_rag.db"))
+    database_url: str = Field(
+        default_factory=lambda: os.environ.get(
+            "DATABASE_URL", "sqlite+aiosqlite:///./verified_rag.db"
+        )
+    )
     confidence_threshold: float = 0.85
     min_dense_score: float = Field(default=0.60, ge=0.0, le=1.0)
     retrieval_default_top_k: int = Field(default=5, ge=1, le=20)
@@ -107,11 +123,13 @@ class Settings(BaseSettings):
     debug_log_prompts: bool = False
 
 
-_FORBIDDEN_PRODUCTION_SECRETS = frozenset({
-    "meridian-test-secret-key-2026",
-    "sk-litellm-master-key",
-    "changeme",
-})
+_FORBIDDEN_PRODUCTION_SECRETS = frozenset(
+    {
+        "meridian-test-secret-key-2026",
+        "sk-litellm-master-key",
+        "changeme",
+    }
+)
 
 
 def _is_forbidden_production_secret(value: str | None) -> bool:
@@ -145,7 +163,7 @@ def validate_production(s: Settings) -> None:
             raise RuntimeError("missing required secret: API_KEYS") from error
         if (not isinstance(parsed, dict) or not parsed) and not admin_api_key:
             raise RuntimeError("missing required secret: API_KEYS")
-        for key in (list(parsed.keys()) if isinstance(parsed, dict) else []):
+        for key in list(parsed.keys()) if isinstance(parsed, dict) else []:
             if _is_forbidden_production_secret(key):
                 raise RuntimeError("missing required secret: API_KEYS")
     if not has_api_key_config and _is_forbidden_production_secret(s.api_key_secret):

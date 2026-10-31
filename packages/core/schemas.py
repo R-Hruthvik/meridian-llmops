@@ -21,6 +21,7 @@ class GoldenCase(BaseModel):
 
 class ReviewItemResponse(BaseModel):
     """Response DTO for queued low-confidence items in Human Review Queue."""
+
     id: str
     extracted_field_id: str
     document_id: str
@@ -35,6 +36,7 @@ class ReviewItemResponse(BaseModel):
 
 class ReviewItemAction(BaseModel):
     """Payload for approving, rejecting, or correcting a review item."""
+
     action: str  # approve, reject, correct
     corrected_value: str | None = None
     notes: str | None = None

@@ -24,7 +24,9 @@ class IngestionError(RuntimeError):
 class ProviderError(RuntimeError):
     """A configured LLM provider failed to return a usable completion."""
 
-    def __init__(self, provider: str, status: int, message: str, provider_message: str | None = None):
+    def __init__(
+        self, provider: str, status: int, message: str, provider_message: str | None = None
+    ):
         super().__init__(message)
         self.provider = provider
         self.status = status

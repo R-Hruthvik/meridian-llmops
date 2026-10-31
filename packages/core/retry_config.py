@@ -69,7 +69,13 @@ def retry_on_api_error(max_attempts: int = 5) -> Callable:
 
 _RETRYABLE = {429, 500, 502, 503, 504}
 
-_TRANSIENT_EXCEPTIONS: tuple[type[BaseException], ...] = (ConnectionError, TimeoutError, OSError, asyncio.TimeoutError, httpx.RequestError)
+_TRANSIENT_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    ConnectionError,
+    TimeoutError,
+    OSError,
+    asyncio.TimeoutError,
+    httpx.RequestError,
+)
 try:  # pragma: no cover - optional driver
     from sqlalchemy.exc import DBAPIError, OperationalError
 
@@ -79,7 +85,9 @@ except ImportError:
 try:  # pragma: no cover - optional driver
     import asyncpg.exceptions as _asyncpg_exceptions
 
-    _TRANSIENT_EXCEPTIONS = _TRANSIENT_EXCEPTIONS + (getattr(_asyncpg_exceptions, "PostgresConnectionError", Exception),)
+    _TRANSIENT_EXCEPTIONS = _TRANSIENT_EXCEPTIONS + (
+        getattr(_asyncpg_exceptions, "PostgresConnectionError", Exception),
+    )
 except ImportError:
     pass
 
@@ -91,10 +99,12 @@ def is_retryable(exc: BaseException) -> bool:
 
 
 def retry_transient(max_attempts: int = 5):
-    return retry(stop=stop_after_attempt(max_attempts),
+    return retry(
+        stop=stop_after_attempt(max_attempts),
         wait=wait_exponential(multiplier=1, min=1, max=30),
-        retry=retry_if_exception(is_retryable), reraise=True)
-
+        retry=retry_if_exception(is_retryable),
+        reraise=True,
+    )
 
 
 import time as _time
