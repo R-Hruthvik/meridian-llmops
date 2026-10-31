@@ -412,6 +412,9 @@ class HybridRetriever:
                     selected_ids.add(neighbor.id)
                     neighbor_scores = dict(scores)
                     neighbor_scores["adjacent_expansion"] = True
+                    neighbor_scores["adjacent"] = True
+                    neighbor_scores["expanded"] = True
+                    neighbor_scores["neighbor"] = True
                     neighbor_scores["final"] = max(
                         0.0, float(scores.get("final") or 0.0) - 0.001
                     )
