@@ -112,9 +112,34 @@ def _build_configured_keys(settings: Any) -> dict[str, "AuthIdentity"]:
 
 
 def _configured_keys() -> dict[str, AuthIdentity]:
-    """Resolve configured keys (uncached helper entrypoint)."""
+    global _configured_keys_cache, _configured_keys_cache_signature, _configured_keys_cache_created_at
+
     settings = get_settings()
-    return _build_configured_keys(settings)
+    signature = _configured_keys_signature(settings)
+    now = time.time()
+
+    with _configured_keys_cache_lock:
+        if (
+            _configured_keys_cache is not None
+            and _configured_keys_cache_signature == signature
+            and (now - _configured_keys_cache_created_at) < _CONFIGURED_KEYS_TTL
+        ):
+            return _configured_keys_cache
+
+    configured = _build_configured_keys(settings)
+
+    with _configured_keys_cache_lock:
+        # Re-check under lock to avoid clobbering a newer cache entry.
+        if (
+            _configured_keys_cache is not None
+            and _configured_keys_cache_signature == signature
+            and (time.time() - _configured_keys_cache_created_at) < _CONFIGURED_KEYS_TTL
+        ):
+            return _configured_keys_cache
+        _configured_keys_cache = configured
+        _configured_keys_cache_signature = signature
+        _configured_keys_cache_created_at = time.time()
+    return configured
 
 
 def clear_configured_keys_cache() -> None:
