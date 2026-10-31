@@ -29,3 +29,4 @@ class RagAgentState(TypedDict, total=False):
     debug: dict[str, Any]
     retry_top_k: int
     base_top_k: int
+    session_id: str | None

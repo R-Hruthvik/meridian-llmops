@@ -278,6 +278,8 @@ def build_rag_agent_graph(
         flagged_chunk_ids = set(state.get("flagged_chunk_ids", []))
         if flagged_chunk_ids:
             retrieve_options["flagged_chunk_ids"] = flagged_chunk_ids
+        if state.get("session_id"):
+            retrieve_options["session_id"] = state.get("session_id")
         result = retriever.retrieve(query, **retrieve_options)
         sources = [_to_search_result(ranked) for ranked in result.chunks[:top_k]]
         entities: list[Entity] = []
