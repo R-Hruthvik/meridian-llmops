@@ -33,7 +33,9 @@ def query(
                     if not state.json_output and not state.quiet:
                         typer.echo(delta, nl=False)
                 elif event == "error":
-                    stream_error = payload.get("message") if isinstance(payload, dict) else str(payload)
+                    stream_error = (
+                        payload.get("message") if isinstance(payload, dict) else str(payload)
+                    )
                 elif event == "done":
                     done_payload = payload
                     if isinstance(payload, dict) and "answer" in payload:

@@ -27,9 +27,13 @@ app.add_typer(models_app, name="models")
 @app.callback()
 def main(
     ctx: typer.Context,
-    base_url: str = typer.Option(None, "--base-url", envvar="MERIDIAN_BASE_URL", help="Backend base URL"),
+    base_url: str = typer.Option(
+        None, "--base-url", envvar="MERIDIAN_BASE_URL", help="Backend base URL"
+    ),
     api_key: str = typer.Option(None, "--api-key", envvar="MERIDIAN_API_KEY", help="User API key"),
-    admin_key: str = typer.Option(None, "--admin-key", envvar="MERIDIAN_ADMIN_API_KEY", help="Admin API key"),
+    admin_key: str = typer.Option(
+        None, "--admin-key", envvar="MERIDIAN_ADMIN_API_KEY", help="Admin API key"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
     quiet: bool = typer.Option(False, "--quiet", help="Suppress progress output"),
     timeout: float = typer.Option(60.0, "--timeout", help="Request timeout seconds"),
