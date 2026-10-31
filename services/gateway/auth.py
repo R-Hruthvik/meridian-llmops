@@ -21,12 +21,14 @@ logger = logging.getLogger(__name__)
 _rate_limits: dict[str, tuple[float, float]] = {}
 _rate_lock = asyncio.Lock()
 _RATE_LIMIT_TTL = 300.0
-_DEVELOPMENT_DEFAULT_KEYS = frozenset({
-    "dev-key-change-me",
-    "meridian-test-secret-key-2026",
-    "sk-litellm-master-key",
-    "changeme",
-})
+_DEVELOPMENT_DEFAULT_KEYS = frozenset(
+    {
+        "dev-key-change-me",
+        "meridian-test-secret-key-2026",
+        "sk-litellm-master-key",
+        "changeme",
+    }
+)
 
 # Process-local cache for resolved auth configuration. Rate-limit state is separate
 # and is deliberately not cleared when this cache is invalidated.
@@ -76,7 +78,9 @@ def _build_configured_keys(settings: Any) -> dict[str, "AuthIdentity"]:
         try:
             entries = json.loads(raw_keys)
         except json.JSONDecodeError as error:
-            raise RuntimeError("API_KEYS must be a JSON object mapping keys to tenant and role") from error
+            raise RuntimeError(
+                "API_KEYS must be a JSON object mapping keys to tenant and role"
+            ) from error
         if not isinstance(entries, dict):
             raise RuntimeError("API_KEYS must be a JSON object mapping keys to tenant and role")
         for api_key, attributes in entries.items():
@@ -84,8 +88,12 @@ def _build_configured_keys(settings: Any) -> dict[str, "AuthIdentity"]:
                 raise RuntimeError("Each API_KEYS entry must map a non-empty key to an object")
             tenant_id, role = attributes.get("tenant"), attributes.get("role")
             if not isinstance(tenant_id, str) or not tenant_id or role not in {"user", "admin"}:
-                raise RuntimeError("Each API_KEYS entry requires a tenant and a role of 'user' or 'admin'")
-            configured[api_key] = AuthIdentity(tenant_id, role, hashlib.sha256(api_key.encode()).hexdigest())
+                raise RuntimeError(
+                    "Each API_KEYS entry requires a tenant and a role of 'user' or 'admin'"
+                )
+            configured[api_key] = AuthIdentity(
+                tenant_id, role, hashlib.sha256(api_key.encode()).hexdigest()
+            )
 
     # Compatibility for existing local launch and test environments. Production uses API_KEYS.
     # Keep the legacy user key available even when only an admin key is configured.
@@ -102,7 +110,14 @@ def _build_configured_keys(settings: Any) -> dict[str, "AuthIdentity"]:
 
     admin_key = os.environ.get("ADMIN_API_KEY") or _secret_value(settings, "admin_api_key")
     if admin_key:
-        existing = next((identity for key, identity in configured.items() if hmac.compare_digest(key, admin_key)), None)
+        existing = next(
+            (
+                identity
+                for key, identity in configured.items()
+                if hmac.compare_digest(key, admin_key)
+            ),
+            None,
+        )
         configured[admin_key] = AuthIdentity(
             existing.tenant_id if existing else "admin",
             "admin",
@@ -112,7 +127,10 @@ def _build_configured_keys(settings: Any) -> dict[str, "AuthIdentity"]:
 
 
 def _configured_keys() -> dict[str, AuthIdentity]:
-    global _configured_keys_cache, _configured_keys_cache_signature, _configured_keys_cache_created_at
+    global \
+        _configured_keys_cache, \
+        _configured_keys_cache_signature, \
+        _configured_keys_cache_created_at
 
     settings = get_settings()
     signature = _configured_keys_signature(settings)
@@ -143,7 +161,10 @@ def _configured_keys() -> dict[str, AuthIdentity]:
 
 
 def clear_configured_keys_cache() -> None:
-    global _configured_keys_cache, _configured_keys_cache_signature, _configured_keys_cache_created_at
+    global \
+        _configured_keys_cache, \
+        _configured_keys_cache_signature, \
+        _configured_keys_cache_created_at
     with _configured_keys_cache_lock:
         _configured_keys_cache = None
         _configured_keys_cache_signature = None
@@ -155,7 +176,9 @@ def validate_auth_configuration() -> None:
     keys = _configured_keys()
     settings = get_settings()
     if not keys:
-        raise RuntimeError("API key authentication is not configured; set API_KEYS, ADMIN_API_KEY, or API_KEY_SECRET")
+        raise RuntimeError(
+            "API key authentication is not configured; set API_KEYS, ADMIN_API_KEY, or API_KEY_SECRET"
+        )
     if settings.app_env != "production":
         return
     raw_keys = os.environ.get("API_KEYS") or settings.api_keys.get_secret_value()
@@ -165,7 +188,11 @@ def validate_auth_configuration() -> None:
         raise RuntimeError("production requires API_KEYS and ADMIN_API_KEY")
     if not admin_key and not any(identity.role == "admin" for identity in keys.values()):
         raise RuntimeError("production requires ADMIN_API_KEY or an admin role in API_KEYS")
-    if any(key.strip().lower() in _DEVELOPMENT_DEFAULT_KEYS for key in [*configured_raw, admin_key] if key):
+    if any(
+        key.strip().lower() in _DEVELOPMENT_DEFAULT_KEYS
+        for key in [*configured_raw, admin_key]
+        if key
+    ):
         raise RuntimeError("production API keys must not use a known development default")
 
 
@@ -185,7 +212,9 @@ def _authenticate(api_key: str | None, tenant_header: str | None) -> AuthIdentit
             detail="Invalid or missing API key header 'X-API-Key'",
         )
     if tenant_header is not None and tenant_header != identity.tenant_id:
-        logger.warning("Ignoring mismatched X-Tenant-Id for authenticated tenant %s", identity.tenant_id)
+        logger.warning(
+            "Ignoring mismatched X-Tenant-Id for authenticated tenant %s", identity.tenant_id
+        )
     return identity
 
 
@@ -240,6 +269,8 @@ _invalidate_configured_keys_cache = clear_configured_keys_cache
 _clear_configured_keys_cache = clear_configured_keys_cache
 _reset_configured_keys_cache = clear_configured_keys_cache
 invalidate_configured_keys_cache = clear_configured_keys_cache
+
+
 def _attach_cache_helpers() -> None:
     def cache_clear() -> None:
         clear_configured_keys_cache()

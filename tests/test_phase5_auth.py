@@ -216,11 +216,13 @@ def test_configured_keys_invalidates_on_settings_change(mapped_keys, monkeypatch
     first = auth._configured_keys()
     monkeypatch.setenv(
         "API_KEYS",
-        json.dumps({
-            "user-key-for-tests": {"tenant": "tenant-a", "role": "user"},
-            "admin-key-for-tests": {"tenant": "operations", "role": "admin"},
-            "extra-key-for-tests": {"tenant": "tenant-b", "role": "user"},
-        }),
+        json.dumps(
+            {
+                "user-key-for-tests": {"tenant": "tenant-a", "role": "user"},
+                "admin-key-for-tests": {"tenant": "operations", "role": "admin"},
+                "extra-key-for-tests": {"tenant": "tenant-b", "role": "user"},
+            }
+        ),
     )
     get_settings.cache_clear()
     second = auth._configured_keys()
@@ -235,10 +237,12 @@ def test_configured_keys_cache_preserves_rate_limit_state(mapped_keys, monkeypat
     rate_limits = auth._rate_limits
     monkeypatch.setenv(
         "API_KEYS",
-        json.dumps({
-            "user-key-for-tests": {"tenant": "tenant-a", "role": "user"},
-            "admin-key-for-tests": {"tenant": "operations", "role": "admin"},
-        }),
+        json.dumps(
+            {
+                "user-key-for-tests": {"tenant": "tenant-a", "role": "user"},
+                "admin-key-for-tests": {"tenant": "operations", "role": "admin"},
+            }
+        ),
     )
     get_settings.cache_clear()
     auth._configured_keys()
