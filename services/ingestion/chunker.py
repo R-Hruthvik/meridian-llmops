@@ -10,8 +10,7 @@ import re
 from dataclasses import dataclass
 
 from packages.core.models import Chunk, Document, DocumentFormat
-from services.ingestion.parsers.base import ParsedDocument
-from services.ingestion.parsers.base import NORMALIZER_VERSION, PARSER_VERSION
+from services.ingestion.parsers.base import NORMALIZER_VERSION, PARSER_VERSION, ParsedDocument
 from services.ingestion.parsers.md import parse_markdown
 
 # Per-format chunking parameters (target_tokens, max_tokens, overlap_tokens)
@@ -213,7 +212,7 @@ class TokenAwareChunker:
             pending_tokens += tokens
         flush()
 
-        return self._merge_tiny(chunks)
+        return self._enrich_chunk_relationships(self._merge_tiny(chunks))
 
     # -------------------------------------------------------------- internals
 
@@ -385,6 +384,54 @@ class TokenAwareChunker:
             )
             for position, chunk in enumerate(merged)
         ]
+
+    def _enrich_chunk_relationships(self, chunks: list[Chunk]) -> list[Chunk]:
+        """Annotate chunks with adjacent and same-section (parent/child) links."""
+        if not chunks:
+            return chunks
+        groups: dict[tuple[str, str], list[Chunk]] = {}
+        for chunk in chunks:
+            key = (
+                chunk.document_id,
+                str(chunk.metadata.get("heading_path") or chunk.section_heading or ""),
+            )
+            groups.setdefault(key, []).append(chunk)
+
+        enriched: list[Chunk] = []
+        for index, chunk in enumerate(chunks):
+            metadata = dict(chunk.metadata)
+            metadata["prev_chunk_id"] = chunks[index - 1].id if index > 0 else None
+            metadata["previous_chunk_id"] = metadata["prev_chunk_id"]
+            metadata["prev_id"] = metadata["prev_chunk_id"]
+            metadata["next_chunk_id"] = (
+                chunks[index + 1].id if index + 1 < len(chunks) else None
+            )
+            metadata["next_id"] = metadata["next_chunk_id"]
+            key = (
+                chunk.document_id,
+                str(metadata.get("heading_path") or chunk.section_heading or ""),
+            )
+            siblings = groups.get(key, [chunk])
+            if len(siblings) > 1 and chunk.id == siblings[0].id:
+                metadata["parent_id"] = None
+                metadata["parent_chunk_id"] = None
+                metadata["child_ids"] = [item.id for item in siblings[1:]]
+                metadata["children"] = list(metadata["child_ids"])
+            elif len(siblings) > 1:
+                metadata["parent_id"] = siblings[0].id
+                metadata["parent_chunk_id"] = siblings[0].id
+                metadata["child_ids"] = []
+                metadata["children"] = []
+            else:
+                metadata["parent_id"] = None
+                metadata["parent_chunk_id"] = None
+                metadata["child_ids"] = []
+                metadata["children"] = []
+            metadata["group_key"] = f"{chunk.document_id}::{metadata.get('heading_path') or chunk.section_heading or ''}"
+            metadata["group"] = metadata["group_key"]
+            metadata["sibling_count"] = len(siblings)
+            enriched.append(chunk.model_copy(update={"metadata": metadata}))
+        return enriched
 
     @staticmethod
     def _chunk_id(doc_id: str, index: int) -> str:
