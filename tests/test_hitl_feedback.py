@@ -357,7 +357,9 @@ def test_retrieve_endpoint_passes_review_flags_to_scoring(tmp_path: Path, monkey
 
     captured: dict = {}
 
-    def fake_retrieve(query, top_k=5, tenant_id="default", debug=False, flagged_chunk_ids=None):
+    def fake_retrieve(
+        query, top_k=5, tenant_id="default", debug=False, flagged_chunk_ids=None, session_id=None
+    ):
         captured["flagged"] = flagged_chunk_ids
         return RetrievalResult(query=query, top_k=top_k, chunks=[], timings_ms={})
 

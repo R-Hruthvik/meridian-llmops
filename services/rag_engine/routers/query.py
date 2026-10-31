@@ -381,6 +381,7 @@ async def _stream_query_response(
         "debug": {},
         "session_id": req.session_id,
     }
+    events: asyncio.Queue[Any] = asyncio.Queue()
     token_sink: asyncio.Queue[Any] = asyncio.Queue()
     retrieval_ready = asyncio.Event()
     outcome: dict[str, Any] = {"final_state": {}, "error": None}
