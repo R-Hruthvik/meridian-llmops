@@ -1,0 +1,118 @@
+[
+  {
+    "id": "gq-001",
+    "category": "factual",
+    "question": "What is the simplest FastAPI example described?",
+    "answerable": true,
+    "expected_doc": "01_fastapi_guide.md",
+    "expected_phrases": [
+      "The simplest FastAPI file could look like this:"
+    ],
+    "expected_answer_status": "answered",
+    "expected_verified": false,
+    "expected_cycle_count": 1,
+    "expected_verification_status": "citations_ok",
+    "notes": "Opening example in the first steps guide."
+  },
+  {
+    "id": "gq-002",
+    "category": "factual",
+    "question": "Which filename does the guide say to use for the copied example?",
+    "answerable": true,
+    "expected_doc": "01_fastapi_guide.md",
+    "expected_phrases": [
+      "Copy that to a file `main.py`."
+    ],
+    "expected_answer_status": "answered",
+    "expected_verified": false,
+    "expected_cycle_count": 1,
+    "expected_verification_status": "citations_ok",
+    "notes": "The guide names the destination file."
+  },
+  {
+    "id": "gq-003",
+    "category": "factual",
+    "question": "Which command starts the FastAPI development server?",
+    "answerable": true,
+    "expected_doc": "01_fastapi_guide.md",
+    "expected_phrases": [
+      "uv run fastapi dev"
+    ],
+    "expected_answer_status": "answered",
+    "expected_verified": false,
+    "expected_cycle_count": 1,
+    "expected_verification_status": "citations_ok",
+    "notes": "Development server command."
+  },
+  {
+    "id": "gq-004",
+    "category": "factual",
+    "question": "Where does the example server expose its interactive API docs?",
+    "answerable": true,
+    "expected_doc": "01_fastapi_guide.md",
+    "expected_phrases": [
+      "http://127.0.0.1:8000/docs"
+    ],
+    "expected_answer_status": "answered",
+    "expected_verified": false,
+    "expected_cycle_count": 1,
+    "expected_verification_status": "citations_ok",
+    "notes": "Interactive docs URL from the startup output."
+  },
+  {
+    "id": "gq-005",
+    "category": "factual",
+    "question": "What alternative documentation page does FastAPI serve?",
+    "answerable": true,
+    "expected_doc": "01_fastapi_guide.md",
+    "expected_phrases": [
+      "http://127.0.0.1:8000/redoc"
+    ],
+    "expected_answer_status": "answered",
+    "expected_verified": false,
+    "expected_cycle_count": 1,
+    "expected_verification_status": "citations_ok",
+    "notes": "Alternative ReDoc page."
+  },
+  {
+    "id": "gq-006",
+    "category": "factual",
+    "question": "What specification does FastAPI use for its API schema?",
+    "answerable": true,
+    "expected_doc": "01_fastapi_guide.md",
+    "expected_phrases": [
+      "OpenAPI"
+    ],
+    "expected_answer_status": "answered",
+    "expected_verified": false,
+    "expected_cycle_count": 1,
+    "expected_verification_status": "citations_ok",
+    "notes": "The guide identifies OpenAPI as the API schema standard."
+  },
+  {
+    "id": "gq-unanswerable-1",
+    "category": "unanswerable",
+    "question": "What is the production Qdrant password?",
+    "answerable": false,
+    "expected_doc": null,
+    "expected_phrases": [],
+    "expected_answer_status": "insufficient_context",
+    "expected_verified": false,
+    "expected_cycle_count": 1,
+    "expected_verification_status": "unchecked",
+    "notes": "Out-of-scope secret question."
+  },
+  {
+    "id": "gq-unanswerable-2",
+    "category": "unanswerable",
+    "question": "How many employees does the company have?",
+    "answerable": false,
+    "expected_doc": null,
+    "expected_phrases": [],
+    "expected_answer_status": "insufficient_context",
+    "expected_verified": false,
+    "expected_cycle_count": 1,
+    "expected_verification_status": "unchecked",
+    "notes": "No employee count in corpus."
+  }
+]
