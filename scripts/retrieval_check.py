@@ -24,19 +24,21 @@ from services.ingestion.vector_store import QdrantChunkStore
 from services.rag_engine.retrieval.bm25 import BM25Index
 from services.rag_engine.retrieval.hybrid import HybridRetriever
 
-DEFAULT_TENANT = 'eval'
-SUPPORTED_SUFFIXES = {'.md', '.markdown', '.txt', '.pdf', '.docx', '.html', '.htm'}
+DEFAULT_TENANT = "eval"
+SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".pdf", ".docx", ".html", ".htm"}
 
 
 def _normalize(text: str) -> str:
-    return ' '.join(text.lower().split())
+    return " ".join(text.lower().split())
 
 
 def hit_at_k(chunks: list, expected_doc: str, expected_phrases: list[str], k: int) -> bool:
     """One hit when any top-k chunk comes from expected_doc and contains a phrase."""
     wanted = [_normalize(phrase) for phrase in expected_phrases]
     for chunk in chunks[:k]:
-        if expected_doc not in chunk.filename and expected_doc not in chunk.chunk.metadata.get('source', ''):
+        if expected_doc not in chunk.filename and expected_doc not in chunk.chunk.metadata.get(
+            "source", ""
+        ):
             continue
         text = _normalize(chunk.chunk.text)
         if any(phrase in text for phrase in wanted):
@@ -44,11 +46,15 @@ def hit_at_k(chunks: list, expected_doc: str, expected_phrases: list[str], k: in
     return False
 
 
-def reciprocal_rank(chunks: list, expected_doc: str, expected_phrases: list[str], cutoff: int = 10) -> float:
+def reciprocal_rank(
+    chunks: list, expected_doc: str, expected_phrases: list[str], cutoff: int = 10
+) -> float:
     """1/rank of the first qualifying chunk within `cutoff`, else 0."""
     wanted = [_normalize(phrase) for phrase in expected_phrases]
     for position, chunk in enumerate(chunks[:cutoff], start=1):
-        if expected_doc not in chunk.filename and expected_doc not in chunk.chunk.metadata.get('source', ''):
+        if expected_doc not in chunk.filename and expected_doc not in chunk.chunk.metadata.get(
+            "source", ""
+        ):
             continue
         text = _normalize(chunk.chunk.text)
         if any(phrase in text for phrase in wanted):
@@ -64,10 +70,10 @@ def build_engine(
     tenant_id: str = DEFAULT_TENANT,
 ):
     embedder = FastEmbedEmbedder(settings_model, cache_path=cache_path)
-    store = QdrantChunkStore(QdrantClient(':memory:'), 'retrieval_check', embedder.dim)
+    store = QdrantChunkStore(QdrantClient(":memory:"), "retrieval_check", embedder.dim)
     store.ensure_collection()
     pipeline = IngestionPipeline(vector_store=store, embedder=embedder, storage_root=storage_dir)
-    for path in sorted(docs_dir.glob('*')):
+    for path in sorted(docs_dir.glob("*")):
         if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES:
             pipeline.ingest_file(path.name, path.read_bytes(), tenant_id=tenant_id)
     retriever = HybridRetriever(
@@ -78,20 +84,24 @@ def build_engine(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--questions', default='evals/retrieval_smoke.json')
-    parser.add_argument('--docs', default='sample_docs')
-    parser.add_argument('--top-k', type=int, default=5)
-    parser.add_argument('--tenant', default=DEFAULT_TENANT)
+    parser.add_argument("--questions", default="evals/retrieval_smoke.json")
+    parser.add_argument("--docs", default="sample_docs")
+    parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument("--tenant", default=DEFAULT_TENANT)
     args = parser.parse_args()
 
     from packages.core.settings import get_settings
 
     settings = get_settings()
-    with tempfile.TemporaryDirectory(prefix='retrieval_check_') as tmp:
+    with tempfile.TemporaryDirectory(prefix="retrieval_check_") as tmp:
         retriever, store = build_engine(
-            Path(args.docs), Path(tmp), settings.embedding_model, settings.fastembed_cache_path, args.tenant
+            Path(args.docs),
+            Path(tmp),
+            settings.embedding_model,
+            settings.fastembed_cache_path,
+            args.tenant,
         )
-        cases = json.loads(Path(args.questions).read_text(encoding='utf-8'))['cases']
+        cases = json.loads(Path(args.questions).read_text(encoding="utf-8"))["cases"]
 
         hits = 0
         rr_total = 0.0
@@ -100,16 +110,18 @@ def main() -> int:
         latencies: list[float] = []
         answerable = 0
         for case in cases:
-            if not case.get('answerable', True):
+            if not case.get("answerable", True):
                 continue
             answerable += 1
-            result = retriever.retrieve(case['question'], top_k=args.top_k, tenant_id=args.tenant)
-            latencies.append(result.timings_ms['total'])
-            hit = hit_at_k(result.chunks, case['expected_doc'], case['expected_phrases'], args.top_k)
-            rr = reciprocal_rank(result.chunks, case['expected_doc'], case['expected_phrases'])
+            result = retriever.retrieve(case["question"], top_k=args.top_k, tenant_id=args.tenant)
+            latencies.append(result.timings_ms["total"])
+            hit = hit_at_k(
+                result.chunks, case["expected_doc"], case["expected_phrases"], args.top_k
+            )
+            rr = reciprocal_rank(result.chunks, case["expected_doc"], case["expected_phrases"])
             hits += int(hit)
             rr_total += rr
-            status = 'PASS' if hit else 'FAIL'
+            status = "PASS" if hit else "FAIL"
             print(f"[{status}] {case['id']}: {case['question']}")
             for chunk in result.chunks[: args.top_k]:
                 scores = chunk.scores
@@ -120,32 +132,45 @@ def main() -> int:
                 print(f"       {chunk.chunk.text[:120]!r}")
 
         for case in cases:
-            if case.get('answerable', True):
+            if case.get("answerable", True):
                 continue
             unanswerable_total += 1
-            result = retriever.retrieve(case['question'], top_k=args.top_k, tenant_id=args.tenant)
-            dense = [c.scores.get('dense') for c in result.chunks if c.scores.get('dense') is not None]
+            result = retriever.retrieve(case["question"], top_k=args.top_k, tenant_id=args.tenant)
+            dense = [
+                c.scores.get("dense") for c in result.chunks if c.scores.get("dense") is not None
+            ]
             best = max(dense) if dense else 0.0
             flagged = best < settings.min_dense_score
             unanswerable_flagged += int(flagged)
-            print(f"[{'PASS' if flagged else 'FAIL'}] {case['id']} (unanswerable, best dense {best:.3f}): {case['question']}")
+            print(
+                f"[{'PASS' if flagged else 'FAIL'}] {case['id']} (unanswerable, best dense {best:.3f}): {case['question']}"
+            )
 
         if answerable:
             print(f"\nhit@{args.top_k} = {hits / answerable:.3f} ({hits}/{answerable})")
             print(f"MRR      = {rr_total / answerable:.3f}")
         if latencies:
-            print(f"latency p50 = {statistics.median(latencies):.1f} ms, p95 = "
-                  f"{sorted(latencies)[max(0, int(0.95 * len(latencies)) - 1)]:.1f} ms")
+            print(
+                f"latency p50 = {statistics.median(latencies):.1f} ms, p95 = "
+                f"{sorted(latencies)[max(0, int(0.95 * len(latencies)) - 1)]:.1f} ms"
+            )
         if unanswerable_total:
-            print(f"unanswerable flagged = {unanswerable_flagged / unanswerable_total:.3f} "
-                  f"({unanswerable_flagged}/{unanswerable_total})")
+            print(
+                f"unanswerable flagged = {unanswerable_flagged / unanswerable_total:.3f} "
+                f"({unanswerable_flagged}/{unanswerable_total})"
+            )
         print(f"indexed points: {store.count(tenant_id=args.tenant)}")
 
     unanswerable_ok = (unanswerable_total == 0) or (unanswerable_flagged == unanswerable_total)
-    gate = answerable > 0 and hits / answerable >= 0.90 and rr_total / answerable >= 0.70 and unanswerable_ok
+    gate = (
+        answerable > 0
+        and hits / answerable >= 0.90
+        and rr_total / answerable >= 0.70
+        and unanswerable_ok
+    )
     print("GATE:", "PASS" if gate else "FAIL")
     return 0 if gate else 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     raise SystemExit(main())

@@ -34,24 +34,42 @@ async def main():
         cache_path=settings.fastembed_cache_path,
         expected_dim=settings.qdrant_vector_dim,
     )
-    vector_store = QdrantChunkStore(QdrantClient(':memory:'), 'repro', embedder.dim)
+    vector_store = QdrantChunkStore(QdrantClient(":memory:"), "repro", embedder.dim)
     vector_store.ensure_collection()
     vector_store.upsert_chunks(chunks, embedder.embed_passages([chunk.text for chunk in chunks]))
     from services.rag_engine.retrieval.bm25 import BM25Index
 
-    retriever = HybridRetriever(embedder=embedder, vector_store=vector_store, bm25_index=BM25Index(chunks))
-    graph = build_rag_agent_graph(retriever, KnowledgeGraphStore(in_memory=True), llm_client=FailingClient())
+    retriever = HybridRetriever(
+        embedder=embedder, vector_store=vector_store, bm25_index=BM25Index(chunks)
+    )
+    graph = build_rag_agent_graph(
+        retriever, KnowledgeGraphStore(in_memory=True), llm_client=FailingClient()
+    )
     try:
-        state = await graph.ainvoke({
-            "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
-            "retrieved_chunks": [], "entities": [], "draft_answer": "",
-            "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
-            "tenant_id": "repro",
-        })
+        state = await graph.ainvoke(
+            {
+                "query": "What does Qdrant store?",
+                "current_search_query": "What does Qdrant store?",
+                "retrieved_chunks": [],
+                "entities": [],
+                "draft_answer": "",
+                "cycle_count": 0,
+                "max_cycles": 1,
+                "is_refusal": False,
+                "tenant_id": "repro",
+            }
+        )
     except ProviderError as error:
         print(json.dumps({"provider_error": error.status, "returned_as_refusal": False}))
         return
-    print(json.dumps({"answer_status": state.get("answer_status"), "is_refusal": state.get("is_refusal", False)}))
+    print(
+        json.dumps(
+            {
+                "answer_status": state.get("answer_status"),
+                "is_refusal": state.get("is_refusal", False),
+            }
+        )
+    )
 
 
 asyncio.run(main())

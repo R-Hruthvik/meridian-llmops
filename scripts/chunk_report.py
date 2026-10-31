@@ -31,10 +31,14 @@ def _empty_page_numbers(parsed: Any) -> list[int]:
         for line in {line.strip() for line in page.text.splitlines() if len(line.strip()) >= 3}:
             line_counts[line] = line_counts.get(line, 0) + 1
     threshold = max(2, int(0.6 * len(pages)))
-    repeated = {line for line, count in line_counts.items() if count >= threshold and len(pages) >= 3}
+    repeated = {
+        line for line, count in line_counts.items() if count >= threshold and len(pages) >= 3
+    }
     empty: list[int] = []
     for page in pages:
-        content = "\n".join(line for line in page.text.splitlines() if line.strip() not in repeated).strip()
+        content = "\n".join(
+            line for line in page.text.splitlines() if line.strip() not in repeated
+        ).strip()
         if len(re.sub(r"\s", "", content)) < 20:
             empty.append(page.number)
     return empty
@@ -90,7 +94,11 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as error:  # noqa: BLE001 - parser errors vary by supported format
             print(f"Could not parse {source}: {error}", file=sys.stderr)
             return 1
-        _report([chunk.model_dump(exclude={"embedding"}) for chunk in chunks], filename=source.name, parsed=parsed)
+        _report(
+            [chunk.model_dump(exclude={"embedding"}) for chunk in chunks],
+            filename=source.name,
+            parsed=parsed,
+        )
         return 0
 
     storage = DocumentStorageManager(args.storage_root)
@@ -105,7 +113,11 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as error:  # noqa: BLE001 - parser errors vary by supported format
             print(f"Could not reparse original {original}: {error}", file=sys.stderr)
             return 1
-    _report(document.get("chunks", []), filename=document.get("filename") or args.document, parsed=parsed)
+    _report(
+        document.get("chunks", []),
+        filename=document.get("filename") or args.document,
+        parsed=parsed,
+    )
     return 0
 
 

@@ -11,4 +11,12 @@ from services.ingestion.vector_store import point_id
 
 legacy_id = "doc-00000000-0000-0000-0000-000000000001-chunk-0"
 normalized_id = point_id(legacy_id)
-print(json.dumps({"logical_id": legacy_id, "point_id": normalized_id, "is_uuid": str(uuid.UUID(normalized_id)) == normalized_id}))
+print(
+    json.dumps(
+        {
+            "logical_id": legacy_id,
+            "point_id": normalized_id,
+            "is_uuid": str(uuid.UUID(normalized_id)) == normalized_id,
+        }
+    )
+)

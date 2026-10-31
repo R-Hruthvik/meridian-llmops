@@ -19,7 +19,9 @@ from services.ingestion.vector_store import QdrantChunkStore
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".pdf", ".docx", ".html", ".htm"}
 
 
-def build_pipeline(storage_root: Path | None, qdrant_path: str | None) -> tuple[IngestionPipeline, QdrantClient]:
+def build_pipeline(
+    storage_root: Path | None, qdrant_path: str | None
+) -> tuple[IngestionPipeline, QdrantClient]:
     settings = get_settings()
     embedder = FastEmbedEmbedder(
         settings.embedding_model,
@@ -52,12 +54,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("directory", type=Path)
     parser.add_argument("--recursive", action="store_true")
     parser.add_argument("--tenant", default="default")
-    parser.add_argument("--storage-root", type=Path, help="Override storage for an isolated benchmark")
+    parser.add_argument(
+        "--storage-root", type=Path, help="Override storage for an isolated benchmark"
+    )
     parser.add_argument("--qdrant-path", help="Use a local Qdrant path for an isolated benchmark")
     args = parser.parse_args(argv)
     target = args.directory
     if args.qdrant_path and (
-        args.storage_root is None or args.storage_root.resolve() == get_default_storage_root().resolve()
+        args.storage_root is None
+        or args.storage_root.resolve() == get_default_storage_root().resolve()
     ):
         parser.error("--qdrant-path requires an isolated --storage-root")
     if target.is_file():
@@ -69,7 +74,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"not a directory: {target}")
         glob = "**/*" if args.recursive else "*"
         files = sorted(
-            path for path in target.glob(glob)
+            path
+            for path in target.glob(glob)
             if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES
         )
     # normalize filename relative to parent for single file

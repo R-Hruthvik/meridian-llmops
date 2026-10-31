@@ -63,8 +63,7 @@ def summarize(samples: list[dict[str, float]]) -> dict[str, dict[str, float]]:
     """Summarize HybridRetriever timings by stage and percentile."""
     return {
         stage: {
-            f"p{p}": round(percentile([row[stage] for row in samples], p), 3)
-            for p in (50, 95, 99)
+            f"p{p}": round(percentile([row[stage] for row in samples], p), 3) for p in (50, 95, 99)
         }
         for stage in REPORT_STAGES
     }
@@ -110,7 +109,9 @@ def make_queries(count: int, doc_count: int, chunks_per_doc: int) -> list[str]:
     ]
 
 
-def measure(retriever: HybridRetriever, queries: list[str], tenant: str, workers: int) -> list[dict[str, float]]:
+def measure(
+    retriever: HybridRetriever, queries: list[str], tenant: str, workers: int
+) -> list[dict[str, float]]:
     def retrieve_and_serialize(query: str) -> dict[str, float]:
         result = retriever.retrieve(query, tenant_id=tenant)
         timings = dict(result.timings_ms)
@@ -126,9 +127,15 @@ def measure(retriever: HybridRetriever, queries: list[str], tenant: str, workers
         return list(executor.map(retrieve_and_serialize, queries))
 
 
-def profile_dense_payload(store: QdrantChunkStore, query_vectors: list[list[float]], tenant: str) -> dict[str, dict[str, float]]:
+def profile_dense_payload(
+    store: QdrantChunkStore, query_vectors: list[list[float]], tenant: str
+) -> dict[str, dict[str, float]]:
     """Compare Qdrant's full-payload query with ID/score-only diagnostic calls."""
-    samples: dict[str, list[float]] = {"raw_full_payload": [], "raw_no_payload": [], "payload_to_chunk": []}
+    samples: dict[str, list[float]] = {
+        "raw_full_payload": [],
+        "raw_no_payload": [],
+        "payload_to_chunk": [],
+    }
     query_filter = store._filter(tenant)
     for vector in query_vectors:
         started = time.perf_counter()
@@ -177,7 +184,9 @@ def run(args: argparse.Namespace) -> dict:
         )
         collection_name = f"bench_{uuid.uuid4().hex}" if args.qdrant_url else "bench_chunks"
         if args.qdrant_url:
-            print(f"Using temporary Qdrant collection {collection_name}", file=sys.stderr, flush=True)
+            print(
+                f"Using temporary Qdrant collection {collection_name}", file=sys.stderr, flush=True
+            )
         store = QdrantChunkStore(client, collection_name, embedder.dim)
         try:
             store.ensure_collection()
@@ -188,15 +197,28 @@ def run(args: argparse.Namespace) -> dict:
             index_batch_size = 200
             for offset in range(0, len(chunks), index_batch_size):
                 batch = chunks[offset : offset + index_batch_size]
-                vectors = embedder.embed_passages([f"{chunk.metadata['title']} > {chunk.section_heading}\n{chunk.text}" for chunk in batch])
+                vectors = embedder.embed_passages(
+                    [
+                        f"{chunk.metadata['title']} > {chunk.section_heading}\n{chunk.text}"
+                        for chunk in batch
+                    ]
+                )
                 store.upsert_chunks(batch, vectors)
                 indexed = min(offset + len(batch), len(chunks))
-                print(f"Indexed {indexed:,}/{len(chunks):,} synthetic chunks", file=sys.stderr, flush=True)
+                print(
+                    f"Indexed {indexed:,}/{len(chunks):,} synthetic chunks",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
             retriever = HybridRetriever(embedder, store, BM25Index(chunks))
             queries = make_queries(QUERY_COUNT, args.docs, args.chunks_per_doc)
             reports = {}
-            for label, workers in (("single_thread", 1), ("4_concurrent", 4), ("8_concurrent", CONCURRENCY)):
+            for label, workers in (
+                ("single_thread", 1),
+                ("4_concurrent", 4),
+                ("8_concurrent", CONCURRENCY),
+            ):
                 print(f"Benchmarking {label} ({workers} workers)...", file=sys.stderr, flush=True)
                 # Warm each execution mode independently so concurrent measurements
                 # do not include the first concurrent embedder/Qdrant calls.
@@ -208,7 +230,9 @@ def run(args: argparse.Namespace) -> dict:
             dense_payload_diagnostic = profile_dense_payload(store, diagnostic_vectors, tenant)
             point_count = store.count(tenant_id=tenant)
             if point_count != len(chunks):
-                raise RuntimeError(f"temporary Qdrant count mismatch: expected {len(chunks)}, got {point_count}")
+                raise RuntimeError(
+                    f"temporary Qdrant count mismatch: expected {len(chunks)}, got {point_count}"
+                )
             return {
                 "model": args.model,
                 "qdrant_url": args.qdrant_url or "local",
@@ -233,7 +257,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--docs", type=int, default=DOCS)
     parser.add_argument("--chunks-per-doc", type=int, default=CHUNKS_PER_DOC)
     parser.add_argument("--model", default="BAAI/bge-small-en-v1.5")
-    parser.add_argument("--qdrant-url", help="Benchmark against this Qdrant server using a temporary collection")
+    parser.add_argument(
+        "--qdrant-url", help="Benchmark against this Qdrant server using a temporary collection"
+    )
     args = parser.parse_args(argv)
     try:
         result = run(args)

@@ -16,7 +16,11 @@ code = (
 )
 results = [
     subprocess.check_output(
-        [sys.executable, "-c", f"import sys; sys.path.insert(0, {str(ROOT)!r}); import json; " + code],
+        [
+            sys.executable,
+            "-c",
+            f"import sys; sys.path.insert(0, {str(ROOT)!r}); import json; " + code,
+        ],
         cwd=ROOT,
         text=True,
     ).strip()

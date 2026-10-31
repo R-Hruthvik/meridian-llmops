@@ -1,6 +1,6 @@
 """Compare retrieval rerankers on the checked-in retrieval smoke set.
 
-    uv run python scripts/eval_retrieval.py --reranker all
+uv run python scripts/eval_retrieval.py --reranker all
 """
 
 import argparse
@@ -17,7 +17,9 @@ from scripts.retrieval_check import build_engine, hit_at_k, reciprocal_rank
 from services.rag_engine.retrieval.reranker import CrossEncoderReranker, LexicalReranker
 
 
-def evaluate(retriever, cases: list[dict], top_k: int, min_dense_score: float = 0.60) -> tuple[float, float, float]:
+def evaluate(
+    retriever, cases: list[dict], top_k: int, min_dense_score: float = 0.60
+) -> tuple[float, float, float]:
     answerable = [case for case in cases if case.get("answerable", True)]
     hits = 0
     reciprocal_ranks = 0.0
@@ -25,7 +27,9 @@ def evaluate(retriever, cases: list[dict], top_k: int, min_dense_score: float = 
     for case in answerable:
         result = retriever.retrieve(case["question"], top_k=top_k, tenant_id="eval")
         hits += hit_at_k(result.chunks, case["expected_doc"], case["expected_phrases"], top_k)
-        reciprocal_ranks += reciprocal_rank(result.chunks, case["expected_doc"], case["expected_phrases"])
+        reciprocal_ranks += reciprocal_rank(
+            result.chunks, case["expected_doc"], case["expected_phrases"]
+        )
         latencies.append(result.timings_ms["total"])
     p95 = sorted(latencies)[max(0, math.ceil(0.95 * len(latencies)) - 1)]
     return hits / len(answerable), reciprocal_ranks / len(answerable), p95
@@ -33,7 +37,9 @@ def evaluate(retriever, cases: list[dict], top_k: int, min_dense_score: float = 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--reranker", choices=("none", "lexical", "cross_encoder", "all"), default="all")
+    parser.add_argument(
+        "--reranker", choices=("none", "lexical", "cross_encoder", "all"), default="all"
+    )
     parser.add_argument("--top-k", type=int, default=5)
     args = parser.parse_args()
 

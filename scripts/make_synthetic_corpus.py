@@ -13,7 +13,10 @@ FORMATS = (".md", ".txt", ".html")
 def generate_corpus(directory: Path, count: int = 200) -> list[Path]:
     if count < 200:
         raise ValueError("synthetic corpus must contain at least 200 files")
-    paths = [directory / f"synthetic_{index:04d}{FORMATS[index % len(FORMATS)]}" for index in range(count)]
+    paths = [
+        directory / f"synthetic_{index:04d}{FORMATS[index % len(FORMATS)]}"
+        for index in range(count)
+    ]
     existing = [path for path in paths if path.exists()]
     if existing:
         raise FileExistsError(f"refusing to overwrite existing corpus file: {existing[0]}")
@@ -29,7 +32,9 @@ def generate_corpus(directory: Path, count: int = 200) -> list[Path]:
         if path.suffix == ".md":
             content = f"# Benchmark document {index}\n\n{body}"
         elif path.suffix == ".html":
-            content = f"<html><body><h1>Benchmark document {index}</h1><p>{body}</p></body></html>\n"
+            content = (
+                f"<html><body><h1>Benchmark document {index}</h1><p>{body}</p></body></html>\n"
+            )
         else:
             content = body
         path.write_text(content, encoding="utf-8")
@@ -49,7 +54,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Could not create synthetic corpus: {error}", file=sys.stderr)
         return 1
     counts = {suffix: sum(path.suffix == suffix for path in paths) for suffix in FORMATS}
-    print(f"Created {len(paths)} files in {args.directory}: " + ", ".join(f"{fmt}={n}" for fmt, n in counts.items()))
+    print(
+        f"Created {len(paths)} files in {args.directory}: "
+        + ", ".join(f"{fmt}={n}" for fmt, n in counts.items())
+    )
     return 0
 
 
