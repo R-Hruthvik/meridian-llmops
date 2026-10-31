@@ -13,7 +13,7 @@ Organised 2026-10-06. 759 `.md` files existed in the repo at that point; **51 we
 
 | Document | What it holds |
 |---|---|
-| [`adr/`](adr/) | 13 architecture decision records. Each carries a `Status:` header — **check it before trusting the decision**, six have drifted from the code |
+| [`adr/`](adr/) | 25 architecture decision records. Each carries a `Status:` header — **check it before trusting the decision**, six have drifted from the code |
 | [`agents/`](agents/) | How skills read the repo, GitHub issue conventions, triage labels |
 | [`planning/`](planning/) | The active improvement plans. **This is the remaining work** |
 | [`research/`](research/) | Investigation reports |
@@ -45,7 +45,7 @@ Phases 0 and 1 — safety flags and request/response contracts — were broadly 
 
 | Status | Records | Meaning |
 |---|---|---|
-| `Accepted` | 0001, 0002, 0008, 0012 | The code still does this |
+| `Accepted` | 0001, 0002, 0008, 0012, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021, 0022, 0023, 0024, 0025 | The code still does this |
 | `Accepted (drifted)` | 0003, 0004, 0005, 0009, 0010, 0011 | Still the intent; each carries a `Current state` note saying what actually shipped |
 | `Superseded` | 0006, 0007, 0013 | A different approach replaced it. Kept because the record shows what was tried and why it was dropped |
 
