@@ -164,7 +164,7 @@ class HybridRetriever:
         if target_index is None and hasattr(chunk, "metadata"):
             target_index = (chunk.metadata or {}).get("chunk_index")
         try:
-            target_index = int(target_index)
+            target_index = int(str(target_index))
         except (TypeError, ValueError):
             return []
         result: list[Chunk] = []
@@ -177,7 +177,7 @@ class HybridRetriever:
             if other_index is None and hasattr(other, "metadata"):
                 other_index = (other.metadata or {}).get("chunk_index")
             try:
-                other_index = int(other_index)
+                other_index = int(str(other_index))
             except (TypeError, ValueError):
                 continue
             if 0 < abs(other_index - target_index) <= max(1, int(window)):
