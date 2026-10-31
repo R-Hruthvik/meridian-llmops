@@ -112,7 +112,7 @@ async def test_graph_retries_only_until_max_cycles_and_keeps_final_sources():
     assert len(retriever.calls) == 2
     assert result["cycle_count"] == 2
     assert result["answer_status"] == "unverified"
-    assert result["debug"]["reformulated_queries"] == ["standalone search: What does Qdrant store?"]
+    assert result["debug"]["reformulated_queries"] == ["What does Qdrant store?"]
     assert len(result["retrieved_chunks"]) == 1
 
 
@@ -163,7 +163,10 @@ async def test_llm_reformulation_uses_active_provider_and_keeps_requested_top_k(
         verify_fn=verify,
         verify_mode="citations",
     )
-    result = await graph.ainvoke(_state(max_cycles=2), config={"configurable": {"top_k": 1}})
+    state = _state(max_cycles=2)
+    state["query"] = "What storage backend does Meridian use for vector embeddings and document chunks in production?"
+    state["current_search_query"] = state["query"]
+    result = await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
 
     assert retriever.calls[1] == ("Qdrant vector storage", 1)
     assert calls[1]["provider"] == "custom"
@@ -176,7 +179,7 @@ async def test_llm_reformulation_uses_active_provider_and_keeps_requested_top_k(
     )
     assert "2–4 likely topic keywords" in rewrite_messages[0]["content"]
     assert "Return only the query text" in rewrite_messages[0]["content"]
-    assert rewrite_messages[1]["content"] == "Source question:\nWhat does Qdrant store?"
+    assert rewrite_messages[1]["content"] == "Source question:\n" + state["query"]
     assert result["debug"]["reformulated_queries"] == ["Qdrant vector storage"]
 
 
