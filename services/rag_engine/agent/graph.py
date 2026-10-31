@@ -606,12 +606,8 @@ def build_rag_agent_graph(
         llm_available = bool(cfg.get("api_key") or cfg.get("base_url"))
         top_k = state.get("base_top_k", DEFAULT_TOP_K)
         short_query = _is_short_factual_query(query)
-        retrieval_weak = _first_pass_retrieval_weak(
-            state.get("retrieved_chunks", []), min_dense_score
-        )
         use_llm_reformulation = (
             (not short_query)
-            and retrieval_weak
             and bool(reformulate_fn or mode == "llm" or llm_available)
         )
         next_top_k = state.get("retry_top_k", top_k)
