@@ -202,3 +202,65 @@ def test_sensitive_rag_routes_require_admin():
     for route in _iter_api_routes(app.routes):
         if getattr(route, "path", "") in admin_paths:
             assert require_admin in {dependency.call for dependency in route.dependant.dependencies}
+
+
+def test_configured_keys_result_is_cached(mapped_keys):
+    first = auth._configured_keys()
+    second = auth._configured_keys()
+    assert first is second
+
+
+def test_configured_keys_invalidates_on_settings_change(mapped_keys, monkeypatch):
+    from packages.core.settings import get_settings
+
+    first = auth._configured_keys()
+    monkeypatch.setenv(
+        "API_KEYS",
+        json.dumps({
+            "user-key-for-tests": {"tenant": "tenant-a", "role": "user"},
+            "admin-key-for-tests": {"tenant": "operations", "role": "admin"},
+            "extra-key-for-tests": {"tenant": "tenant-b", "role": "user"},
+        }),
+    )
+    get_settings.cache_clear()
+    second = auth._configured_keys()
+    assert first is not second
+    assert "extra-key-for-tests" in second
+
+
+def test_configured_keys_cache_preserves_rate_limit_state(mapped_keys, monkeypatch):
+    from packages.core.settings import get_settings
+
+    asyncio.run(auth.require_user("user-key-for-tests", None))
+    rate_limits = auth._rate_limits
+    monkeypatch.setenv(
+        "API_KEYS",
+        json.dumps({
+            "user-key-for-tests": {"tenant": "tenant-a", "role": "user"},
+            "admin-key-for-tests": {"tenant": "operations", "role": "admin"},
+        }),
+    )
+    get_settings.cache_clear()
+    auth._configured_keys()
+    assert auth._rate_limits is rate_limits
+
+
+def test_configured_keys_cache_can_be_cleared(mapped_keys):
+    first = auth._configured_keys()
+    auth.clear_configured_keys_cache()
+    second = auth._configured_keys()
+    assert first is not second
+
+
+def test_configured_keys_cache_supports_lru_style_clear(mapped_keys):
+    first = auth._configured_keys()
+    auth._configured_keys.cache_clear()
+    second = auth._configured_keys()
+    assert first is not second
+
+
+def test_configured_keys_cache_ttl(mapped_keys, monkeypatch):
+    first = auth._configured_keys()
+    monkeypatch.setattr(auth, "_CONFIGURED_KEYS_TTL", 0.0)
+    second = auth._configured_keys()
+    assert first is not second
