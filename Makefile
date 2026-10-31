@@ -23,8 +23,8 @@ up:
 ingest:
 	$(PYTHON) scripts/ingest_folder.py "$(DIR)" --recursive
 
-retrieval-check:
-	$(PYTHON) scripts/retrieval_check.py --questions evals/retrieval_smoke.json --docs sample_docs
+bench-baseline:
+	$(PYTHON) scripts/bench_baseline.py --skip-full-query
 
 test:
 	$(PYTHON) -m pytest tests/ evals/ -v

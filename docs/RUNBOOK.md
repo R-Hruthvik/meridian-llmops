@@ -81,9 +81,13 @@ Check the HTTP status and response detail, then inspect the API process logs for
 
 Use the response's `timings_ms` breakdown to identify the slow stage. Retrieval `total` includes query embedding; the benchmark also reports embed, dense, BM25, fusion, retrieval, and serialization stages. To benchmark an isolated synthetic corpus locally:
 
+To benchmark retrieval paths and the full agentic query against the golden dataset:
+
 ```bash
-uv run python scripts/bench_retrieval.py
+uv run python scripts/bench_baseline.py --skip-full-query
 ```
+
+Set a real provider in the environment to include the full-query path.
 
 The script defaults to a local temporary Qdrant index and removes its temporary data on exit. Use `--help` for corpus/model options. If the query's retrieval stages are fast but the full request is slow, check provider latency and generation/retry timings.
 
