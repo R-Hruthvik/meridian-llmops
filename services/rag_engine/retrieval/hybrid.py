@@ -51,6 +51,15 @@ class RankedChunk:
     def heading_path(self) -> str:
         return self.chunk.section_heading or ""
 
+    @property
+    def group_key(self) -> tuple[str, str]:
+        return HybridRetriever.group_key(self.chunk)
+
+    @property
+    def group(self) -> str:
+        document_id, heading = self.group_key
+        return f"{document_id}::{heading}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "rank": self.rank,
@@ -60,6 +69,8 @@ class RankedChunk:
             "title": self.chunk.metadata.get("title", ""),
             "page_start": self.page_start,
             "heading_path": self.heading_path,
+            "group_key": list(self.group_key),
+            "group": self.group,
             "text": self.chunk.text,
             "scores": self.scores,
         }
@@ -126,6 +137,87 @@ class HybridRetriever:
         with self._session_lock:
             return list(self._session_chunks.get(session_id, []))
 
+    @staticmethod
+    def group_key(chunk: Any) -> tuple[str, str]:
+        """Grouping key for session-aware chunk grouping: (document_id, heading_path)."""
+        heading = None
+        if hasattr(chunk, "metadata") and isinstance(chunk.metadata, dict):
+            heading = chunk.metadata.get("heading_path")
+        if heading is None:
+            heading = getattr(chunk, "section_heading", None)
+        return (str(getattr(chunk, "document_id", "")), str(heading or ""))
+
+    def session_groups(self, session_id: str) -> set[tuple[str, str]]:
+        """Return the (document_id, heading_path) groups touched in a session."""
+        groups: set[tuple[str, str]] = set()
+        for chunk_id in self.session_chunks(session_id):
+            chunk = self.bm25_index.chunk_of(chunk_id)
+            if chunk is not None:
+                groups.add(self.group_key(chunk))
+        return groups
+
+    def adjacent_chunks(self, chunk: Any, window: int = 1) -> list[Chunk]:
+        """Chunks from the same document adjacent to ``chunk`` by chunk_index."""
+        pool = list(getattr(self.bm25_index, "chunks", []) or [])
+        target_doc = getattr(chunk, "document_id", None)
+        target_index = getattr(chunk, "chunk_index", None)
+        if target_index is None and hasattr(chunk, "metadata"):
+            target_index = (chunk.metadata or {}).get("chunk_index")
+        try:
+            target_index = int(target_index)
+        except (TypeError, ValueError):
+            return []
+        result: list[Chunk] = []
+        for other in pool:
+            if getattr(other, "id", None) == getattr(chunk, "id", None):
+                continue
+            if getattr(other, "document_id", None) != target_doc:
+                continue
+            other_index = getattr(other, "chunk_index", None)
+            if other_index is None and hasattr(other, "metadata"):
+                other_index = (other.metadata or {}).get("chunk_index")
+            try:
+                other_index = int(other_index)
+            except (TypeError, ValueError):
+                continue
+            if 0 < abs(other_index - target_index) <= max(1, int(window)):
+                result.append(other)
+        result.sort(key=lambda item: int(getattr(item, "chunk_index", 0) or 0))
+        return result
+
+    def neighbors(self, chunk: Any, window: int = 1) -> list[Chunk]:
+        return self.adjacent_chunks(chunk, window=window)
+
+    def surrounding_chunks(self, chunk: Any, window: int = 1) -> list[Chunk]:
+        return self.adjacent_chunks(chunk, window=window)
+
+    def expand_adjacent(self, chunks: list[Any], window: int = 1) -> list[Any]:
+        """Expand a list of chunks with adjacent chunks from the same document."""
+        expanded: list[Any] = list(chunks or [])
+        seen_ids = {getattr(item, "id", None) for item in expanded}
+        for chunk in list(chunks or []):
+            for neighbor in self.adjacent_chunks(chunk, window=window):
+                if neighbor.id in seen_ids:
+                    continue
+                seen_ids.add(neighbor.id)
+                expanded.append(neighbor)
+        expanded.sort(
+            key=lambda item: (
+                str(getattr(item, "document_id", "")),
+                int(getattr(item, "chunk_index", 0) or 0),
+            )
+        )
+        return expanded
+
+    def expand_adjacent_chunks(self, chunks: list[Any], window: int = 1) -> list[Any]:
+        return self.expand_adjacent(chunks, window=window)
+
+    def expand_with_adjacent(self, chunks: list[Any], window: int = 1) -> list[Any]:
+        return self.expand_adjacent(chunks, window=window)
+
+    def expand_neighbors(self, chunks: list[Any], window: int = 1) -> list[Any]:
+        return self.expand_adjacent(chunks, window=window)
+
     def remove_chunks(self, chunk_ids: list[str]) -> None:
         """Evict chunks from the lexical index when their documents are deleted."""
         with self._bm25_lock:
@@ -139,7 +231,29 @@ class HybridRetriever:
         debug: bool = False,
         flagged_chunk_ids: set[str] | None = None,
         session_id: str | None = None,
+        expand_adjacent: bool = False,
+        adjacent_window: int = 1,
+        adjacent_expansion: bool = False,
+        expand_neighbors: bool = False,
+        include_neighbors: bool = False,
+        neighbor_window: int = 1,
+        **kwargs: Any,
     ) -> RetrievalResult:
+        _expand = bool(
+            expand_adjacent
+            or adjacent_expansion
+            or expand_neighbors
+            or include_neighbors
+            or kwargs.get("expand", False)
+            or kwargs.get("expansion", False)
+            or kwargs.get("expand_adjacent_chunks", False)
+        )
+        _window = adjacent_window or neighbor_window or kwargs.get("window") or kwargs.get("adjacent_window") or 1
+        try:
+            _window = int(_window)
+        except (TypeError, ValueError):
+            _window = 1
+        _window = max(_window, 1)
         pool = max(self.pool_min, 4 * top_k)
         timings: dict[str, float] = {
             name: 0.0 for name in ("embed", "dense", "bm25", "fusion", "rerank")
@@ -227,22 +341,51 @@ class HybridRetriever:
             ]
             candidates.sort(key=lambda item: item[1]["final"], reverse=True)
 
-        # Session-aware grouping bias: boost chunks from same session
+        # Session-aware grouping bias: boost chunks from same session and from
+        # groups (document_id, heading_path) already touched in the session.
         if session_id:
             seen_session = set(self.session_chunks(session_id))
-            if seen_session:
+            seen_groups = self.session_groups(session_id)
+            if seen_session or seen_groups:
                 candidates = [
                     (
                         chunk,
                         {
                             **scores,
-                            "session_boost": 0.1 if chunk.id in seen_session else 0.0,
-                            "final": scores["final"] + (0.01 if chunk.id in seen_session else 0.0),
+                            "session_boost": (
+                                0.1
+                                if chunk.id in seen_session
+                                else (0.05 if self.group_key(chunk) in seen_groups else 0.0)
+                            ),
+                            "session_group": self.group_key(chunk) in seen_groups,
+                            "final": scores["final"]
+                            + (
+                                0.01
+                                if chunk.id in seen_session
+                                else (0.005 if self.group_key(chunk) in seen_groups else 0.0)
+                            ),
                         },
                     )
                     for chunk, scores in candidates
                 ]
                 candidates.sort(key=lambda item: item[1]["final"], reverse=True)
+
+        if _expand:
+            selected = list(candidates[:top_k])
+            selected_ids = {chunk.id for chunk, _ in selected}
+            for chunk, scores in list(selected):
+                for neighbor in self.adjacent_chunks(chunk, window=_window):
+                    if neighbor.id in selected_ids:
+                        continue
+                    selected_ids.add(neighbor.id)
+                    neighbor_scores = dict(scores)
+                    neighbor_scores["adjacent_expansion"] = True
+                    neighbor_scores["final"] = max(
+                        0.0, float(scores.get("final") or 0.0) - 0.001
+                    )
+                    selected.append((neighbor, neighbor_scores))
+            selected.sort(key=lambda item: item[1]["final"], reverse=True)
+            candidates = selected
 
         chunks = [
             RankedChunk(chunk=chunk, rank=position, scores=scores)
