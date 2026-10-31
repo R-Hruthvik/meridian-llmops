@@ -6,4 +6,4 @@ We structured the codebase as a modular monorepo containing distinct services (`
 
 ## Current Status
 
-**Current state (verified 2026-10-06):** 3 of the 4 named services exist (`gateway`, `ingestion`, `rag_engine`). `services/critic_eval` was never built - the critic lives at `services/rag_engine/agent/critic.py`.
+**Current state (verified 2026-10-06):** 3 of the 4 named services exist (`gateway`, `ingestion`, `rag_engine`). `services/critic_eval` was never built; no critic module exists in `services/rag_engine/agent/`.
