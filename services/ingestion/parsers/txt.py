@@ -8,12 +8,14 @@ from services.ingestion.parsers.base import Block, ParsedDocument
 
 def decode_text(data: bytes) -> tuple[str, str | None]:
     """Decode bytes as utf-8, then utf-8-sig, then latin-1 (with a warning)."""
-    for encoding in ("utf-8-sig", "utf-8"): 
+    for encoding in ("utf-8-sig", "utf-8"):
         try:
             return data.decode(encoding), None
         except UnicodeDecodeError:
             continue
-    return data.decode("latin-1"), "File is not valid UTF-8; decoded as latin-1, some characters may be wrong"
+    return data.decode(
+        "latin-1"
+    ), "File is not valid UTF-8; decoded as latin-1, some characters may be wrong"
 
 
 def parse_txt(content: str, title: str = "") -> ParsedDocument:

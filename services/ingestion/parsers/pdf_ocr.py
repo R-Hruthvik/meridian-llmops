@@ -106,7 +106,9 @@ def ocr_page_text(
     try:
         import httpx
 
-        with httpx.Client(timeout=min(OCR_PAGE_TIMEOUT_SECONDS, remaining), follow_redirects=False) as client:
+        with httpx.Client(
+            timeout=min(OCR_PAGE_TIMEOUT_SECONDS, remaining), follow_redirects=False
+        ) as client:
             response = client.post(
                 OCR_API_URL,
                 headers={"apikey": api_key},

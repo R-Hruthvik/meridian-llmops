@@ -27,8 +27,10 @@ def parse_html(content: str, title: str = "") -> ParsedDocument:
         elif name == "pre":
             blocks.append(Block(kind="code", text=text))
         elif name == "table":
-            rows = [" | ".join(cell.get_text(" ", strip=True) for cell in row.find_all(["td", "th"]))
-                    for row in element.find_all("tr")]
+            rows = [
+                " | ".join(cell.get_text(" ", strip=True) for cell in row.find_all(["td", "th"]))
+                for row in element.find_all("tr")
+            ]
             rows = [row for row in rows if row.strip(" |")]
             if rows:
                 blocks.append(Block(kind="table", text="\n".join(rows)))

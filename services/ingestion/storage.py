@@ -86,7 +86,9 @@ class DocumentStorageManager:
         doc_format_str = str(doc.format.value if hasattr(doc.format, "value") else doc.format)
 
         # 1. Save the original file under originals/<tenant>/<document_id>/
-        original_name = _safe_filename(doc.source if doc.source != "manual" else f"{doc.title}.{doc_format_str}")
+        original_name = _safe_filename(
+            doc.source if doc.source != "manual" else f"{doc.title}.{doc_format_str}"
+        )
         original_path = self.originals_dir / _safe_filename(tenant_id) / doc.id / original_name
         if raw_bytes:
             atomic_write_bytes(original_path, raw_bytes)
@@ -127,7 +129,9 @@ class DocumentStorageManager:
             "entities_count": len(entities),
             "relationships_count": len(relationships),
             "entities": [e.name for e in entities],
-            "relationships": [f"{r.source_entity} -[{r.relation_type}]-> {r.target_entity}" for r in relationships],
+            "relationships": [
+                f"{r.source_entity} -[{r.relation_type}]-> {r.target_entity}" for r in relationships
+            ],
             "snippet": doc.text[:220] + ("..." if len(doc.text) > 220 else ""),
             "text": doc.text,
         }
@@ -143,7 +147,10 @@ class DocumentStorageManager:
                 data = json.loads(meta_file.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            if data.get("content_hash") == content_hash and data.get("tenant_id", "default") == tenant_id:
+            if (
+                data.get("content_hash") == content_hash
+                and data.get("tenant_id", "default") == tenant_id
+            ):
                 return str(data["id"])
         return None
 
@@ -210,7 +217,10 @@ class DocumentStorageManager:
                 if not raw_text and filename:
                     for candidate in self.originals_dir.glob(f"*/{doc_id}/{filename}"):
                         cand_resolved = candidate.resolve()
-                        if self.root_dir.resolve() in cand_resolved.parents or cand_resolved == self.root_dir.resolve():
+                        if (
+                            self.root_dir.resolve() in cand_resolved.parents
+                            or cand_resolved == self.root_dir.resolve()
+                        ):
                             raw_text = cand_resolved.read_text(encoding="utf-8", errors="ignore")
                             break
                     else:
@@ -219,7 +229,11 @@ class DocumentStorageManager:
                             legacy_resolved = legacy.resolve()
                         except (OSError, RuntimeError):
                             legacy_resolved = None
-                        if legacy.exists() and legacy_resolved is not None and (self.root_dir.resolve() in legacy_resolved.parents):
+                        if (
+                            legacy.exists()
+                            and legacy_resolved is not None
+                            and (self.root_dir.resolve() in legacy_resolved.parents)
+                        ):
                             raw_text = legacy.read_text(encoding="utf-8", errors="ignore")
 
             meta["chunks"] = chunks  # type: ignore[typeddict-unknown-key]
@@ -275,7 +289,9 @@ class DocumentStorageManager:
                 records = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            if isinstance(records, list) and any(isinstance(r, dict) and "embedding" in r for r in records):
+            if isinstance(records, list) and any(
+                isinstance(r, dict) and "embedding" in r for r in records
+            ):
                 return True
         return False
 
@@ -286,7 +302,9 @@ class DocumentStorageManager:
                 records = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            if not isinstance(records, list) or not any(isinstance(r, dict) and "embedding" in r for r in records):
+            if not isinstance(records, list) or not any(
+                isinstance(r, dict) and "embedding" in r for r in records
+            ):
                 continue
             for record in records:
                 if isinstance(record, dict):

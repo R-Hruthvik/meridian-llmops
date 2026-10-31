@@ -5,7 +5,7 @@ import uuid
 from packages.core.errors import ParseError
 from packages.core.models import Document, DocumentFormat
 from services.ingestion.parsers.base import Block as Block
-from services.ingestion.parsers.base import (NORMALIZER_VERSION, PARSER_VERSION)
+from services.ingestion.parsers.base import NORMALIZER_VERSION, PARSER_VERSION
 from services.ingestion.parsers.base import ParsedDocument
 from services.ingestion.parsers.docx import parse_docx
 from services.ingestion.parsers.html import parse_html

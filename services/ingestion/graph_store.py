@@ -42,9 +42,12 @@ class KnowledgeGraphStore:
             # Fail-closed: require explicit password configuration
             if not settings.neo4j_password:
                 import os as _os
+
                 if _os.environ.get("APP_ENV") == "testing":
                     # In testing, use in-memory fallback instead of connecting
-                    logger.info("Neo4j password not configured in testing mode - using in-memory fallback")
+                    logger.info(
+                        "Neo4j password not configured in testing mode - using in-memory fallback"
+                    )
                     self._neo4j_fallback = True
                     return  # Exit init, stay in memory mode
                 else:
@@ -87,20 +90,37 @@ class KnowledgeGraphStore:
     ) -> tuple[list[Entity], list[Relationship]]:
         # Hybrid NER pattern extractor for systems, components, and concepts
         known_keywords = [
-            "FastAPI", "LiteLLM", "Qdrant", "Neo4j", "LangGraph", "Langfuse",
-            "DeepEval", "NeMo Guardrails", "Critic Agent", "Query Reformulator",
-            "BM25", "BGE-Reranker-Large", "OpenAI", "Anthropic", "Docker Compose"
+            "FastAPI",
+            "LiteLLM",
+            "Qdrant",
+            "Neo4j",
+            "LangGraph",
+            "Langfuse",
+            "DeepEval",
+            "NeMo Guardrails",
+            "Critic Agent",
+            "Query Reformulator",
+            "BM25",
+            "BGE-Reranker-Large",
+            "OpenAI",
+            "Anthropic",
+            "Docker Compose",
         ]
 
         entity_types = {
-            "fastapi": "System", "litellm": "System", "qdrant": "System", "neo4j": "System",
+            "fastapi": "System",
+            "litellm": "System",
+            "qdrant": "System",
+            "neo4j": "System",
             "langfuse": "System",
         }
         display_names = {_normalized_name(word): word for word in known_keywords}
         entity_map: dict[str, Entity] = {}
         relation_map: dict[tuple[str, str, str], Relationship] = {}
         source_chunks = chunks or []
-        sources = [(chunk.text, chunk.id) for chunk in source_chunks] if source_chunks else [(text, "")]
+        sources = (
+            [(chunk.text, chunk.id) for chunk in source_chunks] if source_chunks else [(text, "")]
+        )
         for source_text, chunk_id in sources:
             names: dict[str, str] = {}
             for kw in known_keywords:
@@ -115,7 +135,11 @@ class KnowledgeGraphStore:
             for normalized, name in names.items():
                 entity_map.setdefault(
                     normalized,
-                    Entity(name=name, normalized_name=normalized, entity_type=entity_types.get(normalized, "Concept")),
+                    Entity(
+                        name=name,
+                        normalized_name=normalized,
+                        entity_type=entity_types.get(normalized, "Concept"),
+                    ),
                 )
                 entity = entity_map[normalized]
                 if doc_id and doc_id not in entity.document_ids:
@@ -127,8 +151,7 @@ class KnowledgeGraphStore:
             for sent in sentences:
                 normalized_sentence = f" {_normalized_name(sent)} "
                 present = [
-                    normalized for normalized in names
-                    if f" {normalized} " in normalized_sentence
+                    normalized for normalized in names if f" {normalized} " in normalized_sentence
                 ]
                 present.sort(key=lambda normalized: normalized_sentence.index(f" {normalized} "))
                 if len(present) < 2:
@@ -145,7 +168,11 @@ class KnowledgeGraphStore:
                     key = (src, tgt, relation_type)
                     relation = relation_map.setdefault(
                         key,
-                        Relationship(source_entity=entity_map[src].name, target_entity=entity_map[tgt].name, relation_type=relation_type),
+                        Relationship(
+                            source_entity=entity_map[src].name,
+                            target_entity=entity_map[tgt].name,
+                            relation_type=relation_type,
+                        ),
                     )
                     if doc_id and doc_id not in relation.document_ids:
                         relation.document_ids.append(doc_id)
@@ -159,21 +186,27 @@ class KnowledgeGraphStore:
         if not self.driver:
             return
         with self.driver.session() as session:  # type: ignore[attr-defined]
-            records = list(session.run(
-                "MATCH (e:Entity) RETURN id(e) AS node_id, e.name AS name, e.tenant_id AS tenant_id, "
-                "e.doc_ids AS legacy_doc_ids, e.document_ids AS document_ids, e.chunk_ids AS chunk_ids"
-            ))
+            records = list(
+                session.run(
+                    "MATCH (e:Entity) RETURN id(e) AS node_id, e.name AS name, e.tenant_id AS tenant_id, "
+                    "e.doc_ids AS legacy_doc_ids, e.document_ids AS document_ids, e.chunk_ids AS chunk_ids"
+                )
+            )
             for record in records:
                 data = record.data() if hasattr(record, "data") else dict(record)
-                document_ids = sorted(set(data.get("document_ids") or []) | set(data.get("legacy_doc_ids") or []))
+                document_ids = sorted(
+                    set(data.get("document_ids") or []) | set(data.get("legacy_doc_ids") or [])
+                )
                 session.run(
                     "MATCH (e:Entity) WHERE id(e) = $node_id "
                     "SET e.normalized_name = $normalized_name, e.document_ids = $document_ids, "
                     "e.chunk_ids = coalesce(e.chunk_ids, $chunk_ids), "
                     "e.provenance_version = CASE WHEN size($document_ids) > 0 THEN 1 "
                     "ELSE e.provenance_version END",
-                    node_id=data["node_id"], normalized_name=_normalized_name(data.get("name") or ""),
-                    document_ids=document_ids, chunk_ids=data.get("chunk_ids") or [],
+                    node_id=data["node_id"],
+                    normalized_name=_normalized_name(data.get("name") or ""),
+                    document_ids=document_ids,
+                    chunk_ids=data.get("chunk_ids") or [],
                 )
                 if document_ids and data.get("tenant_id"):
                     session.run(
@@ -181,7 +214,9 @@ class KnowledgeGraphStore:
                         "UNWIND $document_ids AS document_id "
                         "MERGE (d:Document {id: document_id, tenant_id: $tenant_id}) "
                         "MERGE (e)-[:MENTIONED_IN]->(d)",
-                        node_id=data["node_id"], document_ids=document_ids, tenant_id=data["tenant_id"],
+                        node_id=data["node_id"],
+                        document_ids=document_ids,
+                        tenant_id=data["tenant_id"],
                     )
             session.run(
                 "MATCH ()-[r:RELATION]-() "
@@ -193,17 +228,32 @@ class KnowledgeGraphStore:
     def extract_and_store(
         self, doc_id: str, text: str, tenant_id: str = "default", chunks: list[Chunk] | None = None
     ) -> tuple[list[Entity], list[Relationship]]:
-        entities, relations = self.extract_entities_and_relations(text, doc_id=doc_id, chunks=chunks)
+        entities, relations = self.extract_entities_and_relations(
+            text, doc_id=doc_id, chunks=chunks
+        )
         tenant_entities = self._tenant_entities.setdefault(tenant_id, {})
         tenant_relationships = self._tenant_relationships.setdefault(tenant_id, [])
-        canonical_names = {entity.normalized_name: entity.name for entity in tenant_entities.values()}
+        canonical_names = {
+            entity.normalized_name: entity.name for entity in tenant_entities.values()
+        }
         for entity in entities:
             entity.name = canonical_names.get(entity.normalized_name, entity.name)
         for relation in relations:
-            relation.source_entity = canonical_names.get(_normalized_name(relation.source_entity), relation.source_entity)
-            relation.target_entity = canonical_names.get(_normalized_name(relation.target_entity), relation.target_entity)
+            relation.source_entity = canonical_names.get(
+                _normalized_name(relation.source_entity), relation.source_entity
+            )
+            relation.target_entity = canonical_names.get(
+                _normalized_name(relation.target_entity), relation.target_entity
+            )
         for e in entities:
-            existing_name = next((name for name, entity in tenant_entities.items() if entity.normalized_name == e.normalized_name), None)
+            existing_name = next(
+                (
+                    name
+                    for name, entity in tenant_entities.items()
+                    if entity.normalized_name == e.normalized_name
+                ),
+                None,
+            )
             if existing_name:
                 existing = tenant_entities[existing_name]
                 existing.document_ids = sorted(set(existing.document_ids + e.document_ids))
@@ -241,9 +291,14 @@ class KnowledgeGraphStore:
                                 CASE WHEN id IN ids THEN ids ELSE ids + id END)
                             """,
                             entities=[
-                                {"name": e.name, "normalized_name": e.normalized_name, "entity_type": e.entity_type,
-                                 "document_ids": e.document_ids, "chunk_ids": e.chunk_ids,
-                                 "tenant_id": tenant_id}
+                                {
+                                    "name": e.name,
+                                    "normalized_name": e.normalized_name,
+                                    "entity_type": e.entity_type,
+                                    "document_ids": e.document_ids,
+                                    "chunk_ids": e.chunk_ids,
+                                    "tenant_id": tenant_id,
+                                }
                                 for e in entities
                             ],
                         )
@@ -257,8 +312,12 @@ class KnowledgeGraphStore:
                             "ON CREATE SET c.document_id = mention.doc_id "
                             "MERGE (c)-[:MENTIONS]->(e)",
                             mentions=[
-                                {"normalized_name": e.normalized_name, "doc_id": doc_id,
-                                 "tenant_id": tenant_id, "chunk_ids": e.chunk_ids}
+                                {
+                                    "normalized_name": e.normalized_name,
+                                    "doc_id": doc_id,
+                                    "tenant_id": tenant_id,
+                                    "chunk_ids": e.chunk_ids,
+                                }
                                 for e in entities
                             ],
                         )
@@ -306,7 +365,8 @@ class KnowledgeGraphStore:
                     records = session.run(
                         "MATCH (c:Chunk {document_id: $doc_id, tenant_id: $tenant_id}) "
                         "RETURN c.id AS chunk_id",
-                        doc_id=doc_id, tenant_id=tenant_id,
+                        doc_id=doc_id,
+                        tenant_id=tenant_id,
                     )
                     for record in records:
                         data = record.data() if hasattr(record, "data") else dict(record)
@@ -363,7 +423,8 @@ class KnowledgeGraphStore:
                         "WHERE $doc_id IN coalesce(r.document_ids, []) "
                         "SET r.document_ids = [id IN r.document_ids WHERE id <> $doc_id], "
                         "r.chunk_ids = [id IN coalesce(r.chunk_ids, []) WHERE NOT id IN $chunk_ids]",
-                        doc_id=doc_id, tenant_id=tenant_id,
+                        doc_id=doc_id,
+                        tenant_id=tenant_id,
                         chunk_ids=list(doc_chunks),
                     )
                     session.run(
@@ -374,22 +435,26 @@ class KnowledgeGraphStore:
                     session.run(
                         "MATCH (e:Entity {tenant_id: $tenant_id})-"
                         "[m:MENTIONED_IN]->(d:Document {id: $doc_id, tenant_id: $tenant_id}) DELETE m",
-                        doc_id=doc_id, tenant_id=tenant_id,
+                        doc_id=doc_id,
+                        tenant_id=tenant_id,
                     )
                     session.run(
                         "MATCH (c:Chunk {document_id: $doc_id, tenant_id: $tenant_id}) DETACH DELETE c",
-                        doc_id=doc_id, tenant_id=tenant_id,
+                        doc_id=doc_id,
+                        tenant_id=tenant_id,
                     )
                     session.run(
                         "MATCH (d:Document {id: $doc_id, tenant_id: $tenant_id}) DETACH DELETE d",
-                        doc_id=doc_id, tenant_id=tenant_id,
+                        doc_id=doc_id,
+                        tenant_id=tenant_id,
                     )
                     session.run(
                         "MATCH (e:Entity {tenant_id: $tenant_id}) "
                         "WHERE $doc_id IN coalesce(e.document_ids, []) "
                         "SET e.document_ids = [id IN e.document_ids WHERE id <> $doc_id], "
                         "e.chunk_ids = [id IN coalesce(e.chunk_ids, []) WHERE NOT id IN $chunk_ids]",
-                        doc_id=doc_id, tenant_id=tenant_id,
+                        doc_id=doc_id,
+                        tenant_id=tenant_id,
                         chunk_ids=list(doc_chunks),
                     )
                     session.run(  # type: ignore[attr-defined]
@@ -452,7 +517,9 @@ class KnowledgeGraphStore:
         if self._neo4j_available and self.driver is not None:
             try:
                 with self.driver.session() as session:  # type: ignore[attr-defined]
-                    session.run("MATCH (n {tenant_id: $tenant_id}) DETACH DELETE n", tenant_id=tenant_id)  # type: ignore[attr-defined]
+                    session.run(
+                        "MATCH (n {tenant_id: $tenant_id}) DETACH DELETE n", tenant_id=tenant_id
+                    )  # type: ignore[attr-defined]
             except Exception as e:  # noqa: BLE001 - Neo4j driver may raise varied exceptions
                 logger.warning("Neo4j clear_all failed: %s", e)
 
@@ -468,7 +535,8 @@ class KnowledgeGraphStore:
                         "RETURN startNode(r).name AS source_entity, endNode(r).name AS target_entity, "
                         "r.relation_type AS relation_type, r.document_ids AS document_ids, "
                         "r.chunk_ids AS chunk_ids LIMIT 50",
-                        normalized_name=_normalized_name(entity_name), tenant_id=tenant_id,
+                        normalized_name=_normalized_name(entity_name),
+                        tenant_id=tenant_id,
                     )
                     records = list(result)  # type: ignore[arg-type]
                     if records:
@@ -490,11 +558,15 @@ class KnowledgeGraphStore:
                 logger.warning("Neo4j query_neighborhood failed for %s: %s", entity_name, e)
 
         return [
-            r for r in self._tenant_relationships.get(tenant_id, [])
-            if r.source_entity.lower() == entity_name.lower() or r.target_entity.lower() == entity_name.lower()
+            r
+            for r in self._tenant_relationships.get(tenant_id, [])
+            if r.source_entity.lower() == entity_name.lower()
+            or r.target_entity.lower() == entity_name.lower()
         ]
 
-    def query_neighborhood(self, entity_name: str, tenant_id: str = "default") -> list[Relationship]:
+    def query_neighborhood(
+        self, entity_name: str, tenant_id: str = "default"
+    ) -> list[Relationship]:
         return self.query_entity_neighborhood(entity_name, tenant_id=tenant_id)
 
     def _build_entity_index(self) -> None:
@@ -506,7 +578,14 @@ class KnowledgeGraphStore:
         self, name_lower: str, tenant_id: str = "default"
     ) -> Entity | None:
         entities = self._tenant_entities.get(tenant_id, {})
-        original_name = next((name for name, entity in entities.items() if entity.normalized_name == _normalized_name(name_lower)), None)
+        original_name = next(
+            (
+                name
+                for name, entity in entities.items()
+                if entity.normalized_name == _normalized_name(name_lower)
+            ),
+            None,
+        )
         if original_name:
             return entities.get(original_name)
         return None
@@ -516,17 +595,21 @@ class KnowledgeGraphStore:
         if self._neo4j_available and self.driver is not None:
             try:
                 with self.driver.session() as session:  # type: ignore[attr-defined]
-                    records = list(session.run(
-                        "MATCH (e:Entity {tenant_id: $tenant_id}) "
-                        "RETURN e.name AS name, e.normalized_name AS normalized_name, e.type AS entity_type, "
-                        "e.document_ids AS document_ids, e.chunk_ids AS chunk_ids ORDER BY e.name",
-                        tenant_id=tenant_id,
-                    ))
+                    records = list(
+                        session.run(
+                            "MATCH (e:Entity {tenant_id: $tenant_id}) "
+                            "RETURN e.name AS name, e.normalized_name AS normalized_name, e.type AS entity_type, "
+                            "e.document_ids AS document_ids, e.chunk_ids AS chunk_ids ORDER BY e.name",
+                            tenant_id=tenant_id,
+                        )
+                    )
                 return [
                     Entity(
-                        name=data.get("name", ""), normalized_name=data.get("normalized_name", ""),
+                        name=data.get("name", ""),
+                        normalized_name=data.get("normalized_name", ""),
                         entity_type=data.get("entity_type", "Concept"),
-                        document_ids=data.get("document_ids") or [], chunk_ids=data.get("chunk_ids") or [],
+                        document_ids=data.get("document_ids") or [],
+                        chunk_ids=data.get("chunk_ids") or [],
                     )
                     for record in records
                     for data in [record.data() if hasattr(record, "data") else dict(record)]

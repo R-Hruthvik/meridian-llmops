@@ -21,18 +21,18 @@ class FastEmbedEmbedder:
     def __init__(
         self,
         model_name: str,
-        cache_path: Path | str = 'storage/fastembed',
+        cache_path: Path | str = "storage/fastembed",
         expected_dim: int | None = None,
     ):
         from fastembed import TextEmbedding
 
         self.model_name = model_name
         self._model = TextEmbedding(model_name=model_name, cache_dir=str(cache_path), threads=4)
-        probe = self._normalize(list(self._model.passage_embed(['Meridian model warmup'])))
+        probe = self._normalize(list(self._model.passage_embed(["Meridian model warmup"])))
         self.dim = probe.shape[1]
         if expected_dim is not None and self.dim != expected_dim:
             raise ValueError(
-                f'Embedding dimension {self.dim} for {model_name} differs from configured dimension {expected_dim}'
+                f"Embedding dimension {self.dim} for {model_name} differs from configured dimension {expected_dim}"
             )
 
     @staticmethod

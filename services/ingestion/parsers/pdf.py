@@ -59,7 +59,9 @@ def parse_pdf(data: bytes, title: str = "") -> ParsedDocument:
         if recovered and is_usable_ocr_text(recovered):
             page_texts[index] = _normalize_page_text(recovered)
 
-    pages = [ParsedPage(number=number, text=text) for number, text in enumerate(page_texts, start=1)]
+    pages = [
+        ParsedPage(number=number, text=text) for number, text in enumerate(page_texts, start=1)
+    ]
     line_counts: dict[str, int] = {}
     for text in page_texts:
         for line in {line.strip() for line in text.splitlines() if len(line.strip()) >= 3}:
@@ -67,14 +69,18 @@ def parse_pdf(data: bytes, title: str = "") -> ParsedDocument:
 
     # Repeated lines on >60% of pages are header/footer noise.
     threshold = int(0.6 * len(pages)) + 1
-    repeated = {line for line, count in line_counts.items() if count >= threshold and len(pages) >= 2}
+    repeated = {
+        line for line, count in line_counts.items() if count >= threshold and len(pages) >= 2
+    }
 
     empty_pages = 0
     garbled_pages = 0
     unresolved_pages: list[int] = []
     blocks: list[Block] = []
     for number, text in enumerate(page_texts, start=1):
-        content = "\n".join(line for line in text.splitlines() if line.strip() not in repeated).strip()
+        content = "\n".join(
+            line for line in text.splitlines() if line.strip() not in repeated
+        ).strip()
         non_space = len(re.sub(r"\s", "", content))
         if non_space < 20:
             empty_pages += 1
@@ -95,9 +101,17 @@ def parse_pdf(data: bytes, title: str = "") -> ParsedDocument:
     if garbled_pages:
         warnings.append(f"{garbled_pages} of {len(pages)} pages look garbled")
     if pages and (empty_pages + garbled_pages) >= 0.5 * len(pages):
-        warnings.append(f"File looks scanned; OCR could not recover usable text from {len(unresolved_pages)} pages")
-    warnings.extend(f"Page {number}: OCR could not recover usable text" for number in unresolved_pages)
+        warnings.append(
+            f"File looks scanned; OCR could not recover usable text from {len(unresolved_pages)} pages"
+        )
+    warnings.extend(
+        f"Page {number}: OCR could not recover usable text" for number in unresolved_pages
+    )
 
     return ParsedDocument(
-        title=title or "Untitled document", format=DocumentFormat.PDF, blocks=blocks, pages=pages, warnings=warnings
+        title=title or "Untitled document",
+        format=DocumentFormat.PDF,
+        blocks=blocks,
+        pages=pages,
+        warnings=warnings,
     )

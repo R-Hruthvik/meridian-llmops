@@ -39,7 +39,9 @@ def count_tokens(text: str) -> int:
 
 def embedded_text(chunk: Chunk) -> str:
     """Text handed to the embedder and BM25: contextual header plus chunk text."""
-    header = " > ".join(part for part in (chunk.metadata.get("title"), chunk.section_heading) if part)
+    header = " > ".join(
+        part for part in (chunk.metadata.get("title"), chunk.section_heading) if part
+    )
     header_tokens = list(_TOKEN_RE.finditer(header))
     if len(header_tokens) > CONTEXT_HEADER_MAX_TOKENS:
         header = header[header_tokens[-CONTEXT_HEADER_MAX_TOKENS].start() :].lstrip()
@@ -130,7 +132,11 @@ class TokenAwareChunker:
         resolved_title = title or parsed.title
         # Use format-specific chunker params when available, without clobbering
         # explicitly configured budgets.
-        if source_format and source_format in FORMAT_CHUNK_PARAMS and source_format != self.source_format:
+        if (
+            source_format
+            and source_format in FORMAT_CHUNK_PARAMS
+            and source_format != self.source_format
+        ):
             fmt_params = FORMAT_CHUNK_PARAMS.get(source_format, FORMAT_CHUNK_PARAMS["default"])
             defaults = FORMAT_CHUNK_PARAMS["default"]
             if self.target_tokens == defaults[0]:
@@ -177,7 +183,11 @@ class TokenAwareChunker:
             tokens = count_tokens(block.text)
             if block.kind == "heading":
                 # Flush at top-level boundaries when the chunk is already substantial.
-                if block.level is not None and block.level <= 2 and pending_tokens >= 0.4 * self.target_tokens:
+                if (
+                    block.level is not None
+                    and block.level <= 2
+                    and pending_tokens >= 0.4 * self.target_tokens
+                ):
                     flush()
                 level = block.level if block.level is not None else 1
                 heading_chain = [(lvl, text) for lvl, text in heading_chain if lvl < level]
@@ -254,7 +264,12 @@ class TokenAwareChunker:
     def _split_oversized(self, block) -> list[tuple[str, int]]:
         units = _split_units(block.text, block.kind)
         pieces: list[tuple[str, int]] = []
-        piece_budget = max(1, min(self.target_tokens, self.max_tokens - min(self.overlap_tokens, self.max_tokens - 1)))
+        piece_budget = max(
+            1,
+            min(
+                self.target_tokens, self.max_tokens - min(self.overlap_tokens, self.max_tokens - 1)
+            ),
+        )
         current: list[str] = []
         current_tokens = 0
         for unit in units:
@@ -301,7 +316,10 @@ class TokenAwareChunker:
                 combined_text = f"{previous.text}\n\n{chunk.text}".strip()
                 pages = [
                     page
-                    for page in (previous.metadata.get("page_start"), chunk.metadata.get("page_start"))
+                    for page in (
+                        previous.metadata.get("page_start"),
+                        chunk.metadata.get("page_start"),
+                    )
                     if page is not None
                 ]
                 page_ends = [
@@ -325,7 +343,8 @@ class TokenAwareChunker:
                 chunk.metadata.get("token_count", 0) < 20
                 and index + 1 < len(chunks)
                 and chunk.section_heading == chunks[index + 1].section_heading
-                and count_tokens(chunk.text) + count_tokens(chunks[index + 1].text) <= self.max_tokens
+                and count_tokens(chunk.text) + count_tokens(chunks[index + 1].text)
+                <= self.max_tokens
             ):
                 following = chunks[index + 1]
                 combined_text = f"{chunk.text}\n\n{following.text}".strip()
@@ -333,7 +352,8 @@ class TokenAwareChunker:
                 pages = [
                     page
                     for page in (
-                        chunk.metadata.get("page_start"), following.metadata.get("page_start")
+                        chunk.metadata.get("page_start"),
+                        following.metadata.get("page_start"),
                     )
                     if page is not None
                 ]

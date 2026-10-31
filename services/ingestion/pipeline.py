@@ -16,7 +16,13 @@ from typing import Any
 from packages.core.errors import IngestionError
 from packages.core.guardrails import has_possible_prompt_injection
 from packages.core.models import Chunk, Document, DocumentFormat
-from services.ingestion.chunker import (CHUNKER_VERSION, NORMALIZER_VERSION, PARSER_VERSION, TokenAwareChunker, embedded_text)
+from services.ingestion.chunker import (
+    CHUNKER_VERSION,
+    NORMALIZER_VERSION,
+    PARSER_VERSION,
+    TokenAwareChunker,
+    embedded_text,
+)
 from services.ingestion.embedder import Embedder
 from services.ingestion.graph_store import KnowledgeGraphStore
 from services.ingestion.manifest import IndexManifest, write_manifest
@@ -119,7 +125,9 @@ class IngestionPipeline:
                 warnings=warnings,
             )
         doc_id = f"doc-{uuid.uuid4().hex[:12]}"
-        source_format = str(parsed.format.value if hasattr(parsed.format, "value") else parsed.format)
+        source_format = str(
+            parsed.format.value if hasattr(parsed.format, "value") else parsed.format
+        )
         # Captured before persisting so the new document cannot shadow it.
         previous_id = self.storage.find_by_filename(filename, tenant_id)
 
@@ -134,7 +142,9 @@ class IngestionPipeline:
         )
         injection_found = self._flag_possible_injection(chunks)
         try:
-            entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id, chunks=chunks)
+            entities, relations = self.graph_store.extract_and_store(
+                doc_id, parsed.text, tenant_id=tenant_id, chunks=chunks
+            )
             self._index_chunks(chunks, tenant_id=tenant_id)
             document = Document(
                 id=doc_id,
@@ -168,7 +178,9 @@ class IngestionPipeline:
                 try:
                     self._publish_manifest()
                 except Exception as manifest_error:  # noqa: BLE001 - preserve the ingest error
-                    logger.error("Could not restore manifest after failed update: %s", manifest_error)
+                    logger.error(
+                        "Could not restore manifest after failed update: %s", manifest_error
+                    )
             raise IngestionError(f"Failed to ingest {filename}: {error}") from error
         warnings = [*parsed.warnings]
         if not parsed.text.strip():
@@ -217,7 +229,9 @@ class IngestionPipeline:
         previous_id = self.storage.find_by_filename(source, tenant_id)
 
         doc_id = f"doc-{uuid.uuid4().hex[:12]}"
-        source_format = str(parsed.format.value if hasattr(parsed.format, "value") else parsed.format)
+        source_format = str(
+            parsed.format.value if hasattr(parsed.format, "value") else parsed.format
+        )
 
         chunks = self.chunker.chunk_document(
             parsed,
@@ -234,12 +248,18 @@ class IngestionPipeline:
         )
         injection_found = self._flag_possible_injection(chunks)
         try:
-            entities, relations = self.graph_store.extract_and_store(doc_id, parsed.text, tenant_id=tenant_id, chunks=chunks)
+            entities, relations = self.graph_store.extract_and_store(
+                doc_id, parsed.text, tenant_id=tenant_id, chunks=chunks
+            )
             self._index_chunks(chunks, tenant_id=tenant_id)
             created_at = ""
             if persist:
                 document = Document(
-                    id=doc_id, title=parsed.title, text=parsed.text, format=parsed.format, source=source,
+                    id=doc_id,
+                    title=parsed.title,
+                    text=parsed.text,
+                    format=parsed.format,
+                    source=source,
                     metadata=metadata or {},
                 )
                 meta_record = self.storage.save_document(
@@ -253,7 +273,9 @@ class IngestionPipeline:
                 created_at = meta_record.get("created_at", "")
                 if previous_id is not None and previous_id != doc_id:
                     try:
-                        self._delete_document(previous_id, publish_manifest=False, tenant_id=tenant_id)
+                        self._delete_document(
+                            previous_id, publish_manifest=False, tenant_id=tenant_id
+                        )
                     except Exception:  # noqa: BLE001
                         logger.warning("Could not delete previous document %s", previous_id)
                 self._publish_manifest()
@@ -269,7 +291,11 @@ class IngestionPipeline:
             chunks=len(chunks),
             warnings=[
                 *parsed.warnings,
-                *(["Possible prompt injection detected in one or more chunks."] if injection_found else []),
+                *(
+                    ["Possible prompt injection detected in one or more chunks."]
+                    if injection_found
+                    else []
+                ),
             ],
             entities_extracted=len(entities),
             relationships_extracted=len(relations),
@@ -376,7 +402,9 @@ class IngestionPipeline:
                     tenant_id = str(full.get("tenant_id", "default"))
                     text = full.get("text", "")
                     chunks = self.storage.get_document_chunks(doc_id)
-                    self.graph_store.extract_and_store(doc_id, text, tenant_id=tenant_id, chunks=chunks)
+                    self.graph_store.extract_and_store(
+                        doc_id, text, tenant_id=tenant_id, chunks=chunks
+                    )
             except Exception as error:  # noqa: BLE001
                 logger.warning("Graph hydration failed: %s", error)
             total_chunks = len(all_chunks)
@@ -386,7 +414,9 @@ class IngestionPipeline:
                 total_chunks,
             )
             return len(self.storage.list_documents())
-        logger.info("Hydrated %d documents from dedicated storage.", len(self.storage.list_documents()))
+        logger.info(
+            "Hydrated %d documents from dedicated storage.", len(self.storage.list_documents())
+        )
         return len(self.storage.list_documents())
 
     # ------------------------------------------------------------------ manage
@@ -451,7 +481,9 @@ class IngestionPipeline:
             if not self.storage.delete_document(doc_id, tenant_id=tenant_id):
                 raise OSError(f"Disk records for {doc_id} disappeared during deletion")
             if hasattr(self.graph_store, "delete_by_document"):
-                self.graph_store.delete_by_document(doc_id, tenant_id=tenant_id or str(doc.get("tenant_id", "default")))
+                self.graph_store.delete_by_document(
+                    doc_id, tenant_id=tenant_id or str(doc.get("tenant_id", "default"))
+                )
         except Exception as error:
             for path, contents in disk_snapshot:
                 try:
@@ -464,12 +496,16 @@ class IngestionPipeline:
                 try:
                     self._index_chunks(chunks, tenant_id=tenant_id)
                 except Exception as restore_error:  # noqa: BLE001 - preserve the delete error
-                    logger.error("Could not restore Qdrant points for %s: %s", doc_id, restore_error)
+                    logger.error(
+                        "Could not restore Qdrant points for %s: %s", doc_id, restore_error
+                    )
             if publish_manifest:
                 try:
                     self._publish_manifest()
                 except Exception as manifest_error:  # noqa: BLE001 - preserve the delete error
-                    logger.error("Could not restore manifest after failed delete: %s", manifest_error)
+                    logger.error(
+                        "Could not restore manifest after failed delete: %s", manifest_error
+                    )
             raise IngestionError(f"Failed to delete document {doc_id}: {error}") from error
         return True
 
@@ -484,7 +520,9 @@ class IngestionPipeline:
             doc_id = doc.get("id")
             doc_tenant = doc.get("tenant_id", "default")
             target_tenant = tenant_id if tenant_id is not None else doc_tenant
-            if doc_id and self._delete_document(doc_id, publish_manifest=False, tenant_id=target_tenant):
+            if doc_id and self._delete_document(
+                doc_id, publish_manifest=False, tenant_id=target_tenant
+            ):
                 count += 1
         try:
             self.vector_store.clear(tenant_id=tenant_id)
@@ -510,5 +548,7 @@ class IngestionPipeline:
             settings.qdrant_collection != self.vector_store.collection_name
             or settings.qdrant_vector_dim != self.vector_store.dim
         ):
-            raise IngestionError("Configured Qdrant collection does not match the active vector store")
+            raise IngestionError(
+                "Configured Qdrant collection does not match the active vector store"
+            )
         return reindex(self.storage, self.vector_store.client, settings, self.embedder)

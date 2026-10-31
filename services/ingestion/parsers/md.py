@@ -62,7 +62,8 @@ def parse_markdown(content: str, title: str = "") -> ParsedDocument:
             flush_paragraph()
             list_lines: list[str] = []
             while index < len(lines) and (
-                _LIST_ITEM.match(lines[index]) or (lines[index].startswith((" ", "\t")) and list_lines)
+                _LIST_ITEM.match(lines[index])
+                or (lines[index].startswith((" ", "\t")) and list_lines)
             ):
                 list_lines.append(lines[index])
                 index += 1
