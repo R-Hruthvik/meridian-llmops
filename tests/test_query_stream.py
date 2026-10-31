@@ -263,12 +263,8 @@ async def test_stream_surfaces_graph_error_then_done(monkeypatch):
     assert "error" in events
     assert events[-1] == "error"
     error_payload = json.loads(
-        next(f for f in frames if f.startswith("event: error")).split("data: ", 1)[1].split("\n", 1)[0]
+        next(f for f in frames if f.startswith("event: error"))
+        .split("data: ", 1)[1]
+        .split("\n", 1)[0]
     )
     assert error_payload["message"]
-
-
-
-
-
-

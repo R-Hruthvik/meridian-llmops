@@ -22,7 +22,6 @@ os.environ["VECTOR_BACKEND"] = "qdrant_local"
 os.environ["QDRANT_LOCAL_PATH"] = ":memory:"
 
 
-
 import pytest
 
 from services.gateway import auth
@@ -53,10 +52,19 @@ def app_test_embedder(monkeypatch, tmp_path):
     # test (e.g. an un-initialized embedder) cannot leak into this one.
     default_app = getattr(app_module, "app", None)
     if default_app is not None:
-        for attr in ("vector_store", "graph_store", "ingestion_pipeline", "tracer",
-                     "retriever", "llm_client", "input_guardrails", "output_guardrails",
-                     "agent_graph", "index_consistency",
-                     "runtime_llm_settings"):
+        for attr in (
+            "vector_store",
+            "graph_store",
+            "ingestion_pipeline",
+            "tracer",
+            "retriever",
+            "llm_client",
+            "input_guardrails",
+            "output_guardrails",
+            "agent_graph",
+            "index_consistency",
+            "runtime_llm_settings",
+        ):
             try:
                 delattr(default_app.state, attr)
             except (AttributeError, KeyError):
@@ -75,19 +83,23 @@ def app_test_embedder(monkeypatch, tmp_path):
             app_module.vector_store.clear(None)
         except (AttributeError, RuntimeError, OSError, ValueError):
             pass
-        monkeypatch.setattr(app_module, 'llm_client', llm)
+        monkeypatch.setattr(app_module, "llm_client", llm)
         settings = app_module._core_get_settings()
-        monkeypatch.setattr(app_module, 'agent_graph', app_module.build_rag_agent_graph(
-            retriever=app_module.retriever,
-            graph_store=app_module.graph_store,
-            llm_client=llm,
-            llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
-            min_dense_score=settings.min_dense_score,
-            graph_enabled=settings.graph_enabled,
-            debug_log_prompts=settings.debug_log_prompts,
-        ))
-        monkeypatch.setattr(app_module.ingestion_pipeline, 'embedder', embedder)
-        monkeypatch.setattr(app_module.retriever, 'embedder', embedder)
+        monkeypatch.setattr(
+            app_module,
+            "agent_graph",
+            app_module.build_rag_agent_graph(
+                retriever=app_module.retriever,
+                graph_store=app_module.graph_store,
+                llm_client=llm,
+                llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
+                min_dense_score=settings.min_dense_score,
+                graph_enabled=settings.graph_enabled,
+                debug_log_prompts=settings.debug_log_prompts,
+            ),
+        )
+        monkeypatch.setattr(app_module.ingestion_pipeline, "embedder", embedder)
+        monkeypatch.setattr(app_module.retriever, "embedder", embedder)
         app_module.vector_store.ensure_collection()
         if not app_module.vector_store.get_all_chunks():
             app_module.ingestion_pipeline.load_persisted_knowledge_base()
@@ -96,6 +108,7 @@ def app_test_embedder(monkeypatch, tmp_path):
         try:
             from packages.core.settings import get_settings
             from services.ingestion.manifest import CHUNKER_VERSION, IndexManifest, write_manifest
+
             settings = get_settings()
             write_manifest(
                 storage_root,

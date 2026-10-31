@@ -79,7 +79,9 @@ async def test_stream_handles_anthropic_content_block_deltas():
         {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hel"}},
         {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "lo"}},
     )
-    client = LiteLLMClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, text=body)))
+    client = LiteLLMClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text=body))
+    )
     try:
         deltas = [
             delta
@@ -100,7 +102,9 @@ async def test_stream_handles_anthropic_content_block_deltas():
 @pytest.mark.asyncio
 async def test_stream_malformed_chunk_is_a_typed_provider_error():
     transport = httpx.MockTransport(
-        lambda request: httpx.Response(200, text='data: {"choices":[{"delta":"bad"}]}\n\ndata: [DONE]\n\n')
+        lambda request: httpx.Response(
+            200, text='data: {"choices":[{"delta":"bad"}]}\n\ndata: [DONE]\n\n'
+        )
     )
     client = LiteLLMClient(transport=transport)
     try:

@@ -44,6 +44,7 @@ async def test_hitl_review_item_lifecycle(test_db_session: AsyncSession):
 
     # 2. Test fetching pending review items
     from sqlalchemy import select
+
     stmt = (
         select(ReviewItem, ExtractedField)
         .join(ExtractedField, ReviewItem.extracted_field_id == ExtractedField.id)

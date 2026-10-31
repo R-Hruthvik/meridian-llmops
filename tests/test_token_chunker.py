@@ -72,12 +72,14 @@ def test_overlap_does_not_cross_top_level_headings():
     chunker = TokenAwareChunker(target_tokens=40, max_tokens=60, overlap_tokens=15)
     first = " ".join(f"first{index}" for index in range(180))
     second = " ".join(f"second{index}" for index in range(180))
-    parsed = make_parsed([
-        Block(kind="heading", text="First", level=1),
-        Block(kind="paragraph", text=first),
-        Block(kind="heading", text="Second", level=1),
-        Block(kind="paragraph", text=second),
-    ])
+    parsed = make_parsed(
+        [
+            Block(kind="heading", text="First", level=1),
+            Block(kind="paragraph", text=first),
+            Block(kind="heading", text="Second", level=1),
+            Block(kind="paragraph", text=second),
+        ]
+    )
     chunks = chunker.chunk_document(parsed, "d1")
     second_section = [chunk for chunk in chunks if chunk.section_heading == "Second"]
     assert second_section
@@ -141,11 +143,13 @@ def test_content_hash_present():
 
 def test_small_chunks_merged_with_neighbor():
     chunker = TokenAwareChunker(target_tokens=350, max_tokens=450)
-    parsed = make_parsed([
-        Block(kind="heading", text="Section", level=1),
-        Block(kind="paragraph", text="short"),
-        Block(kind="paragraph", text="also short"),
-    ])
+    parsed = make_parsed(
+        [
+            Block(kind="heading", text="Section", level=1),
+            Block(kind="paragraph", text="short"),
+            Block(kind="paragraph", text="also short"),
+        ]
+    )
     chunks = chunker.chunk_document(parsed, doc_id="d1", source="x.md")
     assert len(chunks) == 1
     assert "short" in chunks[0].text and "also short" in chunks[0].text
@@ -154,11 +158,13 @@ def test_small_chunks_merged_with_neighbor():
 def test_leading_tiny_chunk_merges_with_same_section_neighbor():
     chunker = TokenAwareChunker(target_tokens=20, max_tokens=100, overlap_tokens=0)
     table = "\n".join(f"row{index} | value{index}" for index in range(24))
-    parsed = make_parsed([
-        Block(kind="heading", text="Section", level=1),
-        Block(kind="paragraph", text="intro"),
-        Block(kind="table", text=table),
-    ])
+    parsed = make_parsed(
+        [
+            Block(kind="heading", text="Section", level=1),
+            Block(kind="paragraph", text="intro"),
+            Block(kind="table", text=table),
+        ]
+    )
     chunks = chunker.chunk_document(parsed, "d1")
     assert "intro" in chunks[0].text
     assert count_tokens(chunks[0].text) >= 20
@@ -167,11 +173,13 @@ def test_leading_tiny_chunk_merges_with_same_section_neighbor():
 def test_code_and_tables_stay_intact():
     chunker = TokenAwareChunker(target_tokens=20, max_tokens=450)
     table = "\n".join(f"row{index} | value{index}" for index in range(30))
-    parsed = make_parsed([
-        Block(kind="paragraph", text="intro"),
-        Block(kind="table", text=table),
-        Block(kind="code", text="def f():\n    return 1"),
-    ])
+    parsed = make_parsed(
+        [
+            Block(kind="paragraph", text="intro"),
+            Block(kind="table", text=table),
+            Block(kind="code", text="def f():\n    return 1"),
+        ]
+    )
     chunks = chunker.chunk_document(parsed, doc_id="d1", source="x.md")
     assert any(table in c.text for c in chunks)
 

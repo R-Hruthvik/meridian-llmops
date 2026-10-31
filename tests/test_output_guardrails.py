@@ -34,7 +34,9 @@ def test_output_guardrails_prohibited_terms_and_toxicity():
 
 def test_schema_validator_valid_json():
     validator = SchemaValidator()
-    valid_json_str = '{"summary": "Arch overview", "confidence": 0.95, "recommendation": "Deploy Qdrant"}'
+    valid_json_str = (
+        '{"summary": "Arch overview", "confidence": 0.95, "recommendation": "Deploy Qdrant"}'
+    )
     parsed, valid = validator.validate_and_repair(valid_json_str, TargetSchema)
 
     assert valid is True

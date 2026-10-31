@@ -11,7 +11,13 @@ def _resolve_to(monkeypatch, *addresses):
         socket,
         "getaddrinfo",
         lambda host, port, **kwargs: [
-            (socket.AF_INET6 if ":" in address else socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, port))
+            (
+                socket.AF_INET6 if ":" in address else socket.AF_INET,
+                socket.SOCK_STREAM,
+                6,
+                "",
+                (address, port),
+            )
             for address in addresses
         ],
     )

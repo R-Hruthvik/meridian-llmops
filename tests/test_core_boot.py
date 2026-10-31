@@ -6,6 +6,7 @@ def test_production_rejects_empty_key(monkeypatch):
     import pytest
 
     from packages.core.config import Settings, validate_production
+
     with pytest.raises(RuntimeError, match="API_KEY_SECRET"):
         validate_production(Settings())
 
@@ -17,6 +18,7 @@ def test_production_rejects_empty_litellm_key(monkeypatch):
     import pytest
 
     from packages.core.config import Settings, validate_production
+
     with pytest.raises(RuntimeError, match="LITELLM_MASTER_KEY"):
         validate_production(Settings())
 
@@ -25,6 +27,7 @@ def test_production_rejects_test_default_secrets(monkeypatch):
     import pytest
 
     from packages.core.config import Settings, validate_production
+
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.delenv("API_KEYS", raising=False)
     monkeypatch.delenv("ADMIN_API_KEY", raising=False)
@@ -43,6 +46,7 @@ def test_production_rejects_test_default_secrets(monkeypatch):
 
 def test_non_production_never_raises(monkeypatch):
     from packages.core.config import Settings, validate_production
+
     for env in ("development", "testing", ""):
         monkeypatch.setenv("APP_ENV", env)
         monkeypatch.setenv("API_KEY_SECRET", "")

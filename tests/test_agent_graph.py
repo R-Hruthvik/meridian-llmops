@@ -38,7 +38,9 @@ def populated_retriever_and_graph():
 
     from services.rag_engine.retrieval.bm25 import BM25Index
 
-    retriever = HybridRetriever(embedder=embedder, vector_store=vstore, bm25_index=BM25Index(chunks))
+    retriever = HybridRetriever(
+        embedder=embedder, vector_store=vstore, bm25_index=BM25Index(chunks)
+    )
     return retriever, gstore
 
 
@@ -89,7 +91,10 @@ async def test_unsupported_chunks_skip_generation_even_with_a_raw_bm25_hit():
     result = await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
 
     assert result["answer_status"] == "insufficient_context"
-    assert result["draft_answer"] == "I don't have enough information in the provided documents to answer that."
+    assert (
+        result["draft_answer"]
+        == "I don't have enough information in the provided documents to answer that."
+    )
     assert client.calls == 0
     assert result["retrieved_chunks"][0].filename == "ops.md"
 
@@ -100,14 +105,23 @@ async def test_prompt_budget_dropping_all_sources_skips_generation():
 
     class Retriever:
         def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
-            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+            return RetrievalResult(
+                query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})]
+            )
 
     client = FakeLLM()
-    graph = build_rag_agent_graph(Retriever(), KnowledgeGraphStore(in_memory=True), llm_client=client)
+    graph = build_rag_agent_graph(
+        Retriever(), KnowledgeGraphStore(in_memory=True), llm_client=client
+    )
     state = {
-        "query": "What is Qdrant?", "current_search_query": "What is Qdrant?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "",
-        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
+        "query": "What is Qdrant?",
+        "current_search_query": "What is Qdrant?",
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "cycle_count": 0,
+        "max_cycles": 1,
+        "is_refusal": False,
         "tenant_id": "test",
     }
 
@@ -120,21 +134,34 @@ async def test_prompt_budget_dropping_all_sources_skips_generation():
 @pytest.mark.asyncio
 async def test_prompt_sufficiency_is_rechecked_after_budget_selection():
     noise = Chunk(id="c-noise", document_id="d", text="An unrelated operations note.")
-    useful_but_dropped = Chunk(id="c-useful", document_id="d", text="Qdrant stores vectors. " * 30000)
+    useful_but_dropped = Chunk(
+        id="c-useful", document_id="d", text="Qdrant stores vectors. " * 30000
+    )
 
     class Retriever:
         def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
-            return RetrievalResult(query, top_k, [
-                RankedChunk(noise, 1, {"dense": 0.2, "bm25": 2.0, "final": 0.02}),
-                RankedChunk(useful_but_dropped, 2, {"dense": 0.9, "bm25": 0.0, "final": 0.01}),
-            ])
+            return RetrievalResult(
+                query,
+                top_k,
+                [
+                    RankedChunk(noise, 1, {"dense": 0.2, "bm25": 2.0, "final": 0.02}),
+                    RankedChunk(useful_but_dropped, 2, {"dense": 0.9, "bm25": 0.0, "final": 0.01}),
+                ],
+            )
 
     client = FakeLLM()
-    graph = build_rag_agent_graph(Retriever(), KnowledgeGraphStore(in_memory=True), llm_client=client)
+    graph = build_rag_agent_graph(
+        Retriever(), KnowledgeGraphStore(in_memory=True), llm_client=client
+    )
     state = {
-        "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "",
-        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
+        "query": "What does Qdrant store?",
+        "current_search_query": "What does Qdrant store?",
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "cycle_count": 0,
+        "max_cycles": 1,
+        "is_refusal": False,
         "tenant_id": "test",
     }
 
@@ -151,7 +178,9 @@ async def test_generation_failures_are_typed_provider_errors(failure):
 
     class Retriever:
         def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
-            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+            return RetrievalResult(
+                query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})]
+            )
 
     class FailingClient:
         async def chat_completion(self, **kwargs):
@@ -166,9 +195,14 @@ async def test_generation_failures_are_typed_provider_errors(failure):
         llm_config_getter=lambda: {"provider": "custom", "model": "test"},
     )
     state = {
-        "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "",
-        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
+        "query": "What does Qdrant store?",
+        "current_search_query": "What does Qdrant store?",
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "cycle_count": 0,
+        "max_cycles": 1,
+        "is_refusal": False,
         "tenant_id": "test",
     }
 
@@ -185,7 +219,9 @@ async def test_empty_completion_returns_insufficient_context():
 
     class Retriever:
         def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
-            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+            return RetrievalResult(
+                query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})]
+            )
 
     class FailingClient:
         async def chat_completion(self, **kwargs):
@@ -198,9 +234,14 @@ async def test_empty_completion_returns_insufficient_context():
         llm_config_getter=lambda: {"provider": "custom", "model": "test"},
     )
     state = {
-        "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "",
-        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
+        "query": "What does Qdrant store?",
+        "current_search_query": "What does Qdrant store?",
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "cycle_count": 0,
+        "max_cycles": 1,
+        "is_refusal": False,
         "tenant_id": "test",
     }
     final = await graph.ainvoke(state, config={"configurable": {"top_k": 1}})
@@ -213,7 +254,9 @@ async def test_debug_prompt_logging_is_correlated_and_redacts_key_in_json_proper
 
     class Retriever:
         def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
-            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+            return RetrievalResult(
+                query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})]
+            )
 
     class Client:
         async def chat_completion(self, **kwargs):
@@ -227,14 +270,24 @@ async def test_debug_prompt_logging_is_correlated_and_redacts_key_in_json_proper
         Retriever(),
         KnowledgeGraphStore(in_memory=True),
         llm_client=Client(),
-        llm_config_getter=lambda: {"provider": "custom", "model": "test", "api_key": "credential-secret"},
+        llm_config_getter=lambda: {
+            "provider": "custom",
+            "model": "test",
+            "api_key": "credential-secret",
+        },
         debug_log_prompts=True,
     )
     state = {
-        "query": "What is Qdrant?", "current_search_query": "What is Qdrant?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "",
-        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
-        "tenant_id": "test", "request_id": "request-123",
+        "query": "What is Qdrant?",
+        "current_search_query": "What is Qdrant?",
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "cycle_count": 0,
+        "max_cycles": 1,
+        "is_refusal": False,
+        "tenant_id": "test",
+        "request_id": "request-123",
     }
 
     with caplog.at_level("DEBUG", logger="meridian.rag_engine.agent"):
@@ -254,7 +307,9 @@ async def test_debug_prompt_logging_is_off_by_default(caplog):
 
     class Retriever:
         def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
-            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+            return RetrievalResult(
+                query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})]
+            )
 
     graph = build_rag_agent_graph(
         Retriever(),
@@ -263,10 +318,16 @@ async def test_debug_prompt_logging_is_off_by_default(caplog):
         llm_config_getter=lambda: {"provider": "custom", "model": "test", "api_key": "test-key"},
     )
     state = {
-        "query": "What is Qdrant?", "current_search_query": "What is Qdrant?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "",
-        "cycle_count": 0, "max_cycles": 1, "is_refusal": False,
-        "tenant_id": "test", "request_id": "request-disabled",
+        "query": "What is Qdrant?",
+        "current_search_query": "What is Qdrant?",
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "cycle_count": 0,
+        "max_cycles": 1,
+        "is_refusal": False,
+        "tenant_id": "test",
+        "request_id": "request-disabled",
     }
 
     with caplog.at_level("DEBUG", logger="meridian.rag_engine.agent"):
@@ -285,7 +346,9 @@ async def test_max_cycles_limits_total_retrieval_attempts():
 
         def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
             self.calls += 1
-            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+            return RetrievalResult(
+                query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})]
+            )
 
     class UngroundedLLM:
         calls = 0
@@ -298,9 +361,14 @@ async def test_max_cycles_limits_total_retrieval_attempts():
     client = UngroundedLLM()
     graph = build_rag_agent_graph(retriever, KnowledgeGraphStore(in_memory=True), llm_client=client)
     state = {
-        "query": "What does Qdrant store?", "current_search_query": "What does Qdrant store?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "",
-        "cycle_count": 0, "max_cycles": 2, "is_refusal": False,
+        "query": "What does Qdrant store?",
+        "current_search_query": "What does Qdrant store?",
+        "retrieved_chunks": [],
+        "entities": [],
+        "draft_answer": "",
+        "cycle_count": 0,
+        "max_cycles": 2,
+        "is_refusal": False,
         "tenant_id": "test",
     }
 
@@ -317,7 +385,9 @@ async def test_agent_graph_successful_flow(populated_retriever_and_graph):
     graph = build_rag_agent_graph(
         retriever=retriever,
         graph_store=gstore,
-        llm_client=FakeLLM(content="Meridian uses LiteLLM proxy for gateway routing and rate limiting. [1]"),
+        llm_client=FakeLLM(
+            content="Meridian uses LiteLLM proxy for gateway routing and rate limiting. [1]"
+        ),
         min_dense_score=0.2,
     )
 
@@ -343,7 +413,9 @@ async def test_agent_graph_successful_flow(populated_retriever_and_graph):
 
 @pytest.mark.asyncio
 @pytest.mark.asyncio
-async def test_agent_graph_self_healing_safe_refusal_when_unanswerable(populated_retriever_and_graph):
+async def test_agent_graph_self_healing_safe_refusal_when_unanswerable(
+    populated_retriever_and_graph,
+):
     retriever, gstore = populated_retriever_and_graph
     client = FakeLLM()
     graph = build_rag_agent_graph(retriever=retriever, graph_store=gstore, llm_client=client)
@@ -364,7 +436,10 @@ async def test_agent_graph_self_healing_safe_refusal_when_unanswerable(populated
     final_state = await graph.ainvoke(initial_state)
 
     assert final_state["answer_status"] == "insufficient_context"
-    assert final_state["draft_answer"] == "I don't have enough information in the provided documents to answer that."
+    assert (
+        final_state["draft_answer"]
+        == "I don't have enough information in the provided documents to answer that."
+    )
     assert final_state["cycle_count"] == 1
     assert client.calls == []
 
@@ -373,12 +448,16 @@ async def test_agent_graph_self_healing_safe_refusal_when_unanswerable(populated
 @pytest.mark.parametrize(
     ("graph_enabled", "context_enabled"), [(False, True), (True, False), (True, True)]
 )
-async def test_graph_context_is_opt_in_and_carries_retrieved_chunk_ids(graph_enabled, context_enabled):
+async def test_graph_context_is_opt_in_and_carries_retrieved_chunk_ids(
+    graph_enabled, context_enabled
+):
     chunk = Chunk(id="c-graph", document_id="d-graph", text="Qdrant connects to Neo4j.")
 
     class Retriever:
         def retrieve(self, query, top_k=5, tenant_id="default", debug=False):
-            return RetrievalResult(query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})])
+            return RetrievalResult(
+                query, top_k, [RankedChunk(chunk, 1, {"dense": 0.9, "bm25": 0.0, "final": 0.01})]
+            )
 
     graph_store = KnowledgeGraphStore(in_memory=True)
     graph_store.extract_and_store("d-graph", chunk.text, chunks=[chunk])
@@ -388,15 +467,27 @@ async def test_graph_context_is_opt_in_and_carries_retrieved_chunk_ids(graph_ena
         return VerificationResult(status="citations_ok", scope="format_and_numeric_consistency")
 
     graph = build_rag_agent_graph(
-        Retriever(), graph_store, llm_client=client, graph_enabled=graph_enabled,
+        Retriever(),
+        graph_store,
+        llm_client=client,
+        graph_enabled=graph_enabled,
         graph_context_enabled=context_enabled,
-        min_dense_score=0.2, verify_fn=verify,
+        min_dense_score=0.2,
+        verify_fn=verify,
     )
-    await graph.ainvoke({
-        "query": "How does Qdrant connect?", "current_search_query": "How does Qdrant connect?",
-        "retrieved_chunks": [], "entities": [], "draft_answer": "", "cycle_count": 0,
-        "max_cycles": 1, "is_refusal": False, "tenant_id": "default",
-    })
+    await graph.ainvoke(
+        {
+            "query": "How does Qdrant connect?",
+            "current_search_query": "How does Qdrant connect?",
+            "retrieved_chunks": [],
+            "entities": [],
+            "draft_answer": "",
+            "cycle_count": 0,
+            "max_cycles": 1,
+            "is_refusal": False,
+            "tenant_id": "default",
+        }
+    )
 
     user_prompt = client.calls[0]["messages"][1]["content"]
     expected = graph_enabled and context_enabled

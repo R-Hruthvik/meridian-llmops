@@ -48,7 +48,9 @@ def test_retrieve_json(monkeypatch):
         body = json.loads(request.content)
         assert body["query"] == "hello"
         assert body["top_k"] == 4
-        return httpx.Response(200, json={"query": "hello", "top_k": 4, "chunks": [{"chunk_id": "c1"}]})
+        return httpx.Response(
+            200, json={"query": "hello", "top_k": 4, "chunks": [{"chunk_id": "c1"}]}
+        )
 
     _patch_client(monkeypatch, handler)
     result = runner.invoke(
@@ -82,7 +84,7 @@ def test_query_json(monkeypatch):
 
 
 def test_query_stream(monkeypatch):
-    sse = "event: token\ndata: {\"delta\":\"hi\"}\n\nevent: done\ndata: {\"answer\":\"hi\",\"request_id\":\"r1\"}\n\n"
+    sse = 'event: token\ndata: {"delta":"hi"}\n\nevent: done\ndata: {"answer":"hi","request_id":"r1"}\n\n'
 
     def handler(request):
         return httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
@@ -136,7 +138,18 @@ def test_settings_set_provider(monkeypatch):
     _patch_client(monkeypatch, handler)
     result = runner.invoke(
         app,
-        ["settings", "set-provider", "--provider", "custom", "--model", "m", "--base-url", "http://x", "--api-key", "k"],
+        [
+            "settings",
+            "set-provider",
+            "--provider",
+            "custom",
+            "--model",
+            "m",
+            "--base-url",
+            "http://x",
+            "--api-key",
+            "k",
+        ],
         env={"MERIDIAN_BASE_URL": "http://test", "MERIDIAN_ADMIN_API_KEY": "admin"},
     )
     assert result.exit_code == 0, result.output

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 # ─── Fix 1: Leaked API key in .meridian_settings.json ─────────────────────────
 
+
 class TestFix1SettingsFile:
     """Verify that .meridian_settings.json contains no live API keys."""
 
@@ -52,25 +53,34 @@ class TestFix1SettingsFile:
 
 # ─── Fix 2: Dead code removal in test_and_fetch_models ───────────────────────
 
+
 class TestFix2DeadCode:
     """Verify the dead return block is removed and response shape is correct."""
 
     def test_dead_code_removed(self):
         """The unreachable second return block must be gone."""
-        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
+        filepath = (
+            Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
+        )
         content = filepath.read_text()
 
         # The dead code's signature must not exist
-        assert '"status": "connected"' not in content.split("def test_and_fetch_models")[1].split("def test_llm_connection")[0], \
-            "Dead return block with 'status: connected' must be removed"
+        assert (
+            '"status": "connected"'
+            not in content.split("def test_and_fetch_models")[1].split("def test_llm_connection")[0]
+        ), "Dead return block with 'status: connected' must be removed"
 
         # The +12.0 magic number must not exist in test_and_fetch_models
-        func_body = content.split("def test_and_fetch_models")[1].split("def test_llm_connection")[0]
+        func_body = content.split("def test_and_fetch_models")[1].split("def test_llm_connection")[
+            0
+        ]
         assert "+ 12.0" not in func_body, "+12.0 magic number must be removed"
 
     def test_single_return_shape(self):
         """test_and_fetch_models should have exactly 2 returns (early-bail + final), no dead 3rd."""
-        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
+        filepath = (
+            Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
+        )
         content = filepath.read_text()
 
         # Extract the function body precisely
@@ -78,9 +88,11 @@ class TestFix2DeadCode:
         end_idx = content.index("def test_llm_connection")
         func_body = content[start_idx:end_idx]
         return_count = func_body.count("return {")
-        assert return_count == 2, f"Expected 2 return dicts (early-bail + final), found {return_count}"
+        assert return_count == 2, (
+            f"Expected 2 return dicts (early-bail + final), found {return_count}"
+        )
 
-        assert '\"success\":' in func_body, "Response must include 'success' field"
+        assert '"success":' in func_body, "Response must include 'success' field"
         # The dead code's "connected" status should NOT be in this function
         assert '"status": "connected"' not in func_body, "Dead 'connected' return must be removed"
         # The +12.0 magic number should not be in this function
@@ -88,6 +100,7 @@ class TestFix2DeadCode:
 
 
 # ─── Fix 3: Hardcoded default secrets in Settings ─────────────────────────────
+
 
 class TestFix3ConfigSecrets:
     """Verify Settings no longer has hardcoded secret defaults."""
@@ -102,30 +115,38 @@ class TestFix3ConfigSecrets:
         settings_path = Path(__file__).parent.parent / "packages" / "core" / "settings.py"
         config_content = config_path.read_text()
         settings_content = settings_path.read_text()
-        assert "meridian-test-secret-key-2026" not in config_content, \
+        assert "meridian-test-secret-key-2026" not in config_content, (
             "config.py must not contain the old hardcoded default"
-        assert settings_content.count("meridian-test-secret-key-2026") == 1, \
+        )
+        assert settings_content.count("meridian-test-secret-key-2026") == 1, (
             "settings.py must reference the old test secret only in the production blocklist"
-        assert "_FORBIDDEN_PRODUCTION_SECRETS" in settings_content, \
+        )
+        assert "_FORBIDDEN_PRODUCTION_SECRETS" in settings_content, (
             "settings.py must define the production blocklist"
-        assert "os.environ.get(\"API_KEY_SECRET\"" in settings_content or "os.environ.get('API_KEY_SECRET'" in settings_content, \
-            "api_key_secret must read from environment in settings.py"
+        )
+        assert (
+            'os.environ.get("API_KEY_SECRET"' in settings_content
+            or "os.environ.get('API_KEY_SECRET'" in settings_content
+        ), "api_key_secret must read from environment in settings.py"
         # Re-export shim smoke: existing imports keep working
         from packages.core.config import Settings
+
         assert Settings is not None
 
     def test_no_hardcoded_litellm_master_key(self):
         config_path = Path(__file__).parent.parent / "packages" / "core" / "config.py"
         content = config_path.read_text()
-        assert "sk-litellm-master-key" not in content, \
+        assert "sk-litellm-master-key" not in content, (
             "config.py must not contain the old hardcoded litellm key"
+        )
 
     def test_no_hardcoded_neo4j_password(self):
         from packages.core.config import Settings
 
         s = Settings()
-        assert s.neo4j_password != "meridian_password", \
+        assert s.neo4j_password != "meridian_password", (
             "neo4j_password must not have the old hardcoded default"
+        )
 
     def test_non_secret_defaults_preserved(self):
         from packages.core.config import Settings
@@ -138,11 +159,14 @@ class TestFix3ConfigSecrets:
 
 # ─── Fix 4: Fake latency in test_llm_connection ────────────────────────────────
 
+
 class TestFix4FakeLatency:
     """Verify test_llm_connection no longer uses fake +15.0 padding."""
 
     def test_no_fake_latency_constant(self):
-        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
+        filepath = (
+            Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
+        )
         content = filepath.read_text()
 
         # Extract just the test_llm_connection function body
@@ -151,26 +175,35 @@ class TestFix4FakeLatency:
         assert "+ 12.0" not in func_body, "Fake +12.0 latency padding must be removed"
 
     def test_real_api_call_made(self):
-        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
+        filepath = (
+            Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
+        )
         content = filepath.read_text()
 
         func_body = content.split("def test_llm_connection")[1].split("\n\n\n")[0]
-        assert "llm_client.chat_completion" in func_body, \
+        assert "llm_client.chat_completion" in func_body, (
             "test_llm_connection must make a real generation call through the provider client"
-        assert "max_tokens=256" in func_body, "Connectivity test should request only a small number of tokens"
+        )
+        assert "max_tokens=256" in func_body, (
+            "Connectivity test should request only a small number of tokens"
+        )
 
     def test_connection_test_returns_real_status(self):
         """When the endpoint is unreachable, status should be 'error', not always 'connected'."""
-        filepath = Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
+        filepath = (
+            Path(__file__).parent.parent / "services" / "rag_engine" / "routers" / "settings.py"
+        )
         content = filepath.read_text()
 
         func_body = content.split("def test_llm_connection")[1].split("\n\n\n")[0]
-        assert '"status": "success" if is_success else "error"' in func_body, \
+        assert '"status": "success" if is_success else "error"' in func_body, (
             "Should return dynamic success/error status"
-        assert 'is_success' in func_body
+        )
+        assert "is_success" in func_body
 
 
 # ─── Fix 5: Rate limiter thread-safety ─────────────────────────────────────────
+
 
 class TestFix5RateLimiter:
     """Verify rate limiter has asyncio.Lock and TTL-based eviction."""
@@ -195,7 +228,10 @@ class TestFix5RateLimiter:
         # Reset the rate limits for this test
         auth._rate_limits.clear()
 
-        headers = {"X-API-Key": "meridian-test-secret-key-2026", "X-Tenant-Id": "concurrent-test-tenant"}
+        headers = {
+            "X-API-Key": "meridian-test-secret-key-2026",
+            "X-Tenant-Id": "concurrent-test-tenant",
+        }
 
         async def fire_requests():
             transport = httpx.ASGITransport(app=app)
@@ -208,8 +244,12 @@ class TestFix5RateLimiter:
                 return responses
 
         responses = asyncio.run(fire_requests())
-        success_count = sum(1 for r in responses if not isinstance(r, Exception) and r.status_code == 200)
-        rate_limited = sum(1 for r in responses if not isinstance(r, Exception) and r.status_code == 429)
+        success_count = sum(
+            1 for r in responses if not isinstance(r, Exception) and r.status_code == 200
+        )
+        rate_limited = sum(
+            1 for r in responses if not isinstance(r, Exception) and r.status_code == 429
+        )
         assert success_count <= 60, f"Too many succeeded: {success_count}"
         assert rate_limited >= 20, f"Not enough rate-limited: {rate_limited}"
 
@@ -221,10 +261,12 @@ class TestFix5RateLimiter:
 
         monkeypatch.setenv(
             "API_KEYS",
-            json.dumps({
-                "key-a-for-rate-test": {"tenant": "tenant-a", "role": "user"},
-                "key-b-for-rate-test": {"tenant": "tenant-b", "role": "user"},
-            }),
+            json.dumps(
+                {
+                    "key-a-for-rate-test": {"tenant": "tenant-a", "role": "user"},
+                    "key-b-for-rate-test": {"tenant": "tenant-b", "role": "user"},
+                }
+            ),
         )
         client = TestClient(app)
         from packages.core.settings import get_settings
@@ -276,7 +318,9 @@ class TestFix5RateLimiter:
 
         # Just verify eviction logic by calling directly
         now = auth.time.time()
-        stale_keys = [k for k, (_, ts) in auth._rate_limits.items() if now - ts > auth._RATE_LIMIT_TTL]
+        stale_keys = [
+            k for k, (_, ts) in auth._rate_limits.items() if now - ts > auth._RATE_LIMIT_TTL
+        ]
         for k in stale_keys:
             del auth._rate_limits[k]
 
@@ -285,6 +329,7 @@ class TestFix5RateLimiter:
 
 
 # ─── Fix 6: LiteLLMClient error handling ───────────────────────────────────────
+
 
 class TestFix6ErrorHandling:
     """Verify LiteLLMClient uses logging and propagates errors."""
@@ -347,6 +392,7 @@ class TestFix6ErrorHandling:
 
 
 # ─── Regression: Existing endpoints still work ─────────────────────────────────
+
 
 class TestRegressionEndpoints:
     """Verify existing API endpoints still function after fixes."""
@@ -417,7 +463,10 @@ class TestRegressionEndpoints:
         ingest_res = client.post(
             "/v1/ingest",
             headers=headers,
-            json={"title": "Test Catalog Doc", "text": "Testing permanent catalog persistence for Meridian."},
+            json={
+                "title": "Test Catalog Doc",
+                "text": "Testing permanent catalog persistence for Meridian.",
+            },
         )
         assert ingest_res.status_code == 200
         doc_id = ingest_res.json()["document_id"]

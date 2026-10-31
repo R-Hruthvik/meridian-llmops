@@ -36,14 +36,24 @@ def test_bm25_requires_half_of_substantive_terms():
 def test_numeric_vector_dimension_evidence_is_not_mistaken_for_missing_dimension():
     assert has_sufficient_context(
         "How many vector dimensions does the collection example configure?",
-        [{"text": "vectors_config=VectorParams(size=4, distance=Distance.COSINE)", "scores": {"dense": 0.8}}],
+        [
+            {
+                "text": "vectors_config=VectorParams(size=4, distance=Distance.COSINE)",
+                "scores": {"dense": 0.8},
+            }
+        ],
     )
 
 
 def test_two_ui_credentials_must_be_documented_together():
     assert has_sufficient_context(
         "What two credentials are shown for logging into the LiteLLM UI?",
-        [{"text": "The username is `admin` and the password is your `LITELLM_MASTER_KEY` value.", "scores": {"dense": 0.8}}],
+        [
+            {
+                "text": "The username is `admin` and the password is your `LITELLM_MASTER_KEY` value.",
+                "scores": {"dense": 0.8},
+            }
+        ],
     )
     assert not has_sufficient_context(
         "What two credentials are shown for logging into the LiteLLM UI?",
@@ -155,10 +165,16 @@ def test_answer_slot_paraphrases_and_concrete_value_formats():
     )
     unsupported = [
         ("What is the monthly bill for the deployment?", "The service is deployed monthly."),
-        ("What availability guarantee does the Azure endpoint provide?", "The Azure endpoint is available."),
+        (
+            "What availability guarantee does the Azure endpoint provide?",
+            "The Azure endpoint is available.",
+        ),
         ("How much GPU memory is required?", "The workload needs GPU memory."),
         ("Who does the API key belong to?", "The API key is used by the example."),
-        ("Which customer does the example key belong to?", "The example API key belongs to the application."),
+        (
+            "Which customer does the example key belong to?",
+            "The example API key belongs to the application.",
+        ),
     ]
     assert all(
         not has_sufficient_context(question, [{"text": text, "scores": {"dense": 0.8}}])

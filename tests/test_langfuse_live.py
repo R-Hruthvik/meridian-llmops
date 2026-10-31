@@ -126,9 +126,7 @@ async def test_langfuse_generation_context_wraps_provider_call_and_exports_usage
 
     assert provider.observation_was_open is True
     generation = next(
-        item
-        for item in sdk.observations
-        if item["attributes"].get("name") == "generate"
+        item for item in sdk.observations if item["attributes"].get("name") == "generate"
     )
     assert generation["parent"]["attributes"]["name"] == "rag-query-pipeline"
     assert generation["duration_ms"] > 0

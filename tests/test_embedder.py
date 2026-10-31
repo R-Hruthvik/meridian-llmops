@@ -14,31 +14,31 @@ def test_embedder_contract_normalizes_and_uses_passage_query_methods(monkeypatch
 
     class Model:
         def __init__(self, model_name, cache_dir, **kwargs):
-            assert model_name == 'test/model'
+            assert model_name == "test/model"
             assert cache_dir == str(tmp_path)
 
         def passage_embed(self, texts):
-            return iter([np.array([3., 4.]) for _ in texts])
+            return iter([np.array([3.0, 4.0]) for _ in texts])
 
         def query_embed(self, text):
-            return iter([np.array([0., 2.])])
+            return iter([np.array([0.0, 2.0])])
 
-    monkeypatch.setattr('fastembed.TextEmbedding', Model)
-    embedder = FastEmbedEmbedder('test/model', cache_path=tmp_path, expected_dim=2)
-    passages = embedder.embed_passages(['one', 'two'])
+    monkeypatch.setattr("fastembed.TextEmbedding", Model)
+    embedder = FastEmbedEmbedder("test/model", cache_path=tmp_path, expected_dim=2)
+    passages = embedder.embed_passages(["one", "two"])
     assert passages.dtype == np.float32
-    np.testing.assert_allclose(passages, [[.6, .8], [.6, .8]])
-    np.testing.assert_array_equal(embedder.embed_query('question'), [0., 1.])
+    np.testing.assert_allclose(passages, [[0.6, 0.8], [0.6, 0.8]])
+    np.testing.assert_array_equal(embedder.embed_query("question"), [0.0, 1.0])
     assert embedder.embed_passages([]).shape == (0, 2)
-    with pytest.raises(ValueError, match='dimension'):
-        FastEmbedEmbedder('test/model', cache_path=tmp_path, expected_dim=3)
+    with pytest.raises(ValueError, match="dimension"):
+        FastEmbedEmbedder("test/model", cache_path=tmp_path, expected_dim=3)
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def semantic_embedder():
     from services.ingestion.embedder import FastEmbedEmbedder
 
-    return FastEmbedEmbedder('BAAI/bge-small-en-v1.5', expected_dim=384)
+    return FastEmbedEmbedder("BAAI/bge-small-en-v1.5", expected_dim=384)
 
 
 def test_embedder_dim_matches_config(semantic_embedder):
@@ -46,29 +46,38 @@ def test_embedder_dim_matches_config(semantic_embedder):
 
     assert semantic_embedder.dim == get_settings().qdrant_vector_dim
     assert semantic_embedder.model_name == get_settings().embedding_model
-    assert semantic_embedder.embed_query('a question').shape == (384,)
-    assert semantic_embedder.embed_passages(['a passage']).shape == (1, 384)
+    assert semantic_embedder.embed_query("a question").shape == (384,)
+    assert semantic_embedder.embed_passages(["a passage"]).shape == (1, 384)
 
 
 def test_query_passage_similarity(semantic_embedder):
-    query = semantic_embedder.embed_query('What is the capital of France?')
-    passages = semantic_embedder.embed_passages([
-        'Paris is the capital city of France.',
-        'Whales are large marine mammals that live in the ocean.',
-    ])
+    query = semantic_embedder.embed_query("What is the capital of France?")
+    passages = semantic_embedder.embed_passages(
+        [
+            "Paris is the capital city of France.",
+            "Whales are large marine mammals that live in the ocean.",
+        ]
+    )
     scores = passages @ query
     assert scores[0] > scores[1]
 
 
 def test_embedder_deterministic_across_processes(semantic_embedder):
     code = (
-        'import json; from services.ingestion.embedder import FastEmbedEmbedder; '
+        "import json; from services.ingestion.embedder import FastEmbedEmbedder; "
         "e=FastEmbedEmbedder('BAAI/bge-small-en-v1.5', expected_dim=384); "
         "print(json.dumps(e.embed_query('Qdrant vector database').tolist()))"
     )
-    vectors = [json.loads(subprocess.check_output(
-        [sys.executable, '-c', code], text=True, env=dict(os.environ, PYTHONHASHSEED=str(seed)),
-    )) for seed in (1, 2)]
+    vectors = [
+        json.loads(
+            subprocess.check_output(
+                [sys.executable, "-c", code],
+                text=True,
+                env=dict(os.environ, PYTHONHASHSEED=str(seed)),
+            )
+        )
+        for seed in (1, 2)
+    ]
     np.testing.assert_array_equal(vectors[0], vectors[1])
 
 
@@ -78,13 +87,15 @@ def test_pipeline_reembeds_legacy_vectors(tmp_path):
     from tests.fakes import FakeEmbedder, make_vector_store
 
     embedder = FakeEmbedder(8)
-    chunk = Chunk(id='c1', document_id='d1', text='semantic answer', chunk_index=0, embedding=[1.] * 1024)
+    chunk = Chunk(
+        id="c1", document_id="d1", text="semantic answer", chunk_index=0, embedding=[1.0] * 1024
+    )
     store = make_vector_store(embedder)
     pipeline = IngestionPipeline(vector_store=store, embedder=embedder, storage_root=tmp_path)
     pipeline._index_chunks([chunk])
     assert store.dim == 8
-    result = store.search(embedder.embed_query('semantic answer'), 5, 'default')[0]
-    assert result.score == pytest.approx(1.)
+    result = store.search(embedder.embed_query("semantic answer"), 5, "default")[0]
+    assert result.score == pytest.approx(1.0)
     assert result.chunk.embedding is None
 
 
@@ -102,11 +113,11 @@ async def test_app_lifespan_initializes_model_once(monkeypatch):
     async def init_db():
         pass
 
-    monkeypatch.setattr(app_module.ingestion_pipeline, 'embedder', None)
-    monkeypatch.setattr(app_module, 'FastEmbedEmbedder', create_embedder)
-    monkeypatch.setattr(app_module, 'init_db', init_db)
-    monkeypatch.setattr(app_module.ingestion_pipeline, 'load_persisted_knowledge_base', lambda: 0)
-    previous = getattr(app_module.app.state, 'index_consistency', None)
+    monkeypatch.setattr(app_module.ingestion_pipeline, "embedder", None)
+    monkeypatch.setattr(app_module, "FastEmbedEmbedder", create_embedder)
+    monkeypatch.setattr(app_module, "init_db", init_db)
+    monkeypatch.setattr(app_module.ingestion_pipeline, "load_persisted_knowledge_base", lambda: 0)
+    previous = getattr(app_module.app.state, "index_consistency", None)
     try:
         async with app_module.lifespan(app_module.app):
             assert app_module.ingestion_pipeline.embedder is not None

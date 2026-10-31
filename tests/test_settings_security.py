@@ -139,8 +139,8 @@ def test_model_fetch_transport_uses_only_the_validated_address(monkeypatch):
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", (next(resolution), 0))
         ],
     )
-    validated_url, validated_host, validated_port, validated_addresses = rag_app._validate_model_fetch_url(
-        "openai", "https://provider.example/models"
+    validated_url, validated_host, validated_port, validated_addresses = (
+        rag_app._validate_model_fetch_url("openai", "https://provider.example/models")
     )
     from services.gateway.safe_http import PinnedAddressBackend
 
@@ -207,17 +207,13 @@ def test_model_fetch_pins_the_checked_dns_result(monkeypatch):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port))]
 
     monkeypatch.setattr(socket, "getaddrinfo", resolve)
-    result, calls, client_options = _call_fetch(
-        monkeypatch, "openai", "https://provider.example"
-    )
+    result, calls, client_options = _call_fetch(monkeypatch, "openai", "https://provider.example")
 
     transport = client_options["transport"]
     assert result["success"] is True
     assert calls == ["https://provider.example/models"]
     assert resolutions == ["provider.example"]
-    assert transport.address_backend._addresses[("provider.example", 443)] == (
-        "93.184.216.34",
-    )
+    assert transport.address_backend._addresses[("provider.example", 443)] == ("93.184.216.34",)
 
 
 def test_model_fetch_caps_response_body_and_does_not_echo_it(monkeypatch):

@@ -11,7 +11,9 @@ def test_build_engine_parses_supported_files_and_scopes_the_requested_tenant(tmp
     )
     (docs / "notes.txt").write_text("Plain text passage for the corpus.", encoding="utf-8")
     (docs / "ignored.json").write_text('{"ignored": true}', encoding="utf-8")
-    monkeypatch.setattr(retrieval_check, "FastEmbedEmbedder", lambda *_args, **_kwargs: FakeEmbedder())
+    monkeypatch.setattr(
+        retrieval_check, "FastEmbedEmbedder", lambda *_args, **_kwargs: FakeEmbedder()
+    )
     from packages.core.settings import Settings
 
     monkeypatch.setattr(

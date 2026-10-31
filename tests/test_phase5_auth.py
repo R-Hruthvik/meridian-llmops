@@ -16,10 +16,12 @@ def mapped_keys(monkeypatch):
     monkeypatch.setenv("APP_ENV", "testing")
     monkeypatch.setenv(
         "API_KEYS",
-        json.dumps({
-            "user-key-for-tests": {"tenant": "tenant-a", "role": "user"},
-            "admin-key-for-tests": {"tenant": "operations", "role": "admin"},
-        }),
+        json.dumps(
+            {
+                "user-key-for-tests": {"tenant": "tenant-a", "role": "user"},
+                "admin-key-for-tests": {"tenant": "operations", "role": "admin"},
+            }
+        ),
     )
     monkeypatch.setenv("ADMIN_API_KEY", "admin-key-for-tests")
     get_settings.cache_clear()
@@ -104,7 +106,10 @@ def test_http_auth_returns_401_and_403(mapped_keys):
         assert client.get("/v1/documents", headers={"X-API-Key": "wrong-key"}).status_code == 401
         user_headers = {"X-API-Key": "user-key-for-tests"}
         assert client.get("/v1/settings/llm", headers=user_headers).status_code == 403
-        assert client.get("/v1/documents", headers=user_headers | {"X-Tenant-Id": "spoof"}).status_code == 200
+        assert (
+            client.get("/v1/documents", headers=user_headers | {"X-Tenant-Id": "spoof"}).status_code
+            == 200
+        )
 
 
 def test_production_rejects_known_development_keys(monkeypatch):
@@ -143,7 +148,6 @@ def test_production_accepts_api_keys_without_legacy_single_key():
     validate_production(settings)
 
 
-
 def _iter_api_routes(routes):
     """Walk nested routers, including FastAPI's lazy _IncludedRouter wrappers."""
     for route in routes:
@@ -153,6 +157,7 @@ def _iter_api_routes(routes):
         original_router = getattr(route, "original_router", None)
         if original_router is not None:
             yield from _iter_api_routes(original_router.routes)
+
 
 def test_every_rag_and_gateway_route_is_authenticated_except_health():
     from services.gateway.app import app as gateway_app
@@ -172,7 +177,9 @@ def test_every_rag_and_gateway_route_is_authenticated_except_health():
                 found_public_health.add(path)
                 continue
             dependency_names = {dependency.call for dependency in route.dependant.dependencies}
-            assert dependency_names & {auth.require_user, auth.require_admin}, f"Unauthenticated route: {path}"
+            assert dependency_names & {auth.require_user, auth.require_admin}, (
+                f"Unauthenticated route: {path}"
+            )
         assert found_public_health == public_health
 
 

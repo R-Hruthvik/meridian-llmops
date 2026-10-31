@@ -73,7 +73,9 @@ def _base_state() -> dict:
 
 async def _run(configurable: dict | None) -> tuple[_RecordingRetriever, dict]:
     retriever = _RecordingRetriever()
-    graph = build_rag_agent_graph(retriever=retriever, graph_store=KnowledgeGraphStore(in_memory=True))
+    graph = build_rag_agent_graph(
+        retriever=retriever, graph_store=KnowledgeGraphStore(in_memory=True)
+    )
     config = {"configurable": {"thread_id": "t-topk", **(configurable or {})}}
     final_state = await graph.ainvoke(_base_state(), config=config)
     return retriever, final_state

@@ -84,4 +84,3 @@ async def test_generate_node_without_sink_uses_unary_completion():
     assert result["draft_answer"] == "Hello world"
     assert llm.unary_calls
     assert llm.stream_calls == []
-

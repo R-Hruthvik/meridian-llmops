@@ -134,10 +134,7 @@ def test_sufficiency_only_uses_configured_top_k_while_retrieving_ten_for_mrr():
         "expected_doc": None,
         "expected_phrases": [],
     }
-    chunks = [
-        ("General onboarding steps", "guide.md", {"dense": 0.1, "bm25": 0})
-        for _ in range(5)
-    ]
+    chunks = [("General onboarding steps", "guide.md", {"dense": 0.1, "bm25": 0}) for _ in range(5)]
     chunks.append(("The private key is secret", "guide.md", {"dense": 0.9, "bm25": 0}))
     retriever = FakeRetriever({case["question"]: _result(case["question"], chunks, 5)})
 
@@ -149,11 +146,15 @@ def test_sufficiency_only_uses_configured_top_k_while_retrieving_ten_for_mrr():
 
 def test_checked_in_retrieval_thresholds_meet_the_agreed_gate():
     thresholds = json.loads(
-        (Path(__file__).resolve().parents[1] / "evals" / "thresholds.json").read_text(encoding="utf-8")
+        (Path(__file__).resolve().parents[1] / "evals" / "thresholds.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     for metric, minimum in AGREED_RETRIEVAL_GATE.items():
-        assert thresholds[metric] >= minimum, f"{metric} gate {thresholds[metric]} is looser than agreed {minimum}"
+        assert thresholds[metric] >= minimum, (
+            f"{metric} gate {thresholds[metric]} is looser than agreed {minimum}"
+        )
 
 
 def test_format_summary_reports_metrics_thresholds_and_breaches():

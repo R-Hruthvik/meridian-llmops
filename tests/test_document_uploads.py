@@ -26,14 +26,16 @@ def pdf_bytes(text=None):
     writer = PdfWriter()
     page = writer.add_blank_page(width=300, height=300)
     if text:
-        font = DictionaryObject({
-            NameObject("/Type"): NameObject("/Font"),
-            NameObject("/Subtype"): NameObject("/Type1"),
-            NameObject("/BaseFont"): NameObject("/Helvetica"),
-        })
-        page[NameObject("/Resources")] = DictionaryObject({
-            NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)})
-        })
+        font = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            }
+        )
+        page[NameObject("/Resources")] = DictionaryObject(
+            {NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)})}
+        )
         stream = DecodedStreamObject()
         stream.set_data(f"BT /F1 12 Tf 20 200 Td ({text}) Tj ET".encode())
         page[NameObject("/Contents")] = writer._add_object(stream)
@@ -56,11 +58,24 @@ def upload_client(tmp_path, monkeypatch):
 
 def test_upload_mixed_formats_and_fetch_source_metadata(upload_client):
     client, _ = upload_client
-    response = client.post("/v1/documents", headers=HEADERS, files=[
-        ("files", ("policy.pdf", pdf_bytes("Employees receive twenty days of vacation every year."))),
-        ("files", ("policy.md", b"# Leave Policy\n\n## Sick Leave\n\nEmployees receive ten days of sick leave.")),
-        ("files", ("policy.txt", b"The office opens at nine every weekday morning.")),
-    ])
+    response = client.post(
+        "/v1/documents",
+        headers=HEADERS,
+        files=[
+            (
+                "files",
+                ("policy.pdf", pdf_bytes("Employees receive twenty days of vacation every year.")),
+            ),
+            (
+                "files",
+                (
+                    "policy.md",
+                    b"# Leave Policy\n\n## Sick Leave\n\nEmployees receive ten days of sick leave.",
+                ),
+            ),
+            ("files", ("policy.txt", b"The office opens at nine every weekday morning.")),
+        ],
+    )
     assert response.status_code == 200
     rows = response.json()["results"]
     assert [row["status"] for row in rows] == ["indexed"] * 3
@@ -80,15 +95,24 @@ def test_upload_mixed_formats_and_fetch_source_metadata(upload_client):
 def test_rejection_does_not_prevent_other_files_and_scan_warning_is_visible(upload_client):
     client, pipeline = upload_client
     pipeline.max_upload_bytes = 2048
-    response = client.post("/v1/documents", headers=HEADERS, files=[
-        ("files", ("bad.exe", b"MZ")),
-        ("files", ("too-big.txt", b"x" * 2049)),
-        ("files", ("scan.pdf", pdf_bytes())),
-        ("files", ("good.txt", b"A valid document with useful information.")),
-    ])
+    response = client.post(
+        "/v1/documents",
+        headers=HEADERS,
+        files=[
+            ("files", ("bad.exe", b"MZ")),
+            ("files", ("too-big.txt", b"x" * 2049)),
+            ("files", ("scan.pdf", pdf_bytes())),
+            ("files", ("good.txt", b"A valid document with useful information.")),
+        ],
+    )
     assert response.status_code == 200
     rows = response.json()["results"]
-    assert [row["status"] for row in rows] == ["rejected", "rejected", "indexed_with_warnings", "indexed"]
+    assert [row["status"] for row in rows] == [
+        "rejected",
+        "rejected",
+        "indexed_with_warnings",
+        "indexed",
+    ]
     assert rows[0]["error"] and rows[1]["error"]
     assert rows[2]["chunks"] == 0
     assert any("scanned" in warning.lower() for warning in rows[2]["warnings"])
@@ -97,10 +121,16 @@ def test_rejection_does_not_prevent_other_files_and_scan_warning_is_visible(uplo
 
 def test_json_ingest_preserves_existing_ui_response_fields(upload_client):
     client, pipeline = upload_client
-    response = client.post("/v1/ingest", headers=HEADERS, json={
-        "title": "Office Hours", "text": "The office opens at nine.",
-        "source": "hours.txt", "format": "txt",
-    })
+    response = client.post(
+        "/v1/ingest",
+        headers=HEADERS,
+        json={
+            "title": "Office Hours",
+            "text": "The office opens at nine.",
+            "source": "hours.txt",
+            "format": "txt",
+        },
+    )
     assert response.status_code == 200
     row = response.json()
     assert row["title"] == "Office Hours"
@@ -110,10 +140,16 @@ def test_json_ingest_preserves_existing_ui_response_fields(upload_client):
 
 def test_delete_document_evicts_chunks_from_vector_and_lexical_indexes(upload_client):
     client, _ = upload_client
-    created = client.post("/v1/ingest", headers=HEADERS, json={
-        "title": "Eviction Probe", "text": "Meridian zzzquux lexical eviction probe token.",
-        "source": "eviction_probe.txt", "format": "txt",
-    }).json()
+    created = client.post(
+        "/v1/ingest",
+        headers=HEADERS,
+        json={
+            "title": "Eviction Probe",
+            "text": "Meridian zzzquux lexical eviction probe token.",
+            "source": "eviction_probe.txt",
+            "format": "txt",
+        },
+    ).json()
     doc_id = created["document_id"]
     assert any(chunk.document_id == doc_id for chunk in app_module.retriever.bm25_index.chunks)
 
@@ -122,7 +158,9 @@ def test_delete_document_evicts_chunks_from_vector_and_lexical_indexes(upload_cl
 
     assert all(chunk.document_id != doc_id for chunk in app_module.retriever.bm25_index.chunks)
     assert app_module.vector_store.count() == 0
-    resp = client.post("/v1/retrieve", headers=HEADERS, json={"query": "zzzquux eviction probe", "top_k": 5})
+    resp = client.post(
+        "/v1/retrieve", headers=HEADERS, json={"query": "zzzquux eviction probe", "top_k": 5}
+    )
     assert resp.status_code == 200
     assert resp.json()["chunks"] == []
 

@@ -36,10 +36,14 @@ def test_recommend_threshold_handles_empty_groups_and_rejects_unknown_metric():
 def test_cli_calibrates_supplied_questions_and_writes_json_summary(tmp_path, monkeypatch, capsys):
     questions = tmp_path / "questions.json"
     questions.write_text(
-        json.dumps({"cases": [
-            {"id": "yes", "question": "known", "answerable": True},
-            {"id": "no", "question": "unknown", "answerable": False},
-        ]}),
+        json.dumps(
+            {
+                "cases": [
+                    {"id": "yes", "question": "known", "answerable": True},
+                    {"id": "no", "question": "unknown", "answerable": False},
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     docs = tmp_path / "docs"
@@ -70,14 +74,18 @@ def test_cli_calibrates_supplied_questions_and_writes_json_summary(tmp_path, mon
     from packages.core import settings
 
     monkeypatch.setattr(
-        settings, "get_settings", lambda: type("Settings", (), {
-            "embedding_model": "test-model", "fastembed_cache_path": str(tmp_path / "cache")
-        })()
+        settings,
+        "get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {"embedding_model": "test-model", "fastembed_cache_path": str(tmp_path / "cache")},
+        )(),
     )
 
-    result = calibrate_threshold.main([
-        "--questions", str(questions), "--docs", str(docs), "--output", str(output)
-    ])
+    result = calibrate_threshold.main(
+        ["--questions", str(questions), "--docs", str(docs), "--output", str(output)]
+    )
 
     assert result == 0
     saved = json.loads(output.read_text(encoding="utf-8"))
@@ -102,10 +110,17 @@ def test_script_entrypoint_loads_when_run_directly():
 @pytest.mark.parametrize("docs_kind", ["missing", "empty"])
 def test_cli_rejects_missing_or_empty_docs_without_traceback(tmp_path, docs_kind):
     questions = tmp_path / "questions.json"
-    questions.write_text(json.dumps({"cases": [
-        {"id": "yes", "question": "known", "answerable": True},
-        {"id": "no", "question": "unknown", "answerable": False},
-    ]}), encoding="utf-8")
+    questions.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {"id": "yes", "question": "known", "answerable": True},
+                    {"id": "no", "question": "unknown", "answerable": False},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     docs = tmp_path / "docs"
     if docs_kind == "empty":
         docs.mkdir()
@@ -113,8 +128,14 @@ def test_cli_rejects_missing_or_empty_docs_without_traceback(tmp_path, docs_kind
     output = tmp_path / "out.json"
     result = subprocess.run(
         [
-            sys.executable, "scripts/calibrate_threshold.py", "--questions", str(questions),
-            "--docs", str(docs), "--output", str(output),
+            sys.executable,
+            "scripts/calibrate_threshold.py",
+            "--questions",
+            str(questions),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
         ],
         capture_output=True,
         text=True,
@@ -135,9 +156,9 @@ def test_cli_reports_invalid_questions_without_traceback(tmp_path, capsys, conte
     docs.mkdir()
     (docs / "guide.md").write_text("content", encoding="utf-8")
 
-    result = calibrate_threshold.main([
-        "--questions", str(questions), "--docs", str(docs), "--output", str(tmp_path / "out.json")
-    ])
+    result = calibrate_threshold.main(
+        ["--questions", str(questions), "--docs", str(docs), "--output", str(tmp_path / "out.json")]
+    )
 
     captured = capsys.readouterr()
     assert result == 2
@@ -148,10 +169,17 @@ def test_cli_reports_invalid_questions_without_traceback(tmp_path, capsys, conte
 
 def test_cli_rejects_supported_but_empty_text_file(tmp_path):
     questions = tmp_path / "questions.json"
-    questions.write_text(json.dumps({"cases": [
-        {"id": "yes", "question": "known", "answerable": True},
-        {"id": "no", "question": "unknown", "answerable": False},
-    ]}), encoding="utf-8")
+    questions.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {"id": "yes", "question": "known", "answerable": True},
+                    {"id": "no", "question": "unknown", "answerable": False},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "empty.txt").write_text("", encoding="utf-8")
@@ -159,8 +187,14 @@ def test_cli_rejects_supported_but_empty_text_file(tmp_path):
 
     result = subprocess.run(
         [
-            sys.executable, "scripts/calibrate_threshold.py", "--questions", str(questions),
-            "--docs", str(docs), "--output", str(output),
+            sys.executable,
+            "scripts/calibrate_threshold.py",
+            "--questions",
+            str(questions),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
         ],
         capture_output=True,
         text=True,
@@ -168,7 +202,9 @@ def test_cli_rejects_supported_but_empty_text_file(tmp_path):
     )
 
     assert result.returncode == 2
-    assert ("no indexed chunks" in result.stderr.lower()) or ("contains no extractable text" in result.stderr.lower())
+    assert ("no indexed chunks" in result.stderr.lower()) or (
+        "contains no extractable text" in result.stderr.lower()
+    )
     assert "traceback" not in result.stderr.lower()
     assert not output.exists()
 
@@ -176,10 +212,17 @@ def test_cli_rejects_supported_but_empty_text_file(tmp_path):
 @pytest.mark.parametrize("error", [IngestionError, IndexReadError, IndexWriteError])
 def test_cli_formats_known_ingestion_and_index_errors(tmp_path, monkeypatch, capsys, error):
     questions = tmp_path / "questions.json"
-    questions.write_text(json.dumps({"cases": [
-        {"id": "yes", "question": "known", "answerable": True},
-        {"id": "no", "question": "unknown", "answerable": False},
-    ]}), encoding="utf-8")
+    questions.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {"id": "yes", "question": "known", "answerable": True},
+                    {"id": "no", "question": "unknown", "answerable": False},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "guide.md").write_text("content", encoding="utf-8")
@@ -189,9 +232,9 @@ def test_cli_formats_known_ingestion_and_index_errors(tmp_path, monkeypatch, cap
         raise error("expected indexing failure")
 
     monkeypatch.setattr(calibrate_threshold, "build_engine", fail_build)
-    result = calibrate_threshold.main([
-        "--questions", str(questions), "--docs", str(docs), "--output", str(output)
-    ])
+    result = calibrate_threshold.main(
+        ["--questions", str(questions), "--docs", str(docs), "--output", str(output)]
+    )
 
     captured = capsys.readouterr()
     assert result == 2

@@ -9,19 +9,20 @@ from tests.fakes import FakeEmbedder, make_vector_store
 
 
 def test_markdown_parser_and_token_chunking():
-    md_content = """# System Overview
-This is the main introduction to the Meridian architecture. """ + (
-        "It describes every component and how they cooperate. " * 12
-    ) + """
+    md_content = (
+        """# System Overview
+This is the main introduction to the Meridian architecture. """
+        + ("It describes every component and how they cooperate. " * 12)
+        + """
 
 ## AI Gateway
-The AI Gateway intercepts requests, enforces token rate limits, and blocks prompt injections. """ + (
-        "It routes traffic to the configured upstream providers. " * 12
-    ) + """
+The AI Gateway intercepts requests, enforces token rate limits, and blocks prompt injections. """
+        + ("It routes traffic to the configured upstream providers. " * 12)
+        + """
 
 ## Knowledge Graph
-Neo4j stores entity relationships and dependencies between components. """ + (
-        "Edges carry provenance back to the source chunks. " * 12
+Neo4j stores entity relationships and dependencies between components. """
+        + ("Edges carry provenance back to the source chunks. " * 12)
     )
     doc = parse_document(
         content=md_content,
@@ -93,7 +94,12 @@ def test_knowledge_graph_extraction_and_storage():
 
 def test_full_ingestion_pipeline(tmp_path):
     embedder = FakeEmbedder()
-    pipeline = IngestionPipeline(vector_store=make_vector_store(embedder), embedder=embedder, in_memory=True, storage_root=tmp_path)
+    pipeline = IngestionPipeline(
+        vector_store=make_vector_store(embedder),
+        embedder=embedder,
+        in_memory=True,
+        storage_root=tmp_path,
+    )
     sample_text = """# Meridian Self-Healing RAG
 Meridian RAG uses LangGraph cyclic orchestration.
 The Critic Agent checks whether answers are grounded in Qdrant and Neo4j.

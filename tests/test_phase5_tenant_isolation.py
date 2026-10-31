@@ -22,11 +22,13 @@ def tenant_client(tmp_path, monkeypatch):
     monkeypatch.setenv("APP_ENV", "testing")
     monkeypatch.setenv(
         "API_KEYS",
-        json.dumps({
-            "tenant-a-key": {"tenant": "tenant-a", "role": "user"},
-            "tenant-b-key": {"tenant": "tenant-b", "role": "user"},
-            "operator-key": {"tenant": "operations", "role": "admin"},
-        }),
+        json.dumps(
+            {
+                "tenant-a-key": {"tenant": "tenant-a", "role": "user"},
+                "tenant-b-key": {"tenant": "tenant-b", "role": "user"},
+                "operator-key": {"tenant": "operations", "role": "admin"},
+            }
+        ),
     )
     monkeypatch.setenv("ADMIN_API_KEY", "operator-key")
     get_settings.cache_clear()
@@ -80,23 +82,37 @@ def test_user_cannot_clear_global_documents(tenant_client):
 def test_bm25_filters_tenant_corpus_before_top_k():
     chunks = [
         Chunk(
-            id=f"b-{index}", document_id=f"doc-b-{index}", text="needle " * 8,
+            id=f"b-{index}",
+            document_id=f"doc-b-{index}",
+            text="needle " * 8,
             metadata={"tenant_id": "tenant-b"},
         )
         for index in range(25)
     ]
-    chunks.append(Chunk(
-        id="a-hit", document_id="doc-a", text="needle",
-        metadata={"tenant_id": "tenant-a"},
-    ))
-    chunks.append(Chunk(
-        id="a-other", document_id="doc-a", text="different terms",
-        metadata={"tenant_id": "tenant-a"},
-    ))
-    chunks.append(Chunk(
-        id="a-other-2", document_id="doc-a", text="more distinct words",
-        metadata={"tenant_id": "tenant-a"},
-    ))
+    chunks.append(
+        Chunk(
+            id="a-hit",
+            document_id="doc-a",
+            text="needle",
+            metadata={"tenant_id": "tenant-a"},
+        )
+    )
+    chunks.append(
+        Chunk(
+            id="a-other",
+            document_id="doc-a",
+            text="different terms",
+            metadata={"tenant_id": "tenant-a"},
+        )
+    )
+    chunks.append(
+        Chunk(
+            id="a-other-2",
+            document_id="doc-a",
+            text="more distinct words",
+            metadata={"tenant_id": "tenant-a"},
+        )
+    )
     index = BM25Index(chunks)
 
     result = index.search("needle", top_k=1, tenant_id="tenant-a")
@@ -107,7 +123,9 @@ def test_bm25_filters_tenant_corpus_before_top_k():
 def test_graph_evidence_and_delete_are_scoped_to_tenant():
     graph = KnowledgeGraphStore(in_memory=True)
     graph.extract_and_store("doc-a", "Qdrant stores vector passage.", tenant_id="tenant-a")
-    graph.extract_and_store("doc-b", "Qdrant connects to Neo4j secret evidence.", tenant_id="tenant-b")
+    graph.extract_and_store(
+        "doc-b", "Qdrant connects to Neo4j secret evidence.", tenant_id="tenant-b"
+    )
 
     a_entities = graph.get_entities(tenant_id="tenant-a")
     a_neighbors = graph.query_neighborhood("Qdrant", tenant_id="tenant-a")
@@ -123,7 +141,9 @@ def test_graph_evidence_and_delete_are_scoped_to_tenant():
 async def test_query_graph_evidence_uses_authenticated_tenant():
     graph_store = KnowledgeGraphStore(in_memory=True)
     graph_store.extract_and_store("doc-a", "Qdrant stores vector data.", tenant_id="tenant-a")
-    graph_store.extract_and_store("doc-b", "Neo4j stores private graph evidence.", tenant_id="tenant-b")
+    graph_store.extract_and_store(
+        "doc-b", "Neo4j stores private graph evidence.", tenant_id="tenant-b"
+    )
 
     class EmptyRetriever:
         def retrieve(self, query, top_k=5, tenant_id="default", debug=False):

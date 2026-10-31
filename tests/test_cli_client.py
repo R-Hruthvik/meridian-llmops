@@ -56,7 +56,7 @@ def test_retrieve_request_shape():
 
 
 def test_query_stream_parses_sse():
-    sse = "event: token\ndata: {\"delta\":\"hi\"}\n\nevent: done\ndata: {\"answer\":\"hi\",\"request_id\":\"r1\"}\n\n"
+    sse = 'event: token\ndata: {"delta":"hi"}\n\nevent: done\ndata: {"answer":"hi","request_id":"r1"}\n\n'
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/query/stream"

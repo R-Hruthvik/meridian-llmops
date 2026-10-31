@@ -91,6 +91,7 @@ def test_chunk_dim_mismatch():
     import pytest
 
     from packages.core.models import Chunk
+
     with pytest.raises(ValueError):
         Chunk(id="c", document_id="d", text="t", embedding=[0.1] * 3).validate_dim(1024)
 
@@ -111,7 +112,9 @@ def test_models_module_has_no_sqlalchemy_imports():
             imported_modules.append(node.module)
 
     sqlalchemy_imports = [m for m in imported_modules if m.split(".")[0] == "sqlalchemy"]
-    assert not sqlalchemy_imports, f"models.py must not import SQLAlchemy, found {sqlalchemy_imports}"
+    assert not sqlalchemy_imports, (
+        f"models.py must not import SQLAlchemy, found {sqlalchemy_imports}"
+    )
 
 
 def test_orm_models_live_in_db_models_and_stay_reexported():

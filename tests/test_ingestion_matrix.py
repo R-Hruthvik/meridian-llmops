@@ -55,4 +55,6 @@ def test_parse_file_format_detection():
     for fname, expected_fmt in formats.items():
         content = b"test content"
         parsed = parse_file(fname, content)
-        assert parsed.format == expected_fmt, f"{fname}: expected {expected_fmt}, got {parsed.format}"
+        assert parsed.format == expected_fmt, (
+            f"{fname}: expected {expected_fmt}, got {parsed.format}"
+        )

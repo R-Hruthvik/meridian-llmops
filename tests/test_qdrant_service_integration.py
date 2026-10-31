@@ -11,7 +11,9 @@ from packages.core.models import Chunk
 from services.ingestion.vector_store import QdrantChunkStore
 
 QDRANT_URL = os.environ.get("QDRANT_URL")
-pytestmark = pytest.mark.skipif(not QDRANT_URL, reason="QDRANT_URL is only set for service integration runs")
+pytestmark = pytest.mark.skipif(
+    not QDRANT_URL, reason="QDRANT_URL is only set for service integration runs"
+)
 
 
 def test_qdrant_service_stores_and_searches_chunk_payloads():

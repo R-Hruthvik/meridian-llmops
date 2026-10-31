@@ -129,7 +129,9 @@ def test_pdf_ocr_recovers_scanned_page_with_page_provenance(monkeypatch):
     monkeypatch.setattr("pypdf.PdfReader", lambda *_args, **_kwargs: Reader())
     monkeypatch.setattr(
         "services.ingestion.parsers.pdf.ocr_page_text",
-        lambda _data, _number, *_args, **_kwargs: "Recovered scanned page contains enough readable text.",
+        lambda _data, _number, *_args, **_kwargs: (
+            "Recovered scanned page contains enough readable text."
+        ),
         raising=False,
     )
 

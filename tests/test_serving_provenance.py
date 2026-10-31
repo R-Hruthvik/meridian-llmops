@@ -112,12 +112,20 @@ async def test_client_records_empty_upstream_content_as_unusable(monkeypatch):
 
     # Client records provenance before surfacing the typed failure.
     client = LiteLLMClient(allow_private_provider_urls=True)
+
     class _FakeHTTP:
         async def post(self, *args, **kwargs):
             return _FakeResponse(body)
+
     monkeypatch.setattr(client, "_get_client", lambda: _FakeHTTP())
     with pytest.raises(ProviderError, match="empty completion"):
-        await client.chat_completion([{"role": "user", "content": "hi"}], model="kilo", provider="custom", api_key="test-api-key", base_url="http://localhost:20128/v1")
+        await client.chat_completion(
+            [{"role": "user", "content": "hi"}],
+            model="kilo",
+            provider="custom",
+            api_key="test-api-key",
+            base_url="http://localhost:20128/v1",
+        )
     snapshot = client.served_snapshot()
     assert snapshot == (1, "custom", UPSTREAM_MODEL, "kilo", False)
 
@@ -150,13 +158,19 @@ def seeded_client(monkeypatch, tmp_path):
     embedder = FakeEmbedder(384)
     store = make_vector_store(embedder)
     graph_store = KnowledgeGraphStore(in_memory=True)
-    pipeline = IngestionPipeline(vector_store=store, embedder=embedder, graph_store=graph_store, storage_root=tmp_path)
+    pipeline = IngestionPipeline(
+        vector_store=store, embedder=embedder, graph_store=graph_store, storage_root=tmp_path
+    )
     pipeline.ingest_text(
         title="Serving Provenance Fixture",
         text="Meridian platform uses Qdrant for dense vector similarity and Neo4j for Knowledge Graph entity relationships.",
         source="test_serving_provenance.md",
     )
-    isolated_retriever = HybridRetriever(embedder=embedder, vector_store=store, bm25_index=BM25Index(pipeline.storage.load_all_chunks()))
+    isolated_retriever = HybridRetriever(
+        embedder=embedder,
+        vector_store=store,
+        bm25_index=BM25Index(pipeline.storage.load_all_chunks()),
+    )
     monkeypatch.setattr(app_module, "vector_store", store)
     monkeypatch.setattr(app_module, "graph_store", graph_store)
     monkeypatch.setattr(app_module, "ingestion_pipeline", pipeline)
@@ -164,15 +178,19 @@ def seeded_client(monkeypatch, tmp_path):
     monkeypatch.setitem(globals(), "retriever", isolated_retriever)
     query_client = LiteLLMClient(allow_private_provider_urls=True)
     monkeypatch.setattr(app_module, "llm_client", query_client)
-    monkeypatch.setattr(app_module, "agent_graph", build_rag_agent_graph(
-        retriever=isolated_retriever,
-        graph_store=graph_store,
-        llm_client=query_client,
-        llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
-        min_dense_score=0.0,
-        graph_enabled=app_module._core_get_settings().graph_enabled,
-        debug_log_prompts=app_module._core_get_settings().debug_log_prompts,
-    ))
+    monkeypatch.setattr(
+        app_module,
+        "agent_graph",
+        build_rag_agent_graph(
+            retriever=isolated_retriever,
+            graph_store=graph_store,
+            llm_client=query_client,
+            llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
+            min_dense_score=0.0,
+            graph_enabled=app_module._core_get_settings().graph_enabled,
+            debug_log_prompts=app_module._core_get_settings().debug_log_prompts,
+        ),
+    )
     return TestClient(app)
 
 
@@ -190,7 +208,9 @@ def _stub_upstream(monkeypatch, answer_builder, model=UPSTREAM_MODEL):
                 _json.dumps(
                     {
                         "model": model,
-                        "choices": [{"message": {"role": "assistant", "content": answer_builder(question)}}],
+                        "choices": [
+                            {"message": {"role": "assistant", "content": answer_builder(question)}}
+                        ],
                         "usage": {"total_tokens": 12},
                     }
                 )
@@ -257,14 +277,18 @@ def test_insufficient_context_does_not_claim_a_model_served_it(seeded_client, mo
     from services.rag_engine.agent.graph import build_rag_agent_graph
 
     settings = app_module._core_get_settings()
-    monkeypatch.setattr(app_module, "agent_graph", build_rag_agent_graph(
-        retriever=app_module.retriever,
-        graph_store=app_module.graph_store,
-        llm_client=app_module.llm_client,
-        llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
-        min_dense_score=settings.min_dense_score,
-        graph_enabled=settings.graph_enabled,
-    ))
+    monkeypatch.setattr(
+        app_module,
+        "agent_graph",
+        build_rag_agent_graph(
+            retriever=app_module.retriever,
+            graph_store=app_module.graph_store,
+            llm_client=app_module.llm_client,
+            llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
+            min_dense_score=settings.min_dense_score,
+            graph_enabled=settings.graph_enabled,
+        ),
+    )
     _stub_upstream(monkeypatch, lambda _q: "Bananas are a fruit grown in tropical climates.")
 
     response = seeded_client.post(
@@ -314,7 +338,10 @@ def test_provider_failure_returns_provider_message_and_no_empty_answer(seeded_cl
     response = seeded_client.post(
         "/v1/query",
         headers={"X-API-Key": API_KEY},
-        json={"query": "What storage does Meridian use for dense vector similarity?", "max_cycles": 1},
+        json={
+            "query": "What storage does Meridian use for dense vector similarity?",
+            "max_cycles": 1,
+        },
     )
     assert response.status_code == 200
     data = response.json()
@@ -328,17 +355,23 @@ def test_typed_provider_error_is_returned_as_http_json(seeded_client, monkeypatc
 
     class FailingClient:
         async def chat_completion(self, **kwargs):
-            raise ProviderError("custom", 502, "Provider custom returned HTTP 401", "invalid credentials")
+            raise ProviderError(
+                "custom", 502, "Provider custom returned HTTP 401", "invalid credentials"
+            )
 
     settings = app_module._core_get_settings()
-    monkeypatch.setattr(app_module, "agent_graph", build_rag_agent_graph(
-        retriever=app_module.retriever,
-        graph_store=app_module.graph_store,
-        llm_client=FailingClient(),
-        llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
-        min_dense_score=0.0,
-        graph_enabled=settings.graph_enabled,
-    ))
+    monkeypatch.setattr(
+        app_module,
+        "agent_graph",
+        build_rag_agent_graph(
+            retriever=app_module.retriever,
+            graph_store=app_module.graph_store,
+            llm_client=FailingClient(),
+            llm_config_getter=app_module._resolve_active_llm_config_with_secrets,
+            min_dense_score=0.0,
+            graph_enabled=settings.graph_enabled,
+        ),
+    )
     response = seeded_client.post(
         "/v1/query",
         headers={"X-API-Key": API_KEY},

@@ -86,7 +86,9 @@ def test_bm25_identifier_hit(sample_chunks):
 def test_bm25_reuses_tenant_index_without_changing_scores(sample_chunks, monkeypatch):
     tenant_a = sample_chunks[:2]
     mixed = [
-        chunk.model_copy(update={"metadata": {**chunk.metadata, "tenant_id": "a" if i < 2 else "b"}})
+        chunk.model_copy(
+            update={"metadata": {**chunk.metadata, "tenant_id": "a" if i < 2 else "b"}}
+        )
         for i, chunk in enumerate(sample_chunks)
     ]
     original = bm25_module.BM25Okapi
@@ -103,25 +105,39 @@ def test_bm25_reuses_tenant_index_without_changing_scores(sample_chunks, monkeyp
 
     actual = index.search("API Gateway LiteLLM", top_k=3, tenant_id="a")
     assert builds == initialized_builds
-    expected_model = original([bm25_module.tokenize(bm25_module.index_text(chunk)) for chunk in tenant_a])
+    expected_model = original(
+        [bm25_module.tokenize(bm25_module.index_text(chunk)) for chunk in tenant_a]
+    )
     expected_scores = expected_model.get_scores(bm25_module.tokenize("API Gateway LiteLLM"))
     expected = sorted(
-        ((chunk.id, float(score)) for chunk, score in zip(tenant_a, expected_scores, strict=True) if score > 0),
+        (
+            (chunk.id, float(score))
+            for chunk, score in zip(tenant_a, expected_scores, strict=True)
+            if score > 0
+        ),
         key=lambda item: -item[1],
     )[:3]
-    assert [(item.chunk_id, item.score) for item in actual] == [
-        item for item in expected
-    ]
+    assert [(item.chunk_id, item.score) for item in actual] == [item for item in expected]
     assert builds == initialized_builds
     index.search("Qdrant knowledge graph", top_k=3, tenant_id="b")
     assert builds == initialized_builds
 
 
 def test_bm25_add_chunks_rebuilds_tenant_indexes(sample_chunks):
-    initial = [sample_chunks[0].model_copy(update={"metadata": {**sample_chunks[0].metadata, "tenant_id": "a"}})]
-    added = sample_chunks[2].model_copy(update={"metadata": {**sample_chunks[2].metadata, "tenant_id": "b"}})
-    other_added = sample_chunks[3].model_copy(update={"metadata": {**sample_chunks[3].metadata, "tenant_id": "b"}})
-    third_added = sample_chunks[0].model_copy(update={"metadata": {**sample_chunks[0].metadata, "tenant_id": "b"}})
+    initial = [
+        sample_chunks[0].model_copy(
+            update={"metadata": {**sample_chunks[0].metadata, "tenant_id": "a"}}
+        )
+    ]
+    added = sample_chunks[2].model_copy(
+        update={"metadata": {**sample_chunks[2].metadata, "tenant_id": "b"}}
+    )
+    other_added = sample_chunks[3].model_copy(
+        update={"metadata": {**sample_chunks[3].metadata, "tenant_id": "b"}}
+    )
+    third_added = sample_chunks[0].model_copy(
+        update={"metadata": {**sample_chunks[0].metadata, "tenant_id": "b"}}
+    )
     index = BM25Index(initial)
 
     index.add_chunks([added, other_added, third_added])
@@ -195,10 +211,17 @@ def test_bm25_sparse_scores_match_rank_bm25_after_updates(sample_chunks):
         )
         scores = model.get_scores(query_tokens)
         expected = sorted(
-            ((chunk.id, float(score)) for chunk, score in zip(selected, scores, strict=True) if score > 0),
+            (
+                (chunk.id, float(score))
+                for chunk, score in zip(selected, scores, strict=True)
+                if score > 0
+            ),
             key=lambda item: -item[1],
         )[:10]
-        actual = [(item.chunk_id, item.score) for item in index.search(query, top_k=10, tenant_id=tenant_id)]
+        actual = [
+            (item.chunk_id, item.score)
+            for item in index.search(query, top_k=10, tenant_id=tenant_id)
+        ]
         assert [chunk_id for chunk_id, _ in actual] == [chunk_id for chunk_id, _ in expected]
         assert [score for _, score in actual] == pytest.approx([score for _, score in expected])
 
@@ -255,7 +278,9 @@ def test_bm25_only_hit_returned_with_metadata(sample_chunks):
 def test_hybrid_remove_chunks_excludes_deleted_ids(sample_chunks):
     """A deleted document must vanish from fused retrieval, not just from Qdrant."""
     retriever = build_retriever(sample_chunks)
-    assert "c3" in {chunk.chunk_id for chunk in retriever.retrieve("ERR-4049 rate limit", top_k=5).chunks}
+    assert "c3" in {
+        chunk.chunk_id for chunk in retriever.retrieve("ERR-4049 rate limit", top_k=5).chunks
+    }
 
     retriever.vector_store.delete_document("d2", "default")
     retriever.remove_chunks(["c3", "c4"])
@@ -279,7 +304,9 @@ def test_retrieval_records_named_stage_spans(sample_chunks):
     tracer = LocalTracer()
     embedder = FakeEmbedder()
     vector_store = make_vector_store(embedder)
-    vector_store.upsert_chunks(sample_chunks, embedder.embed_passages([c.text for c in sample_chunks]))
+    vector_store.upsert_chunks(
+        sample_chunks, embedder.embed_passages([c.text for c in sample_chunks])
+    )
     retriever = HybridRetriever(
         embedder=embedder,
         vector_store=vector_store,

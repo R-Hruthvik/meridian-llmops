@@ -26,7 +26,10 @@ def test_hit_requires_expected_doc_and_phrase():
 
 
 def test_hit_respects_k():
-    chunks = [_ranked("a", "no match", "handbook.md"), _ranked("b", "10 days of paid sick leave", "handbook.md")]
+    chunks = [
+        _ranked("a", "no match", "handbook.md"),
+        _ranked("b", "10 days of paid sick leave", "handbook.md"),
+    ]
     assert not hit_at_k(chunks, "handbook.md", ["10 days of paid sick leave"], k=1)
     assert hit_at_k(chunks, "handbook.md", ["10 days of paid sick leave"], k=2)
 

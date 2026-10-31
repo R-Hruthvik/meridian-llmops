@@ -117,8 +117,10 @@ def test_default_service_cache_can_be_reset_through_api_compatibility_name(monke
 def test_create_app_uses_per_instance_settings_and_overrides(monkeypatch):
     monkeypatch.setattr(app_module, "validate_auth_configuration", lambda: None)
     monkeypatch.setattr(app_module, "_validate_production", lambda settings: None)
+
     async def no_db():
         return None
+
     monkeypatch.setattr(app_module, "init_db", no_db)
 
     first_settings = Settings(_env_file=None, app_env="testing", qdrant_local_path=":memory:")
@@ -130,7 +132,10 @@ def test_create_app_uses_per_instance_settings_and_overrides(monkeypatch):
     assert first.state.settings is first_settings
     assert first.state.service_overrides["vector_store"] is first_services["vector_store"]
     assert second.state.service_overrides["vector_store"] is second_services["vector_store"]
-    assert first.state.service_overrides["vector_store"] is not second.state.service_overrides["vector_store"]
+    assert (
+        first.state.service_overrides["vector_store"]
+        is not second.state.service_overrides["vector_store"]
+    )
 
     with TestClient(first) as client:
         assert client.get("/health/live").status_code == 200
@@ -165,7 +170,6 @@ def test_create_app_builds_default_services_per_instance(monkeypatch):
         assert first.state.vector_store is not second.state.vector_store
 
 
-
 def test_app_consistency_status_and_services_are_isolated(monkeypatch):
     monkeypatch.setenv(
         "API_KEYS",
@@ -188,7 +192,9 @@ def test_app_consistency_status_and_services_are_isolated(monkeypatch):
     second_services["service_status"] = {
         "qdrant": {"origin": "second app", "reachable": False, "endpoint": "fake"}
     }
-    second_services["index_consistency"] = SimpleNamespace(ok=False, reasons=["second index mismatch"])
+    second_services["index_consistency"] = SimpleNamespace(
+        ok=False, reasons=["second index mismatch"]
+    )
     second_services["vector_store"].count_value = 9
     second_services["ingestion_pipeline"].documents = ["other"]
 
@@ -209,9 +215,12 @@ def test_app_consistency_status_and_services_are_isolated(monkeypatch):
         assert second_health["services"]["qdrant"]["origin"] == "second app"
         assert (first_health["storage_documents"], first_health["vector_chunks"]) == (2, 3)
         assert (second_health["storage_documents"], second_health["vector_chunks"]) == (1, 9)
-        assert first_client.post(
-            "/v1/retrieve", headers=headers, json={"query": "one", "top_k": 1}
-        ).status_code == 200
+        assert (
+            first_client.post(
+                "/v1/retrieve", headers=headers, json={"query": "one", "top_k": 1}
+            ).status_code
+            == 200
+        )
         blocked = second_client.post(
             "/v1/retrieve", headers=headers, json={"query": "two", "top_k": 1}
         )

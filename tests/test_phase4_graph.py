@@ -58,7 +58,9 @@ async def test_graph_verifies_typed_sources_and_finishes_unverified_at_attempt_l
     assert result["answer_status"] == "unverified"
     assert result["verification_result"].status == "citations_failed"
     assert isinstance(result["retrieved_chunks"][0], SearchResult)
-    assert seen_sources == [VerificationSource(index=1, text="Qdrant stores vectors.", chunk_id="c1")]
+    assert seen_sources == [
+        VerificationSource(index=1, text="Qdrant stores vectors.", chunk_id="c1")
+    ]
 
 
 @pytest.mark.asyncio
@@ -93,6 +95,7 @@ async def test_final_unsupported_verdict_replaces_rejected_draft_and_keeps_sourc
 @pytest.mark.asyncio
 async def test_graph_retries_only_until_max_cycles_and_keeps_final_sources():
     retriever = _Retriever()
+
     async def verify(question, answer, sources, **kwargs):
         return VerificationResult(status="citations_failed", scope="format_and_numeric_consistency")
 
@@ -116,6 +119,7 @@ async def test_graph_retries_only_until_max_cycles_and_keeps_final_sources():
 @pytest.mark.asyncio
 async def test_retry_without_llm_doubles_top_k_up_to_twenty():
     retriever = _Retriever()
+
     async def verify(question, answer, sources, **kwargs):
         return VerificationResult(status="citations_failed", scope="format_and_numeric_consistency")
 
@@ -135,7 +139,9 @@ async def test_retry_without_llm_doubles_top_k_up_to_twenty():
 async def test_llm_reformulation_uses_active_provider_and_keeps_requested_top_k():
     retriever = _Retriever()
     calls: list[dict] = []
-    completions = iter(["Qdrant stores vectors.", "Qdrant vector storage", "Qdrant stores vectors."])
+    completions = iter(
+        ["Qdrant stores vectors.", "Qdrant vector storage", "Qdrant stores vectors."]
+    )
 
     async def complete(**kwargs):
         calls.append(kwargs)
@@ -149,7 +155,10 @@ async def test_llm_reformulation_uses_active_provider_and_keeps_requested_top_k(
         KnowledgeGraphStore(in_memory=True),
         llm_client=SimpleNamespace(chat_completion=complete),
         llm_config_getter=lambda: {
-            "provider": "custom", "model": "active-model", "api_key": "active-key", "base_url": "https://llm.example/v1"
+            "provider": "custom",
+            "model": "active-model",
+            "api_key": "active-key",
+            "base_url": "https://llm.example/v1",
         },
         verify_fn=verify,
         verify_mode="citations",
@@ -161,7 +170,10 @@ async def test_llm_reformulation_uses_active_provider_and_keeps_requested_top_k(
     assert calls[1]["model"] == "active-model"
     assert calls[1]["api_key"] == "active-key"
     rewrite_messages = calls[1]["messages"]
-    assert "proper nouns, numbers, product names, and error codes exactly" in rewrite_messages[0]["content"]
+    assert (
+        "proper nouns, numbers, product names, and error codes exactly"
+        in rewrite_messages[0]["content"]
+    )
     assert "2–4 likely topic keywords" in rewrite_messages[0]["content"]
     assert "Return only the query text" in rewrite_messages[0]["content"]
     assert rewrite_messages[1]["content"] == "Source question:\nWhat does Qdrant store?"

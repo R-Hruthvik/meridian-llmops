@@ -13,7 +13,9 @@ HEADERS = {"X-API-Key": RETRIEVE_API_KEY, "X-Tenant-Id": "retrieve-tenant"}
 
 @pytest.fixture
 def seeded_retriever(monkeypatch):
-    monkeypatch.setenv("API_KEYS", json.dumps({RETRIEVE_API_KEY: {"tenant": "retrieve-tenant", "role": "user"}}))
+    monkeypatch.setenv(
+        "API_KEYS", json.dumps({RETRIEVE_API_KEY: {"tenant": "retrieve-tenant", "role": "user"}})
+    )
     from services.rag_engine import app as app_module
     from tests.fakes import FakeEmbedder
 

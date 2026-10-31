@@ -62,10 +62,11 @@ def test_hybrid_retriever_limits_reranker_candidates():
     embedder = FakeEmbedder()
     vector_store = make_vector_store(embedder)
     sample_chunks = [
-        Chunk(id=f"c{i}", document_id="d", text=f"gateway document {i}")
-        for i in range(35)
+        Chunk(id=f"c{i}", document_id="d", text=f"gateway document {i}") for i in range(35)
     ]
-    vector_store.upsert_chunks(sample_chunks, embedder.embed_passages([c.text for c in sample_chunks]))
+    vector_store.upsert_chunks(
+        sample_chunks, embedder.embed_passages([c.text for c in sample_chunks])
+    )
 
     class RecordingReranker:
         def __init__(self):

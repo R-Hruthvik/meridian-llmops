@@ -1,6 +1,7 @@
 def test_post_never_returns_raw_key():
     d = {"groq_api_key": "sk-SAVED-GROQ"}
     from services.rag_engine.app import masked_llm_view
+
     v = masked_llm_view(d)
     assert "sk-SAVED-GROQ" not in str(v)
     assert v["groq_api_key"]["configured"] is True
@@ -9,6 +10,7 @@ def test_post_never_returns_raw_key():
 
 def test_short_key_emits_star_hint():
     from services.rag_engine.app import masked_llm_view
+
     for short in ("abcd", "ab"):
         v = masked_llm_view({"groq_api_key": short})
         assert short not in str(v)
@@ -17,6 +19,7 @@ def test_short_key_emits_star_hint():
 
 def test_falsy_value_emits_not_configured():
     from services.rag_engine.app import masked_llm_view
+
     assert masked_llm_view({"groq_api_key": ""})["groq_api_key"] == {"configured": False}
     assert masked_llm_view({"groq_api_key": None})["groq_api_key"] == {"configured": False}
 
@@ -26,7 +29,11 @@ def test_masked_view_shares_secret_suffix():
 
     from packages.core.secrets_store import SECRET_SUFFIX
     from services.rag_engine import app as rag_app
-    assert "SECRET_SUFFIX" in inspect.getsource(rag_app.masked_llm_view) or rag_app.SECRET_SUFFIX == SECRET_SUFFIX
+
+    assert (
+        "SECRET_SUFFIX" in inspect.getsource(rag_app.masked_llm_view)
+        or rag_app.SECRET_SUFFIX == SECRET_SUFFIX
+    )
 
 
 """Endpoint no-leak tests (follow test_settings_persistence.py fixture patterns)."""

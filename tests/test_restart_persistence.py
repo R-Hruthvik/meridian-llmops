@@ -18,7 +18,10 @@ QUESTIONS = [
 ]
 
 DOCS = [
-    ("Qdrant Guide", "Qdrant stores dense vectors and answers similarity queries with payload filters."),
+    (
+        "Qdrant Guide",
+        "Qdrant stores dense vectors and answers similarity queries with payload filters.",
+    ),
     ("Neo4j Guide", "Neo4j stores entity relationships as a property graph with typed edges."),
     ("Gateway Guide", "The gateway routes requests and enforces rate limits per virtual key."),
 ]
@@ -30,7 +33,9 @@ def _build_engine(root: Path):
     client = QdrantClient(path=str(root / "qdrant"))
     store = QdrantChunkStore(client, "restart_test", embedder.dim)
     store.ensure_collection()
-    pipeline = IngestionPipeline(vector_store=store, embedder=embedder, storage_root=root / "storage")
+    pipeline = IngestionPipeline(
+        vector_store=store, embedder=embedder, storage_root=root / "storage"
+    )
     return embedder, client, store, pipeline
 
 

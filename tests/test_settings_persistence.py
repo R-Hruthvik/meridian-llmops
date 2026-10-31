@@ -28,7 +28,9 @@ def settings_path(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("APP_ENV", "testing")
     monkeypatch.setattr("services.rag_engine.app._get_settings_file", lambda: p)
-    monkeypatch.setattr("services.ingestion.storage.get_default_storage_root", lambda: tmp_path / "storage")
+    monkeypatch.setattr(
+        "services.ingestion.storage.get_default_storage_root", lambda: tmp_path / "storage"
+    )
     return p
 
 
@@ -72,7 +74,9 @@ class TestMergePreservingSaved:
         from services.rag_engine.app import _save_persisted_settings
 
         _save_persisted_settings({"groq_api_key": ""})
-        assert json.loads(secrets_path(settings_path).read_text())["groq_api_key"] == "sk-SAVED-GROQ"
+        assert (
+            json.loads(secrets_path(settings_path).read_text())["groq_api_key"] == "sk-SAVED-GROQ"
+        )
 
     def test_masked_value_skipped(self, settings_path):
         from services.rag_engine.app import _save_persisted_settings
@@ -80,7 +84,9 @@ class TestMergePreservingSaved:
         _save_persisted_settings({"groq_api_key": "sk-ab...XYZ9", "litellm_base_url": "***"})
         data = json.loads(settings_path.read_text())
         assert "groq_api_key" not in data
-        assert json.loads(secrets_path(settings_path).read_text())["groq_api_key"] == "sk-SAVED-GROQ"
+        assert (
+            json.loads(secrets_path(settings_path).read_text())["groq_api_key"] == "sk-SAVED-GROQ"
+        )
 
     def test_real_new_value_overwrites(self, settings_path):
         from services.rag_engine.app import _save_persisted_settings
@@ -115,21 +121,41 @@ class TestMergePreservingSaved:
 
         from services.rag_engine import app as rag_app
 
-        monkeypatch.setattr(rag_app, "_core_get_settings", lambda: SimpleNamespace(
-            provider=None, api_key=None, base_url=None, model=None,
-            openai_api_key=None, openai_base_url=None, custom_base_url=None,
-        ))
+        monkeypatch.setattr(
+            rag_app,
+            "_core_get_settings",
+            lambda: SimpleNamespace(
+                provider=None,
+                api_key=None,
+                base_url=None,
+                model=None,
+                openai_api_key=None,
+                openai_base_url=None,
+                custom_base_url=None,
+            ),
+        )
         _save = rag_app._save_persisted_settings
         _save({"active_provider": "openai", "openai_api_key": "persisted-secret"})
-        monkeypatch.setattr(rag_app, "_core_get_settings", lambda: SimpleNamespace(
-            provider=None, api_key=None, base_url=None, model=None,
-            openai_api_key="environment-secret", openai_base_url=None, custom_base_url=None,
-        ))
+        monkeypatch.setattr(
+            rag_app,
+            "_core_get_settings",
+            lambda: SimpleNamespace(
+                provider=None,
+                api_key=None,
+                base_url=None,
+                model=None,
+                openai_api_key="environment-secret",
+                openai_base_url=None,
+                custom_base_url=None,
+            ),
+        )
         old_runtime = dict(rag_app._runtime_llm_settings)
         try:
             rag_app._runtime_llm_settings.clear()
             rag_app._runtime_llm_settings.update(rag_app._load_persisted_settings())
-            assert rag_app._resolve_active_llm_config_with_secrets()["api_key"] == "environment-secret"
+            assert (
+                rag_app._resolve_active_llm_config_with_secrets()["api_key"] == "environment-secret"
+            )
         finally:
             rag_app._runtime_llm_settings.clear()
             rag_app._runtime_llm_settings.update(old_runtime)
@@ -169,7 +195,9 @@ class TestSettingsEndpointPersistence:
 
         disk = json.loads(settings_path.read_text())
         assert "groq_api_key" not in disk
-        assert json.loads(secrets_path(settings_path).read_text())["groq_api_key"] == "sk-SAVED-GROQ"
+        assert (
+            json.loads(secrets_path(settings_path).read_text())["groq_api_key"] == "sk-SAVED-GROQ"
+        )
         assert disk["openai_org_id"] == "org-SAVED"
         assert disk["default_model"] == "gpt-4o-mini"
         assert runtime_state["groq_api_key"] == "sk-SAVED-GROQ"
@@ -186,7 +214,9 @@ class TestSettingsEndpointPersistence:
             json={"groq_api_key": "sk-xy...1234"},
         )
         assert res.status_code == 200
-        assert json.loads(secrets_path(settings_path).read_text())["groq_api_key"] == "sk-SAVED-GROQ"
+        assert (
+            json.loads(secrets_path(settings_path).read_text())["groq_api_key"] == "sk-SAVED-GROQ"
+        )
         assert runtime_state["groq_api_key"] == "sk-SAVED-GROQ"
 
     def test_new_real_key_updates_disk_and_memory(self, settings_path, runtime_state):

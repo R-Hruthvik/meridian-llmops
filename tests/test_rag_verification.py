@@ -256,9 +256,7 @@ async def test_llm_mode_returns_unchecked_for_invalid_json_without_retrying_prov
 
 
 async def test_llm_mode_returns_unchecked_with_provider_error_details():
-    judge = FakeJudge(
-        RuntimeError("provider unavailable with secret-key and private source text")
-    )
+    judge = FakeJudge(RuntimeError("provider unavailable with secret-key and private source text"))
 
     result = await verify_answer(
         question="What is Qdrant?",
@@ -278,9 +276,7 @@ async def test_llm_mode_returns_unchecked_with_provider_error_details():
 
 
 async def test_llm_mode_uses_active_provider_configuration():
-    judge = FakeJudge(
-        '{"supported": false, "unsupported_claims": ["claim"], "contradictions": []}'
-    )
+    judge = FakeJudge('{"supported": false, "unsupported_claims": ["claim"], "contradictions": []}')
 
     result = await verify_answer(
         question="What is Qdrant?",
@@ -310,7 +306,7 @@ async def test_llm_mode_uses_active_provider_configuration():
 
 
 async def test_off_mode_returns_unchecked_without_calling_judge():
-    judge = FakeJudge("{\"supported\": true}")
+    judge = FakeJudge('{"supported": true}')
 
     result = await verify_answer(
         question="What is Qdrant?",

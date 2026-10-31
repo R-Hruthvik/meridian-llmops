@@ -7,10 +7,14 @@ from services.ingestion.graph_store import KnowledgeGraphStore
 
 def test_graph_ab_reports_baseline_and_grounded_path_coverage():
     first = Chunk(
-        id="gateway-c0000", document_id="gateway", text="Aster Dispatch routes requests to Beacon Gateway."
+        id="gateway-c0000",
+        document_id="gateway",
+        text="Aster Dispatch routes requests to Beacon Gateway.",
     )
     second = Chunk(
-        id="storage-c0000", document_id="storage", text="Beacon Gateway stores vector records in Cobalt Index."
+        id="storage-c0000",
+        document_id="storage",
+        text="Beacon Gateway stores vector records in Cobalt Index.",
     )
     graph = KnowledgeGraphStore(in_memory=True)
     graph.extract_and_store(first.document_id, first.text, tenant_id="eval", chunks=[first])
@@ -25,16 +29,26 @@ def test_graph_ab_reports_baseline_and_grounded_path_coverage():
     report = evaluate_graph_ab(
         Retriever(),
         graph,
-        [{
-            "id": "path-1",
-            "question": "Where does Aster Dispatch store records?",
-            "expected_hops": [
-                {"source_entity": "Aster Dispatch", "relation_type": "ROUTES_TO",
-                 "target_entity": "Beacon Gateway", "chunk_id": "gateway-c0000"},
-                {"source_entity": "Beacon Gateway", "relation_type": "STORES_IN",
-                 "target_entity": "Cobalt Index", "chunk_id": "storage-c0000"},
-            ],
-        }],
+        [
+            {
+                "id": "path-1",
+                "question": "Where does Aster Dispatch store records?",
+                "expected_hops": [
+                    {
+                        "source_entity": "Aster Dispatch",
+                        "relation_type": "ROUTES_TO",
+                        "target_entity": "Beacon Gateway",
+                        "chunk_id": "gateway-c0000",
+                    },
+                    {
+                        "source_entity": "Beacon Gateway",
+                        "relation_type": "STORES_IN",
+                        "target_entity": "Cobalt Index",
+                        "chunk_id": "storage-c0000",
+                    },
+                ],
+            }
+        ],
     )
 
     assert report["baseline"]["hop_recall"] == 0.5

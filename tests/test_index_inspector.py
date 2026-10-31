@@ -121,7 +121,10 @@ async def test_build_index_status_never_raises_on_a_dead_backend():
             raise RuntimeError("database is locked")
 
     status = await build_index_status(
-        vector_store=_DeadStore(), graph_store=_DeadStore(), retriever=_DeadStore(), db=_DeadSession()
+        vector_store=_DeadStore(),
+        graph_store=_DeadStore(),
+        retriever=_DeadStore(),
+        db=_DeadSession(),
     )
 
     assert status.backends["relational"].reachable is False

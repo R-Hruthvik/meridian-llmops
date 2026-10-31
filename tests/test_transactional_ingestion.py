@@ -20,7 +20,9 @@ DOC_TEXT = (
 def build_pipeline(tmp_path, embedder=None):
     embedder = embedder or FakeEmbedder()
     store = make_vector_store(embedder)
-    pipeline = IngestionPipeline(vector_store=store, embedder=embedder, storage_root=tmp_path / "storage")
+    pipeline = IngestionPipeline(
+        vector_store=store, embedder=embedder, storage_root=tmp_path / "storage"
+    )
     return pipeline, store
 
 
@@ -46,7 +48,7 @@ def test_success_counts_match_across_stores(tmp_path):
     disk_chunks = len(pipeline.storage.load_all_chunks())
     qdrant_count = store.count(tenant_id="default")
     assert disk_chunks == qdrant_count == result.chunks
-    manifest = (tmp_path / "storage" / "index_manifest.json")
+    manifest = tmp_path / "storage" / "index_manifest.json"
     assert manifest.exists()
 
 
@@ -103,6 +105,7 @@ def test_graph_failure_rolls_back_partial_graph_state(tmp_path, monkeypatch):
 
 def test_partial_storage_failure_removes_original_without_metadata(tmp_path, monkeypatch):
     pipeline, store = build_pipeline(tmp_path)
+
     def fail_after_original_write(*args, **kwargs):
         doc = kwargs["doc"]
         original_name = doc.source
@@ -125,6 +128,7 @@ def test_partial_storage_failure_removes_original_without_metadata(tmp_path, mon
 def test_failed_old_qdrant_delete_keeps_old_document_on_update(tmp_path, monkeypatch):
     pipeline, store = build_pipeline(tmp_path)
     first = pipeline.ingest_file("handbook.md", DOC_TEXT.encode("utf-8"))
+
     def fail_old_delete(document_id, tenant_id):
         if document_id == first.document_id:
             raise IndexWriteError("simulated old-document delete failure")
@@ -137,7 +141,9 @@ def test_failed_old_qdrant_delete_keeps_old_document_on_update(tmp_path, monkeyp
         pipeline.ingest_file("handbook.md", (DOC_TEXT + " New policy.").encode("utf-8"))
 
     assert [doc["id"] for doc in pipeline.storage.list_documents()] == [first.document_id]
-    assert {chunk.document_id for chunk in pipeline.storage.load_all_chunks()} == {first.document_id}
+    assert {chunk.document_id for chunk in pipeline.storage.load_all_chunks()} == {
+        first.document_id
+    }
     assert store.count(tenant_id="default") == first.chunks
 
 
@@ -156,7 +162,9 @@ def test_failed_old_disk_delete_restores_old_vectors_on_update(tmp_path, monkeyp
         pipeline.ingest_file("handbook.md", (DOC_TEXT + " New policy.").encode("utf-8"))
 
     assert [doc["id"] for doc in pipeline.storage.list_documents()] == [first.document_id]
-    assert {chunk.document_id for chunk in pipeline.storage.load_all_chunks()} == {first.document_id}
+    assert {chunk.document_id for chunk in pipeline.storage.load_all_chunks()} == {
+        first.document_id
+    }
     assert store.count(tenant_id="default") == first.chunks
 
 
@@ -188,9 +196,7 @@ def test_failed_old_graph_delete_restores_all_old_state_on_update(tmp_path, monk
     assert pipeline.delete_document(first.document_id) is True
     assert ("default", first.document_id) not in pipeline.graph_store._tenant_doc_chunks
     assert not old_chunk_ids & {
-        chunk_id
-        for entity in pipeline.graph_store.get_entities()
-        for chunk_id in entity.chunk_ids
+        chunk_id for entity in pipeline.graph_store.get_entities() for chunk_id in entity.chunk_ids
     }
 
 
@@ -206,13 +212,16 @@ def test_manifest_failure_during_update_preserves_old_document(tmp_path, monkeyp
         pipeline.ingest_file("handbook.md", (DOC_TEXT + " New policy.").encode("utf-8"))
 
     assert [doc["id"] for doc in pipeline.storage.list_documents()] == [first.document_id]
-    assert {chunk.document_id for chunk in pipeline.storage.load_all_chunks()} == {first.document_id}
+    assert {chunk.document_id for chunk in pipeline.storage.load_all_chunks()} == {
+        first.document_id
+    }
     assert store.count(tenant_id="default") == first.chunks
 
 
 def test_delete_qdrant_failure_preserves_disk_and_graph(tmp_path, monkeypatch):
     pipeline, store = build_pipeline(tmp_path)
     result = pipeline.ingest_file("handbook.md", DOC_TEXT.encode("utf-8"))
+
     def fail_delete(document_id, tenant_id):
         raise IndexWriteError("simulated Qdrant delete failure")
 
@@ -289,9 +298,7 @@ def test_delete_removes_legacy_original_file(tmp_path, legacy_filename):
 def test_failed_legacy_delete_restores_original_and_vectors_on_update(tmp_path, monkeypatch):
     pipeline, store = build_pipeline(tmp_path)
     first = pipeline.ingest_file("handbook.md", DOC_TEXT.encode("utf-8"))
-    legacy_path = use_legacy_original_layout(
-        pipeline, first.document_id, "employee handbook.md"
-    )
+    legacy_path = use_legacy_original_layout(pipeline, first.document_id, "employee handbook.md")
     old_bytes = legacy_path.read_bytes()
     original_delete = pipeline.storage.delete_document
 

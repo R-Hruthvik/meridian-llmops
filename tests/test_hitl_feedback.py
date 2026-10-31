@@ -35,7 +35,9 @@ async def test_db_session():
 
 
 def _seed_rows() -> tuple[ORMDocument, ExtractedField, ReviewItem]:
-    document = ORMDocument(id="doc_1", title="Spend Policy", file_type="md", source_uri="sample_docs/policy.md")
+    document = ORMDocument(
+        id="doc_1", title="Spend Policy", file_type="md", source_uri="sample_docs/policy.md"
+    )
     field = ExtractedField(
         id="field_1",
         document_id="doc_1",
@@ -63,7 +65,14 @@ def test_build_golden_case_maps_verified_item_to_golden_schema():
 
     assert isinstance(case, GoldenCase)
     assert case.id == "review-item_1"
-    assert case.category in {"factual", "numeric", "paraphrase", "identifier", "near_duplicate", "multi_chunk"}
+    assert case.category in {
+        "factual",
+        "numeric",
+        "paraphrase",
+        "identifier",
+        "near_duplicate",
+        "multi_chunk",
+    }
     assert case.answerable is True
     assert case.expected_doc == "policy.md"
     assert case.expected_phrases == ["$750"]
@@ -86,7 +95,9 @@ def test_exported_golden_cases_validate_against_golden_dataset_schema(tmp_path: 
 @pytest.mark.asyncio
 async def test_export_endpoint_returns_only_verified_items(test_db_session: AsyncSession):
     document, field, item = _seed_rows()
-    pending_doc = ORMDocument(id="doc_2", title="Old Doc", file_type="md", source_uri="sample_docs/old.md")
+    pending_doc = ORMDocument(
+        id="doc_2", title="Old Doc", file_type="md", source_uri="sample_docs/old.md"
+    )
     pending_field = ExtractedField(
         id="field_2",
         document_id="doc_2",
@@ -98,15 +109,17 @@ async def test_export_endpoint_returns_only_verified_items(test_db_session: Asyn
         review_status="pending",
     )
     pending_item = ReviewItem(id="item_2", extracted_field_id="field_2", status="pending")
-    test_db_session.add_all([
-        document,
-        field,
-        item,
-        ORMChunk(id="chunk_9", document_id="doc_1", content="The reviewed limit is $750."),
-        pending_doc,
-        pending_field,
-        pending_item,
-    ])
+    test_db_session.add_all(
+        [
+            document,
+            field,
+            item,
+            ORMChunk(id="chunk_9", document_id="doc_1", content="The reviewed limit is $750."),
+            pending_doc,
+            pending_field,
+            pending_item,
+        ]
+    )
     await test_db_session.commit()
 
     cases = await export_golden_cases(db=test_db_session, tenant_id="default")
@@ -116,7 +129,9 @@ async def test_export_endpoint_returns_only_verified_items(test_db_session: Asyn
 
 
 @pytest.mark.asyncio
-async def test_export_skips_corrected_values_absent_from_source_chunks(test_db_session: AsyncSession):
+async def test_export_skips_corrected_values_absent_from_source_chunks(
+    test_db_session: AsyncSession,
+):
     document, field, item = _seed_rows()
     impossible_field = ExtractedField(
         id="field_impossible",
@@ -132,15 +147,19 @@ async def test_export_skips_corrected_values_absent_from_source_chunks(test_db_s
         status="corrected",
         corrected_value="$9999",
     )
-    test_db_session.add_all([
-        document,
-        field,
-        item,
-        impossible_field,
-        impossible_item,
-        ORMChunk(id="chunk_9", document_id="doc_1", content="The reviewed limit is $750."),
-        ORMChunk(id="chunk_impossible", document_id="doc_1", content="The reviewed limit is $750."),
-    ])
+    test_db_session.add_all(
+        [
+            document,
+            field,
+            item,
+            impossible_field,
+            impossible_item,
+            ORMChunk(id="chunk_9", document_id="doc_1", content="The reviewed limit is $750."),
+            ORMChunk(
+                id="chunk_impossible", document_id="doc_1", content="The reviewed limit is $750."
+            ),
+        ]
+    )
     await test_db_session.commit()
 
     cases = await export_golden_cases(db=test_db_session, tenant_id="default")
@@ -173,7 +192,9 @@ async def test_flagged_chunk_ids_cover_rejected_and_corrected_items(test_db_sess
         review_status="approved",
     )
     approved_item = ReviewItem(id="item_4", extracted_field_id="field_4", status="approved")
-    test_db_session.add_all([document, field, item, rejected_field, rejected_item, approved_field, approved_item])
+    test_db_session.add_all(
+        [document, field, item, rejected_field, rejected_item, approved_field, approved_item]
+    )
     await test_db_session.commit()
 
     flagged = await review_flagged_chunk_ids(test_db_session, "default")
@@ -195,9 +216,7 @@ async def test_flagged_chunk_ids_are_scoped_to_document_tenant(test_db_session: 
         confidence=0.2,
         provenance_chunk_id="chunk_other",
     )
-    other_item = ReviewItem(
-        id="item_other", extracted_field_id="field_other", status="rejected"
-    )
+    other_item = ReviewItem(id="item_other", extracted_field_id="field_other", status="rejected")
     test_db_session.add_all([document, field, item, other_document, other_field, other_item])
     await test_db_session.commit()
 
@@ -209,17 +228,31 @@ def _build_retriever(chunks: list[Chunk]) -> HybridRetriever:
     embedder = FakeEmbedder()
     vector_store = make_vector_store(embedder)
     vector_store.upsert_chunks(chunks, embedder.embed_passages([chunk.text for chunk in chunks]))
-    return HybridRetriever(embedder=embedder, vector_store=vector_store, bm25_index=BM25Index(chunks))
+    return HybridRetriever(
+        embedder=embedder, vector_store=vector_store, bm25_index=BM25Index(chunks)
+    )
 
 
 def _penalty_chunks() -> list[Chunk]:
     return [
-        Chunk(id="c1", document_id="d1", text="Meridian routes queries through LiteLLM to every provider.",
-              metadata={"filename": "arch.md", "page_start": 1}),
-        Chunk(id="c2", document_id="d1", text="Meridian routes queries through LiteLLM to every provider.",
-              metadata={"filename": "arch.md", "page_start": 2}),
-        Chunk(id="c3", document_id="d2", text="Unrelated billing reconciliation note.",
-              metadata={"filename": "b.md", "page_start": 1}),
+        Chunk(
+            id="c1",
+            document_id="d1",
+            text="Meridian routes queries through LiteLLM to every provider.",
+            metadata={"filename": "arch.md", "page_start": 1},
+        ),
+        Chunk(
+            id="c2",
+            document_id="d1",
+            text="Meridian routes queries through LiteLLM to every provider.",
+            metadata={"filename": "arch.md", "page_start": 2},
+        ),
+        Chunk(
+            id="c3",
+            document_id="d2",
+            text="Unrelated billing reconciliation note.",
+            metadata={"filename": "b.md", "page_start": 1},
+        ),
     ]
 
 
@@ -240,7 +273,9 @@ def test_flagged_chunk_scores_lower_and_reranks():
     by_id = {chunk.chunk_id: chunk for chunk in penalized.chunks}
 
     assert by_id[top.chunk_id].scores["review_penalty"] == FLAGGED_CHUNK_PENALTY
-    assert by_id[top.chunk_id].scores["final"] == pytest.approx(top.scores["final"] * FLAGGED_CHUNK_PENALTY)
+    assert by_id[top.chunk_id].scores["final"] == pytest.approx(
+        top.scores["final"] * FLAGGED_CHUNK_PENALTY
+    )
     # The identical, unflagged peer overtakes the penalized chunk.
     assert penalized.chunks[0].chunk_id != top.chunk_id
     finals = [chunk.scores["final"] for chunk in penalized.chunks]
@@ -297,12 +332,21 @@ def test_retrieve_endpoint_passes_review_flags_to_scoring(tmp_path: Path, monkey
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         async with factory() as session:
-            session.add_all([
-                ORMDocument(id="d1", title="Doc", file_type="md"),
-                ExtractedField(id="f1", document_id="d1", field_name="limit", value="$1",
-                               confidence=0.1, provenance_chunk_id="chunk-flag", review_status="corrected"),
-                ReviewItem(id="r1", extracted_field_id="f1", status="corrected"),
-            ])
+            session.add_all(
+                [
+                    ORMDocument(id="d1", title="Doc", file_type="md"),
+                    ExtractedField(
+                        id="f1",
+                        document_id="d1",
+                        field_name="limit",
+                        value="$1",
+                        confidence=0.1,
+                        provenance_chunk_id="chunk-flag",
+                        review_status="corrected",
+                    ),
+                    ReviewItem(id="r1", extracted_field_id="f1", status="corrected"),
+                ]
+            )
             await session.commit()
 
     asyncio.run(seed())

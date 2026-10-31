@@ -12,7 +12,9 @@ class _Result:
         self.duplicate_of = values.get("duplicate_of")
 
 
-def test_ingest_folder_reports_duplicates_and_returns_failure_for_bad_file(tmp_path, monkeypatch, capsys):
+def test_ingest_folder_reports_duplicates_and_returns_failure_for_bad_file(
+    tmp_path, monkeypatch, capsys
+):
     source = tmp_path / "inputs"
     source.mkdir()
     (source / "first.md").write_text("first", encoding="utf-8")
@@ -111,7 +113,10 @@ def test_chunk_report_marks_pages_below_parser_text_threshold_empty(tmp_path, mo
     parsed = ParsedDocument(
         title="sample",
         format=DocumentFormat.PDF,
-        pages=[ParsedPage(number=1, text="short content"), ParsedPage(number=2, text="This page has enough extracted text.")],
+        pages=[
+            ParsedPage(number=1, text="short content"),
+            ParsedPage(number=2, text="This page has enough extracted text."),
+        ],
     )
     monkeypatch.setattr(chunk_report, "parse_file", lambda *_args, **_kwargs: parsed)
 
@@ -125,7 +130,8 @@ def test_chunk_report_loads_document_by_id_from_selected_storage(tmp_path, monke
     storage = DocumentStorageManager(tmp_path)
     storage.meta_dir.joinpath("doc-1.json").write_text(
         '{"id":"doc-1","filename":"one.md","format":"markdown","source":"one.md",'
-        '"original_path":"","tenant_id":"default"}', encoding="utf-8"
+        '"original_path":"","tenant_id":"default"}',
+        encoding="utf-8",
     )
     storage.chunks_dir.joinpath("doc-1.json").write_text(
         '[{"id":"c1","text":"retrievable text","chunk_index":0,"metadata":{}}]',

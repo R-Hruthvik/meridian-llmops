@@ -25,12 +25,18 @@ def test_page_ocr_renders_only_requested_page_and_prefers_tesseract(monkeypatch)
     monkeypatch.setitem(
         __import__("sys").modules,
         "pdf2image",
-        SimpleNamespace(convert_from_bytes=lambda *args, **kwargs: render_calls.append((args, kwargs)) or [_Image()]),
+        SimpleNamespace(
+            convert_from_bytes=lambda *args, **kwargs: (
+                render_calls.append((args, kwargs)) or [_Image()]
+            )
+        ),
     )
     monkeypatch.setitem(
         __import__("sys").modules,
         "pytesseract",
-        SimpleNamespace(image_to_string=lambda *_args, **_kwargs: "Local OCR recovered a readable scanned page."),
+        SimpleNamespace(
+            image_to_string=lambda *_args, **_kwargs: "Local OCR recovered a readable scanned page."
+        ),
     )
     monkeypatch.setattr(
         "packages.core.settings.get_settings",
@@ -60,7 +66,9 @@ def test_poor_local_ocr_uses_page_image_api_key_in_header_not_url(monkeypatch):
     )
     monkeypatch.setattr(
         "packages.core.settings.get_settings",
-        lambda: SimpleNamespace(ocr_api_key=SimpleNamespace(get_secret_value=lambda: "secret-value")),
+        lambda: SimpleNamespace(
+            ocr_api_key=SimpleNamespace(get_secret_value=lambda: "secret-value")
+        ),
     )
     captured = {}
 
@@ -72,7 +80,9 @@ def test_poor_local_ocr_uses_page_image_api_key_in_header_not_url(monkeypatch):
             return {
                 "OCRExitCode": 1,
                 "IsErroredOnProcessing": False,
-                "ParsedResults": [{"ParsedText": "Hosted OCR recovered enough readable page text."}],
+                "ParsedResults": [
+                    {"ParsedText": "Hosted OCR recovered enough readable page text."}
+                ],
             }
 
     class Client:
@@ -115,7 +125,9 @@ def test_low_quality_hosted_ocr_is_rejected(monkeypatch):
     )
     monkeypatch.setattr(
         "packages.core.settings.get_settings",
-        lambda: SimpleNamespace(ocr_api_key=SimpleNamespace(get_secret_value=lambda: "secret-value")),
+        lambda: SimpleNamespace(
+            ocr_api_key=SimpleNamespace(get_secret_value=lambda: "secret-value")
+        ),
     )
 
     class Response:
@@ -144,7 +156,9 @@ def test_low_quality_hosted_ocr_is_rejected(monkeypatch):
 
     monkeypatch.setattr("httpx.Client", Client)
 
-    assert pdf_ocr.ocr_page_text(b"pdf", 1, 612, 792, deadline=pdf_ocr.time.monotonic() + 60) is None
+    assert (
+        pdf_ocr.ocr_page_text(b"pdf", 1, 612, 792, deadline=pdf_ocr.time.monotonic() + 60) is None
+    )
 
 
 def test_ocr_api_key_setting_is_secret_and_blank_by_default(monkeypatch):
@@ -152,5 +166,8 @@ def test_ocr_api_key_setting_is_secret_and_blank_by_default(monkeypatch):
 
     monkeypatch.delenv("OCR_API_KEY", raising=False)
     assert Settings(_env_file=None).ocr_api_key.get_secret_value() == ""
-    assert Settings(_env_file=None, OCR_API_KEY="free-key").ocr_api_key.get_secret_value() == "free-key"
+    assert (
+        Settings(_env_file=None, OCR_API_KEY="free-key").ocr_api_key.get_secret_value()
+        == "free-key"
+    )
     assert "free-key" not in repr(Settings(_env_file=None, OCR_API_KEY="free-key"))

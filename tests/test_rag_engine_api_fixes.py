@@ -31,7 +31,9 @@ def client():
 
 
 def test_guardrail_check_get_is_reachable_on_rag_engine(client):
-    resp = client.get("/v1/guardrails/check", params={"text": "my email is dev@example.com"}, headers=HEADERS)
+    resp = client.get(
+        "/v1/guardrails/check", params={"text": "my email is dev@example.com"}, headers=HEADERS
+    )
 
     assert resp.status_code == 200
     assert resp.json() == InputGuardrails().evaluate("my email is dev@example.com").model_dump()
@@ -57,7 +59,6 @@ def test_guardrail_check_post_alias_is_reachable_on_rag_engine(client):
     assert resp.json()["allowed"] is True
 
 
-
 def _iter_api_routes(routes):
     """Walk nested routers, including FastAPI's lazy _IncludedRouter wrappers."""
     for route in routes:
@@ -68,9 +69,11 @@ def _iter_api_routes(routes):
         if original_router is not None:
             yield from _iter_api_routes(original_router.routes)
 
+
 def test_guardrail_post_is_the_documented_main_app_contract(client):
     route = next(
-        route for route in _iter_api_routes(client.app.routes)
+        route
+        for route in _iter_api_routes(client.app.routes)
         if getattr(route, "path", None) == "/v1/guardrails/check"
         and "POST" in getattr(route, "methods", set())
     )
@@ -110,7 +113,9 @@ def test_health_storage_documents_matches_document_catalog_after_ingest(client):
     health_count = client.get("/health", headers=HEADERS).json()["storage_documents"]
     catalog_count = client.get("/v1/documents", headers=HEADERS).json()["total_documents"]
 
-    assert health_count == catalog_count == len(ingestion_pipeline.get_documents(tenant_id="default"))
+    assert (
+        health_count == catalog_count == len(ingestion_pipeline.get_documents(tenant_id="default"))
+    )
     assert health_count == before + 1
 
 
@@ -128,7 +133,12 @@ class _RecordingRetriever:
                     text=f"Meridian platform chunk {i} about gateway routing and guardrails.",
                     chunk_index=i,
                     section_heading="Gateway",
-                    metadata={"filename": f"doc-{i}.md", "page_start": i + 1, "title": f"Doc {i}", "tenant_id": "tenant-enterprise-1"},
+                    metadata={
+                        "filename": f"doc-{i}.md",
+                        "page_start": i + 1,
+                        "title": f"Doc {i}",
+                        "tenant_id": "tenant-enterprise-1",
+                    },
                 ),
                 rank=i + 1,
                 scores={"dense": 0.95, "bm25": 0.0, "final": 0.9, "rrf": 0.9},
@@ -136,7 +146,9 @@ class _RecordingRetriever:
             for i in range(corpus_size)
         ]
 
-    def retrieve(self, query: str, top_k: int = 5, tenant_id: str = "default", debug: bool = False) -> RetrievalResult:
+    def retrieve(
+        self, query: str, top_k: int = 5, tenant_id: str = "default", debug: bool = False
+    ) -> RetrievalResult:
         self.calls.append(top_k)
         return RetrievalResult(query=query, top_k=top_k, chunks=self.results[:top_k], timings_ms={})
 
@@ -159,7 +171,11 @@ def test_query_top_k_reaches_the_retriever_with_source_metadata(client, monkeypa
 
     resp = client.post(
         "/v1/query",
-        json={"query": "What does Meridian use for gateway routing?", "top_k": top_k, "max_cycles": 1},
+        json={
+            "query": "What does Meridian use for gateway routing?",
+            "top_k": top_k,
+            "max_cycles": 1,
+        },
         headers=HEADERS,
     )
 
