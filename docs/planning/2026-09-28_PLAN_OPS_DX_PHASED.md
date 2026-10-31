@@ -41,18 +41,18 @@ Verify: empty-secret boot exits non-zero; rg finds no baked keys; `uv run ruff c
 
 **Interfaces:** Consumes `API_KEY_SECRET`, `LITELLM_MASTER_KEY`, `NEO4J_PASSWORD`, `POSTGRES_PASSWORD`. Produces non-zero exit printing `missing required secret: <NAME>`; prod `Settings` raises on empty secret.
 
-- [ ] **Step 1: Write the failing check**
+- [x] **Step 1: Write the failing check**
 
 ```bash
 API_KEY_SECRET= LITELLM_MASTER_KEY= ./start.sh --backend-only; test $? -ne 0
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `API_KEY_SECRET= LITELLM_MASTER_KEY= ./start.sh --backend-only; echo "exit=$?"`
 Expected: FAIL — exits 0 on the hardcoded test key (`start.sh:72-74`).
 
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 
 ```bash
 require_secret() { [ -n "$1" ] || { echo "missing required secret: $2" >&2; exit 1; }; }
@@ -62,12 +62,12 @@ require_secret "$LITELLM_MASTER_KEY" "LITELLM_MASTER_KEY"
 
 Delete `:-fallback` defaults, mirror validation in `packages/core/config.py`, expand `.env.example`.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `API_KEY_SECRET= LITELLM_MASTER_KEY= ./start.sh --backend-only; echo "exit=$?"`
 Expected: PASS — non-zero exit naming the secret.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add start.sh packages/core/config.py .env.example
@@ -80,18 +80,18 @@ git commit -m "feat: fail-closed secrets"
 
 **Interfaces:** Consumes CI-injected ephemeral `API_KEY_SECRET`, `MERIDIAN_API_KEY`. Produces no committed key in image or browser bundle; `.env` created with `600` perms.
 
-- [ ] **Step 1: Write the failing check**
+- [x] **Step 1: Write the failing check**
 
 ```bash
 rg -n "meridian-test-secret-key-2026|sk-litellm-master-key" Dockerfile start.sh; test $? -ne 0
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `rg -n "meridian-test-secret-key-2026|sk-litellm-master-key" Dockerfile start.sh`
 Expected: FAIL — hits at `Dockerfile:20-21` and `start.sh:72-74` (`VITE_MERIDIAN_API_KEY`).
 
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 
 ```dockerfile
 # Delete both baked ENV lines; runtime secrets arrive only via environment.
@@ -99,12 +99,12 @@ Expected: FAIL — hits at `Dockerfile:20-21` and `start.sh:72-74` (`VITE_MERIDI
 
 Delete the `VITE_` default export; `ci.yml` uses `openssl rand -hex 32`; fixed keys only in `tests/conftest.py`.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `rg -n "meridian-test-secret-key-2026|sk-litellm-master-key" Dockerfile start.sh; echo "exit=$?"`
 Expected: PASS — rg exits 1, no matches.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Dockerfile start.sh .github/workflows/ci.yml tests/conftest.py
@@ -121,18 +121,18 @@ Verify: `docker compose up --wait && curl -sf http://localhost:6333/healthz && c
 
 **Interfaces:** Consumes `http://localhost:6333/healthz`, `http://localhost:4000/health/readiness`, app `GET /health/ready`. Produces `./start.sh [--dev|--prod|--backend-only|--gateway-only] [--no-infra]`; Docker failure exits non-zero unless `--no-infra`; URLs print only after `/health/ready` 200.
 
-- [ ] **Step 1: Write the failing check**
+- [x] **Step 1: Write the failing check**
 
 ```bash
 docker compose config | rg -A 4 "langfuse:" | rg healthcheck
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `docker compose config | rg -A 4 "langfuse:" | rg healthcheck; echo "exit=$?"`
 Expected: FAIL — `langfuse` has no healthcheck; `start.sh:44-55` continues silently on Docker failure.
 
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 
 ```yaml
 langfuse:
@@ -145,12 +145,12 @@ langfuse:
 
 Add `depends_on: service_healthy` and `QDRANT_API_KEY`; `up -d` → `up --wait`; poll `/health/ready` before URLs.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `docker compose up --wait && curl -sf http://localhost:6333/healthz && curl -sf http://localhost:4000/health/readiness`
 Expected: PASS — all 200.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docker-compose.yml start.sh
@@ -163,7 +163,7 @@ git commit -m "feat: health-gated boot"
 
 **Interfaces:** Consumes `Settings.database_url`, `qdrant_host`, `neo4j_uri`. Produces startup log `storage=<sqlite|postgres> graph=<memory|neo4j> vector=<memory|qdrant>`; `GET /health/ready` 200 with those keys; `uv run python scripts/seed_demo.py --tenant demo` ingests 3 fixture docs.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_ready_names_backend():
@@ -172,12 +172,12 @@ def test_ready_names_backend():
     assert set(resp.json()) >= {"storage", "graph", "vector"}
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run python -m pytest tests/test_api_seam.py -q -k ready`
 Expected: FAIL — only `/health` exists (`app.py:303`); `/health/ready` is 404.
 
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 
 ```python
 @app.get("/health/ready")
@@ -190,12 +190,12 @@ async def ready():
 
 Log the triple at startup; `seed_demo.py` requires `--tenant`, posts 3 fixture docs via `/v1/ingest`.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run python scripts/seed_demo.py --tenant demo && uv run python -m pytest tests/ -q`
 Expected: PASS — 3 ingested ids; suite green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/rag_engine/app.py scripts/seed_demo.py
@@ -212,18 +212,18 @@ Verify: `uv run python -m pytest tests/ -q && uv run deepeval test run evals/ &&
 
 **Interfaces:** Consumes `API_KEY_SECRET`, `APP_ENV=testing`. Produces `uv run python -m pytest tests/ -q` with 77 passed; CI installs via `uv sync --frozen`.
 
-- [ ] **Step 1: Write the failing check**
+- [x] **Step 1: Write the failing check**
 
 ```bash
 uv run python -m pytest tests/test_bugfix_p0.py::test_blank_submission_preserves_saved_everywhere -q
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run python -m pytest tests/ -q; uv run ruff check .`
 Expected: FAIL — 1 failure plus 4 ruff errors.
 
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 
 ```python
 if not submission.text.strip():
@@ -232,12 +232,12 @@ if not submission.text.strip():
 
 Preserve on blank input; fix 4 ruff sites; keep `testpaths=["tests"]`; CI uses `uv sync --frozen`.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run python -m pytest tests/ -q && uv run ruff check .`
 Expected: PASS — 77 passed, ruff clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_bugfix_p0.py pyproject.toml .github/workflows/ci.yml
@@ -250,7 +250,7 @@ git commit -m "fix: zero baseline"
 
 **Interfaces:** Consumes `evals/golden_dataset.json`; DeepEval `FaithfulnessMetric(threshold=0.90)`. Produces blocking `deepeval test run evals/`; `GET /v1/eval/status` returns `{"pass_rate": float, "passed": int, "total": int, "stubbed": bool}`; `./start.sh --eval` runs both gates.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 from deepeval import assert_test
@@ -258,12 +258,12 @@ from deepeval.metrics import FaithfulnessMetric
 assert_test(case, [FaithfulnessMetric(threshold=0.90)])
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `uv run deepeval test run evals/`
 Expected: FAIL — plain `pass_rate >= 0.90` asserts (`test_deepeval_ci.py:142`) with mocked judge (`:90-106`).
 
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 
 ```python
 metric = FaithfulnessMetric(threshold=0.90)
@@ -272,12 +272,12 @@ assert_test(LLMTestCase(input=q, actual_output=a, retrieval_context=ctx), [metri
 
 Floor `deepeval>=4.0`; max one labeled stub; add `/v1/eval/status`; split CI; add `--eval`.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `uv run python -m pytest tests/ -q && uv run deepeval test run evals/`
 Expected: PASS — both gates green, `pass_rate >= 0.90`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add evals/test_deepeval_ci.py pyproject.toml services/rag_engine/app.py .github/workflows/ci.yml start.sh

@@ -36,7 +36,7 @@
 - Consumes: `api.getLLMSettings(): Promise<LLMSettings>`, `api.updateLLMSettings(p: Partial<LLMSettings>)`
 - Produces: `LLMSettingsMasked { active_provider: string; openai_key_configured: boolean; openai_key_masked?: string; default_model: string; litellm_base_url: string }`, `fieldErrors: Record<string,string>`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 ```tsx
 it('shows per-field 422 and masks secrets', async () => {
   vi.spyOn(api,'updateLLMSettings').mockRejectedValue({status:422, fields:{openai_api_key:'invalid'}});
@@ -46,19 +46,19 @@ it('shows per-field 422 and masks secrets', async () => {
   expect(screen.queryByText(/sk-/)).toBeNull();
 });
 ```
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npm --prefix web run test:run -- SettingsModal`
 Expected: FAIL with "Unable to find" / `updateLLMSettings` not rejecting with fields.
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 ```ts
 // types/api.ts: add masked shape; api.ts requestJSON: attach (e as ApiError).fields = errorData.fields ?? errorData.errors
 // SettingsModal handleSave catch: if (err instanceof ApiError && err.status===422) setFieldErrors(err.fields ?? {})
 // Render inputs from GET masked shape; value={key_configured ? '••••'+masked.slice(-4) : ''}; Clear-key button sends {openai_api_key: null}
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npm --prefix web run test:run -- SettingsModal`
 Expected: PASS
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add web/src/types/api.ts web/src/services/api.ts web/src/components/SettingsModal.tsx web/src/components/SettingsModal.test.tsx
 git commit -m "fix(web): settings masked round-trip with per-field 422"
@@ -75,7 +75,7 @@ git commit -m "fix(web): settings masked round-trip with per-field 422"
 - Consumes: `ApiError { status: number; detail?: string }`
 - Produces: `<AsyncState state:{status:'loading'|'error'|'empty'|'ready'} error?:ApiError onRetry:()=>void emptyCTA?:{label:string;onClick:()=>void} role="alert">`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 ```tsx
 it('renders retryable alert on error + CTA on empty', () => {
   const r = render(<AsyncState state="error" error={new ApiError('boom',502,'bad gateway')} onRetry={()=>{}} />);
@@ -84,10 +84,10 @@ it('renders retryable alert on error + CTA on empty', () => {
   expect(r.getByRole('button',{name:'Ingest a doc'})).toBeInTheDocument();
 });
 ```
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npm --prefix web run test:run -- AsyncState`
 Expected: FAIL with "AsyncState not defined".
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 ```tsx
 export function AsyncState({state,error,onRetry,emptyCTA,children}) {
   if (state==='loading') return <div aria-busy="true" className="animate-pulse">Loading…</div>;
@@ -96,10 +96,10 @@ export function AsyncState({state,error,onRetry,emptyCTA,children}) {
   return <>{children}</>;
 }
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npm --prefix web run test:run -- AsyncState`
 Expected: PASS
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add web/src/components/AsyncState.tsx web/src/components/AsyncState.test.tsx web/src/components/IngestionStudio.tsx web/src/components/MetricsDashboard.tsx
 git commit -m "feat(web): shared AsyncState with retry and empty CTA"
@@ -117,7 +117,7 @@ git commit -m "feat(web): shared AsyncState with retry and empty CTA"
 - Consumes: `ApiError(status, detail, fields?)`
 - Produces: `errorCopy(status:number):{title:string;body:string}` with keys 400,401,413,429,502
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 ```ts
 it('maps 429 and 502 distinctly', async () => {
   (global.fetch as any) = vi.fn().mockResolvedValue({ok:false,status:502,statusText:'x',json:async()=>({detail:'gw'})});
@@ -125,18 +125,18 @@ it('maps 429 and 502 distinctly', async () => {
   expect(errorCopy(429).title).toMatch(/rate limit/i);
 });
 ```
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npm --prefix web run test:run -- services/api`
 Expected: FAIL with "errorCopy not defined".
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 ```ts
 export function errorCopy(s:number){ return s===429?{title:'Rate Limit Exceeded',body:'Wait a moment and retry.'}:s===401?{title:'Authentication Error',body:'Check API key.'}:s===502?{title:'Gateway Unavailable',body:'Backend or gateway down.'}:{title:'Request Failed',body:'Adjust input and retry.'}; }
 // RagWorkspace: replace collapsed 4xx branch with errorCopy(error.status) title/body + HTTP chip
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npm --prefix web run test:run -- services/api`
 Expected: PASS
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add web/src/services/api.ts web/src/components/RagWorkspace.tsx web/src/services/api.test.ts
 git commit -m "fix(web): typed ApiError copy for 400/401/429/502"
@@ -152,7 +152,7 @@ git commit -m "fix(web): typed ApiError copy for 400/401/429/502"
 - Consumes: `QueryResponse { serving_provider?, serving_model?, refusal: boolean; degraded_reason?: string|null }`, `HealthStatus { status: string; services: Record<'qdrant'|'neo4j'|'litellm',{reachable:boolean}> }`
 - Produces: `isFresh(r:QueryResponse):boolean` (false when `refusal||degraded_reason`), `serviceTone(reachable:boolean):'ok'|'down'`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 ```tsx
 it('greys badge on refusal and reds card on unreachable', () => {
   render(<ModelBadge serving_model="gpt-4o-mini" refusal degraded_reason="fallback" />);
@@ -161,19 +161,19 @@ it('greys badge on refusal and reds card on unreachable', () => {
   expect(screen.getByTestId('card-qdrant')).toHaveTextContent(/down|unreachable/i);
 });
 ```
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npm --prefix web run test:run -- HonestBadges`
 Expected: FAIL with "ModelBadge/OpsCards not defined".
-- [ ] **Step 3: Minimal implementation**
+- [x] **Step 3: Minimal implementation**
 ```tsx
 export const isFresh=(r)=>!r.refusal && !r.degraded_reason;
 // Badge: className={isFresh(r)?'bg-meridian-blossom':'bg-gray-100 opacity-60'} title={isFresh(r)?model:'fallback — not model-generated'}
 // MetricsDashboard: delete INFRASTRUCTURE_SERVICES; map GET /health services to cards; Top-K helper "effective 1–10, rerank top-3"
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npm --prefix web run test:run -- HonestBadges`
 Expected: PASS
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add web/src/components/RagWorkspace.tsx web/src/components/MetricsDashboard.tsx web/src/components/HonestBadges.test.tsx
 git commit -m "fix(web): grey stale model badges, bind ops cards to health"

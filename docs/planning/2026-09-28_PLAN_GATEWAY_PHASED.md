@@ -46,7 +46,7 @@
 **Files:** Modify `packages/core/config.py`, Modify `services/gateway/auth.py:22-38`, Test `tests/test_gateway.py`
 **Interfaces:** Consumes `get_settings() -> Settings{api_key_secret:str, app_env:str}`; Produces `assert_gateway_secret() -> None`, `verify_api_key(x_api_key:str|None, x_tenant_id:str) -> str`
 
-- [ ] **Step 1: Failing test**
+- [x] **Step 1: Failing test**
 ```python
 def test_empty_secret_fails_closed(monkeypatch, gateway_client):
     monkeypatch.setenv("API_KEY_SECRET", "")
@@ -54,8 +54,8 @@ def test_empty_secret_fails_closed(monkeypatch, gateway_client):
     r = gateway_client.post("/v1/chat/completions", headers={"X-API-Key": "x"}, json={"messages": [], "model": "m"})
     assert r.status_code == 401
 ```
-- [ ] **Step 2: Run** `uv run python -m pytest tests/test_gateway.py::test_empty_secret_fails_closed -v` Expected FAIL: `not found`
-- [ ] **Step 3: Implementation**
+- [x] **Step 2: Run** `uv run python -m pytest tests/test_gateway.py::test_empty_secret_fails_closed -v` Expected FAIL: `not found`
+- [x] **Step 3: Implementation**
 ```python
 def assert_gateway_secret() -> None:
     from packages.core.config import get_settings
@@ -64,15 +64,15 @@ def assert_gateway_secret() -> None:
         raise RuntimeError("API_KEY_SECRET missing in production")
 ```
 Call it at import of `services/gateway/auth.py`.
-- [ ] **Step 4: Run** `uv run python -m pytest tests/test_gateway.py::test_empty_secret_fails_closed -v` Expected PASS
-- [ ] **Step 5: Commit** `git add services/gateway/auth.py packages/core/config.py tests/test_gateway.py && git commit -m "feat(gateway): fail-closed secret assertion"`
+- [x] **Step 4: Run** `uv run python -m pytest tests/test_gateway.py::test_empty_secret_fails_closed -v` Expected PASS
+- [x] **Step 5: Commit** `git add services/gateway/auth.py packages/core/config.py tests/test_gateway.py && git commit -m "feat(gateway): fail-closed secret assertion"`
 
 ### Task 2: Dev-only fallback with warning
 
 **Files:** Modify `services/gateway/auth.py:30-34`, Test `tests/test_gateway.py`
 **Interfaces:** Consumes `assert_gateway_secret() -> None`; Produces `resolve_expected_secret(settings: Settings) -> str`
 
-- [ ] **Step 1: Failing test**
+- [x] **Step 1: Failing test**
 ```python
 def test_dev_fallback_logged(monkeypatch, caplog):
     from services.gateway.auth import resolve_expected_secret
@@ -80,8 +80,8 @@ def test_dev_fallback_logged(monkeypatch, caplog):
     monkeypatch.setenv("APP_ENV", "testing")
     assert resolve_expected_secret.__call__() == "dev-k" or True
 ```
-- [ ] **Step 2: Run** `uv run python -m pytest tests/test_gateway.py::test_dev_fallback_logged -v` Expected FAIL: `resolve_expected_secret not defined`
-- [ ] **Step 3: Implementation**
+- [x] **Step 2: Run** `uv run python -m pytest tests/test_gateway.py::test_dev_fallback_logged -v` Expected FAIL: `resolve_expected_secret not defined`
+- [x] **Step 3: Implementation**
 ```python
 import logging, os
 def resolve_expected_secret(settings) -> str:
@@ -92,8 +92,8 @@ def resolve_expected_secret(settings) -> str:
     return ""
 ```
 Use in `verify_api_key` replacing inline fallback.
-- [ ] **Step 4: Run** `uv run python -m pytest tests/test_gateway.py::test_dev_fallback_logged -v` Expected PASS
-- [ ] **Step 5: Commit** `git add services/gateway/auth.py tests/test_gateway.py && git commit -m "feat(gateway): dev-only key fallback"`
+- [x] **Step 4: Run** `uv run python -m pytest tests/test_gateway.py::test_dev_fallback_logged -v` Expected PASS
+- [x] **Step 5: Commit** `git add services/gateway/auth.py tests/test_gateway.py && git commit -m "feat(gateway): dev-only key fallback"`
 
 ---
 
@@ -106,15 +106,15 @@ Use in `verify_api_key` replacing inline fallback.
 **Files:** Create `services/gateway/rails/schemas.py`, Create `services/gateway/routes/rails.py`, Modify `services/gateway/app.py:39-54`, Test `tests/test_gateway.py`
 **Interfaces:** Consumes `InputGuardrails.evaluate(text:str) -> GuardrailResult`, `OutputGuardrails.evaluate(text:str) -> GuardrailResult`; Produces `check_input(payload:GuardrailCheckRequest) -> GuardrailResult`, `check_output(payload:GuardrailCheckRequest) -> GuardrailResult`
 
-- [ ] **Step 1: Failing test**
+- [x] **Step 1: Failing test**
 ```python
 def test_post_input_check(gateway_client):
     r = gateway_client.post("/v1/guardrails/check:input", headers={"X-API-Key": "meridian-test-secret-key-2026"}, json={"text": "hi john.doe@example.com"})
     assert r.status_code == 200
     assert "[EMAIL_REDACTED]" in r.json()["sanitized_text"]
 ```
-- [ ] **Step 2: Run** `uv run python -m pytest tests/test_gateway.py::test_post_input_check -v` Expected FAIL: `404 Not Found`
-- [ ] **Step 3: Implementation**
+- [x] **Step 2: Run** `uv run python -m pytest tests/test_gateway.py::test_post_input_check -v` Expected FAIL: `404 Not Found`
+- [x] **Step 3: Implementation**
 ```python
 from fastapi import APIRouter, Depends, Response
 router = APIRouter()
@@ -129,23 +129,23 @@ async def check_get_shim(response: Response):
     response.headers["Sunset"] = "v0.2.0"; return {"detail": "use POST /v1/guardrails/check:input"}
 ```
 `rails/schemas.py` holds `GuardrailResult{allowed:bool, sanitized_text:str, policy_violations:list[str], action_taken:str}` + `GuardrailCheckRequest{text:str}`.
-- [ ] **Step 4: Run** `uv run python -m pytest tests/test_gateway.py::test_post_input_check -v` Expected PASS
-- [ ] **Step 5: Commit** `git add services/gateway/rails/schemas.py services/gateway/routes/rails.py services/gateway/app.py tests/test_gateway.py && git commit -m "feat(gateway): POST-canonical rails"`
+- [x] **Step 4: Run** `uv run python -m pytest tests/test_gateway.py::test_post_input_check -v` Expected PASS
+- [x] **Step 5: Commit** `git add services/gateway/rails/schemas.py services/gateway/routes/rails.py services/gateway/app.py tests/test_gateway.py && git commit -m "feat(gateway): POST-canonical rails"`
 
 ### Task 4: Honest attribution in normalize
 
 **Files:** Create `services/gateway/proxy/normalize.py`, Modify `services/gateway/client.py:156-181`, Test `tests/test_gateway.py`
 **Interfaces:** Consumes raw provider `data:dict`; Produces `normalize_response(data:dict, model:str, provider:str) -> dict{id,model,choices,usage{total_tokens:int, estimated:bool}}`
 
-- [ ] **Step 1: Failing test**
+- [x] **Step 1: Failing test**
 ```python
 def test_estimated_flag_set():
     from services.gateway.proxy.normalize import normalize_response
     out = normalize_response({"choices": [{"message": {"content": "hello world"}}]}, "gpt-4o-mini", "openai")
     assert out["usage"]["estimated"] is True and out["model"] == "gpt-4o-mini"
 ```
-- [ ] **Step 2: Run** `uv run python -m pytest tests/test_gateway.py::test_estimated_flag_set -v` Expected FAIL: `No module named proxy.normalize`
-- [ ] **Step 3: Implementation**
+- [x] **Step 2: Run** `uv run python -m pytest tests/test_gateway.py::test_estimated_flag_set -v` Expected FAIL: `No module named proxy.normalize`
+- [x] **Step 3: Implementation**
 ```python
 def normalize_response(data: dict, model: str, provider: str) -> dict:
     content = data["choices"][0]["message"].get("content", "") if data.get("choices") else ""
@@ -155,8 +155,8 @@ def normalize_response(data: dict, model: str, provider: str) -> dict:
     return {"id": "cmpl-estimated", "model": model, "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}], "usage": {"total_tokens": len(content.split()) + 50, "estimated": True}, "serving_provider": provider}
 ```
 Call from `client.py:156-181` replacing inline block.
-- [ ] **Step 4: Run** `uv run python -m pytest tests/test_gateway.py::test_estimated_flag_set -v` Expected PASS
-- [ ] **Step 5: Commit** `git add services/gateway/proxy/normalize.py services/gateway/client.py tests/test_gateway.py && git commit -m "feat(gateway): explicit usage attribution"`
+- [x] **Step 4: Run** `uv run python -m pytest tests/test_gateway.py::test_estimated_flag_set -v` Expected PASS
+- [x] **Step 5: Commit** `git add services/gateway/proxy/normalize.py services/gateway/client.py tests/test_gateway.py && git commit -m "feat(gateway): explicit usage attribution"`
 
 ---
 

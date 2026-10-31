@@ -43,7 +43,7 @@ Verification: `uv run python -m pytest tests/test_api_seam.py tests/test_gateway
 - Consumes: `os.environ` values `APP_ENV, API_KEY_SECRET, LITELLM_MASTER_KEY, DATABASE_URL`.
 - Produces: `validate_production(settings) -> None` raising `RuntimeError` naming the missing variable.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_production_rejects_empty_key(monkeypatch):
@@ -55,12 +55,12 @@ def test_production_rejects_empty_key(monkeypatch):
         validate_production(Settings())
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_core_boot.py::test_production_rejects_empty_key -v`
 Expected: FAIL with "validate_production not defined".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 def validate_production(s: Settings) -> None:
@@ -70,12 +70,12 @@ def validate_production(s: Settings) -> None:
         raise RuntimeError("missing required secret: LITELLM_MASTER_KEY")
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_core_boot.py::test_production_rejects_empty_key -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/core/config.py tests/test_core_boot.py
@@ -92,7 +92,7 @@ git commit -m "feat(core): fail-closed production boot"
 - Consumes: `_runtime_llm_settings: dict[str, Any]`.
 - Produces: `masked_llm_view(d: dict[str, Any]) -> dict[str, Any]` with `configured: bool` and `*_hint: str` last-4 only.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_post_never_returns_raw_key():
@@ -104,12 +104,12 @@ def test_post_never_returns_raw_key():
     assert v["groq_api_key"]["hint"] == "GROQ"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_settings_masked.py::test_post_never_returns_raw_key -v`
 Expected: FAIL with "masked_llm_view not defined".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 def masked_llm_view(d: dict[str, Any]) -> dict[str, Any]:
@@ -122,12 +122,12 @@ def masked_llm_view(d: dict[str, Any]) -> dict[str, Any]:
     return out
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_settings_masked.py::test_post_never_returns_raw_key -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/rag_engine/app.py tests/test_settings_masked.py
@@ -148,7 +148,7 @@ Verification: `uv run python -m pytest tests/test_settings_persistence.py tests/
 - Consumes: incoming JSON dict with UI keys `groq_api_key, openai_org_id, default_model, custom_base_url, active_provider`.
 - Produces: `UpdateLLMSettingsRequest` accepting those keys, `extra="forbid"`, blank `""` mapped to `None` and dropped via `exclude_none=True`.
 
-- [ ] **Step 1: Use the known failing test as the failing test**
+- [x] **Step 1: Use the known failing test as the failing test**
 
 ```python
 res = client.post("/v1/settings/llm", headers=HDR,
@@ -156,12 +156,12 @@ res = client.post("/v1/settings/llm", headers=HDR,
 assert res.status_code == 200
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_settings_persistence.py::TestSettingsEndpointPersistence::test_blank_submission_preserves_saved_everywhere -v`
 Expected: FAIL with "422 != 200" because `openai_org_id` and `default_model` are rejected by `extra="forbid"`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 class UpdateLLMSettingsRequest(BaseModel):
@@ -176,12 +176,12 @@ class UpdateLLMSettingsRequest(BaseModel):
 
 Keep the existing `empty_string_to_none` validator and `exclude_none=True` in the endpoint so blanks never reach `_merge_preserving_saved`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_settings_persistence.py::TestSettingsEndpointPersistence::test_blank_submission_preserves_saved_everywhere -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/core/models.py
@@ -198,7 +198,7 @@ git commit -m "fix(schema): align settings contract, preserve blanks"
 - Consumes: `qdrant_vector_dim: int` from settings.
 - Produces: `Chunk` validator raising `ValueError` when `len(embedding) != qdrant_vector_dim`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_chunk_rejects_wrong_dim():
@@ -220,12 +220,12 @@ def test_chunk_dim_mismatch():
         Chunk(id="c", document_id="d", text="t", embedding=[0.1] * 3).validate_dim(1024)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_core_models.py::test_chunk_dim_mismatch -v`
 Expected: FAIL with "validate_dim not defined".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 def validate_dim(self, expected: int) -> "Chunk":
@@ -234,12 +234,12 @@ def validate_dim(self, expected: int) -> "Chunk":
     return self
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_core_models.py::test_chunk_dim_mismatch -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/core/models.py tests/test_core_models.py
@@ -359,7 +359,7 @@ Verification: `DATABASE_URL=sqlite+aiosqlite:///./t.db uv run python -m pytest t
 - Consumes: `url: str`.
 - Produces: `create_engine_for(url: str)` returning SQLite engine with `NullPool` and `connect_args={"timeout": 30, "check_same_thread": False}`, Postgres engine with `pool_size=10, max_overflow=20`; `init_db(url: str)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_sqlite_factory_has_no_pool_size():
@@ -368,12 +368,12 @@ def test_sqlite_factory_has_no_pool_size():
     assert "pool_size" not in str(e.url)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_db_factory.py::test_sqlite_factory_has_no_pool_size -v`
 Expected: FAIL with "create_engine_for not defined".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -387,12 +387,12 @@ def create_engine_for(url: str):
 
 Add `postgres = ["asyncpg>=0.29"]` extra to `pyproject.toml`; keep `aiosqlite` for local only.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_db_factory.py::test_sqlite_factory_has_no_pool_size -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/core/db.py pyproject.toml tests/test_db_factory.py
@@ -409,7 +409,7 @@ git commit -m "feat(db): driver-aware engine factory"
 - Consumes: `exc: BaseException`.
 - Produces: `is_retryable(exc: BaseException) -> bool` true only for `ConnectError/TimeoutError/OSError` and `HTTPStatusError` with status in `{429, 500, 502, 503, 504}`; `retry_transient()` using `retry_if_exception(is_retryable)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 def test_4xx_never_retries_503_retries():
@@ -421,12 +421,12 @@ def test_4xx_never_retries_503_retries():
     assert is_retryable(httpx.HTTPStatusError("se", request=r503.request, response=r503)) is True
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_retry_predicate.py::test_4xx_never_retries_503_retries -v`
 Expected: FAIL with "is_retryable not defined".
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 import httpx
@@ -444,12 +444,12 @@ def retry_transient(max_attempts: int = 5):
         retry=retry_if_exception(is_retryable), reraise=True)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_retry_predicate.py::test_4xx_never_retries_503_retries -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/core/retry_config.py tests/test_retry_predicate.py

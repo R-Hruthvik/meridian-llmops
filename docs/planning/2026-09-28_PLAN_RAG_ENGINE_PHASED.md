@@ -47,26 +47,26 @@
 - Consumes: `generate_node(state) -> dict`
 - Produces: `route_after_critique(state) -> str` returns `"refuse"` on empty draft at max cycles.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 ```python
 def test_empty_draft_refuses(populated_retriever_and_graph):
     s = {"query": "zzz no context", "retrieved_chunks": [], "draft_answer": "", "cycle_count": 3, "max_cycles": 3}
     assert route_after_critique(s) == "refuse"
 ```
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `uv run python -m pytest tests/test_agent_graph.py::test_empty_draft_refuses -v`
 Expected: FAIL with `route_after_critique not defined`
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 ```python
 def route_after_critique(state):
     if not state.get("draft_answer") and state.get("cycle_count", 0) >= state.get("max_cycles", 3):
         return "refuse"
     return "reformulate" if not state.get("is_grounded") else "end"
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `uv run python -m pytest tests/test_agent_graph.py::test_empty_draft_refuses -v`
 Expected: PASS
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add tests/test_agent_graph.py services/rag_engine/agent/graph.py
 git commit -m "fix: empty draft routes to refusal at max cycles"
@@ -82,17 +82,17 @@ git commit -m "fix: empty draft routes to refusal at max cycles"
 - Consumes: `get_active_llm_config() -> dict`
 - Produces: `build_rag_agent_graph(retriever, graph_store, llm_client=None, llm_config_getter=None, allow_synth: bool = False)`; state key `generation_error: str | None`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 ```python
 def test_testing_synth_gated(populated_retriever_and_graph):
     import os; os.environ.pop("APP_ENV", None)
     g = build_rag_agent_graph(retriever, gstore, allow_synth=False)
     assert g._allow_synth is False
 ```
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `uv run python -m pytest tests/test_agent_graph.py::test_testing_synth_gated -v`
 Expected: FAIL with `unexpected keyword allow_synth`
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 ```python
 def build_rag_agent_graph(retriever, graph_store, llm_client=None, llm_config_getter=None, allow_synth=False):
     g = workflow.compile(); g._allow_synth = allow_synth; return g
@@ -101,10 +101,10 @@ def build_rag_agent_graph(retriever, graph_store, llm_client=None, llm_config_ge
 if not draft.strip() and not allow_synth:
     return {"draft_answer": "", "generation_error": f"LLM returned an empty completion via {provider} ({model})"}
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `uv run python -m pytest tests/test_agent_graph.py::test_testing_synth_gated -v`
 Expected: PASS
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add tests/test_agent_graph.py services/rag_engine/agent/graph.py
 git commit -m "fix: gate testing synth behind allow_synth flag"
@@ -122,16 +122,16 @@ git commit -m "fix: gate testing synth behind allow_synth flag"
 - Consumes: `final_state: dict` with `generation_error, is_refusal`
 - Produces: `class ServingInfo(BaseModel): provider: str; model: str; fresh: bool`; `QueryResponse.serving: ServingInfo`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 ```python
 def test_greeting_serving_not_fresh():
     r = QueryResponse(query="hi", answer="Hello!", serving=ServingInfo(provider="openai", model="gpt-4o-mini", fresh=False))
     assert r.serving.fresh is False
 ```
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `uv run python -m pytest tests/test_agent_graph.py::test_greeting_serving_not_fresh -v`
 Expected: FAIL with `ServingInfo not defined`
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 ```python
 class ServingInfo(BaseModel):
     provider: str = "openai"
@@ -141,10 +141,10 @@ class ServingInfo(BaseModel):
 ```python
 fresh = not (final_state.get("is_refusal") or final_state.get("generation_error") or elapsed_ms < 500)
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `uv run python -m pytest tests/test_agent_graph.py::test_greeting_serving_not_fresh -v`
 Expected: PASS
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add tests/test_agent_graph.py packages/core/models.py services/rag_engine/app.py
 git commit -m "feat: unified serving.fresh attribution contract"
@@ -160,16 +160,16 @@ git commit -m "feat: unified serving.fresh attribution contract"
 - Consumes: `UpdateLLMSettingsRequest(provider, model, active_provider, default_model, timeout_seconds)`
 - Produces: `mask_settings(s: dict) -> dict` returning `{active_provider, default_model, providers_configured}` with no key material.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 ```python
 def test_post_settings_masked():
     out = mask_settings({"active_provider": "openai", "default_model": "gpt-4o-mini", "openai_api_key": "sk-x"})
     assert "openai_api_key" not in out and out["providers_configured"]["openai"] is True
 ```
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `uv run python -m pytest tests/test_agent_graph.py::test_post_settings_masked -v`
 Expected: FAIL with `mask_settings not defined`
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 ```python
 def mask_settings(s: dict) -> dict:
     return {"active_provider": s.get("active_provider"), "default_model": s.get("default_model"),
@@ -178,10 +178,10 @@ def mask_settings(s: dict) -> dict:
 ```python
 return mask_settings(_runtime_llm_settings)
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `uv run python -m pytest tests/test_agent_graph.py::test_post_settings_masked -v`
 Expected: PASS
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add tests/test_agent_graph.py packages/core/models.py services/rag_engine/app.py
 git commit -m "fix: masked settings POST with UI-aligned names"
@@ -197,17 +197,17 @@ git commit -m "fix: masked settings POST with UI-aligned names"
 - Consumes: `BM25Index(chunks: list[Chunk] | None)`
 - Produces: `BM25Index.remove(chunk_ids: list[str]) -> None; BM25Index.rebuild(chunks: list[Chunk]) -> None; HybridRetriever.evict(chunk_ids: list[str]) -> None`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 ```python
 def test_bm25_evict_removes(populated_retriever_and_graph):
     retriever, _ = populated_retriever_and_graph
     retriever.evict(["c1"])
     assert "c1" not in retriever.chunk_map
 ```
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `uv run python -m pytest tests/test_agent_graph.py::test_bm25_evict_removes -v`
 Expected: FAIL with `HybridRetriever has no attribute evict`
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 ```python
 def remove(self, chunk_ids: list[str]) -> None:
     keep = [c for c in self.chunks if c.id not in set(chunk_ids)]
@@ -220,10 +220,10 @@ def evict(self, chunk_ids: list[str]) -> None:
     self.bm25_index.remove(chunk_ids); self.vector_store.delete_chunks(chunk_ids)
     self.chunks = [c for c in self.chunks if c.id not in set(chunk_ids)]
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `uv run python -m pytest tests/test_agent_graph.py::test_bm25_evict_removes -v`
 Expected: PASS
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add tests/test_agent_graph.py services/rag_engine/retrieval/bm25.py services/rag_engine/retrieval/hybrid.py
 git commit -m "feat: BM25 remove/rebuild and retriever evict"
