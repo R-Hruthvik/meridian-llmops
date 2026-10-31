@@ -1,6 +1,6 @@
 """Evaluate retrieval quality against ``golden_dataset.json``.
 
-    uv run python evals/eval_retrieval.py
+uv run python evals/eval_retrieval.py
 """
 
 import argparse
@@ -85,9 +85,7 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "hit@5": average("hit@5"),
         "recall@5": average("recall@5"),
         "mrr": average("reciprocal_rank"),
-        "unanswerable_accuracy": (
-            correctly_flagged / len(unanswerable) if unanswerable else None
-        ),
+        "unanswerable_accuracy": (correctly_flagged / len(unanswerable) if unanswerable else None),
         "latency_ms": {
             "p50": statistics.median(row["latency_ms"] for row in rows) if rows else None,
             "p95": _percentile([row["latency_ms"] for row in rows], 0.95),
@@ -117,7 +115,9 @@ def evaluate(
         phrases = case["expected_phrases"]
         if answerable:
             if not case["expected_doc"] or not phrases:
-                raise ValueError(f"answerable case {case['id']} needs expected_doc and expected_phrases")
+                raise ValueError(
+                    f"answerable case {case['id']} needs expected_doc and expected_phrases"
+                )
             hit1 = float(_hit_at_k(ranked, case["expected_doc"], phrases, 1))
             hit3 = float(_hit_at_k(ranked, case["expected_doc"], phrases, 3))
             hit5 = float(_hit_at_k(ranked, case["expected_doc"], phrases, 5))
@@ -149,7 +149,10 @@ def evaluate(
 
     return {
         "metrics": _summarize(rows),
-        "categories": {category: _summarize(category_rows) for category, category_rows in sorted(by_category.items())},
+        "categories": {
+            category: _summarize(category_rows)
+            for category, category_rows in sorted(by_category.items())
+        },
         "cases": rows,
     }
 
@@ -180,7 +183,9 @@ def evaluate_graph_ab(
         hops = case.get("expected_hops", [])
         if not hops:
             continue
-        ranked = retriever.retrieve(case["question"], top_k=top_k, tenant_id=tenant_id).chunks[:top_k]
+        ranked = retriever.retrieve(case["question"], top_k=top_k, tenant_id=tenant_id).chunks[
+            :top_k
+        ]
         retrieved_ids = {item.chunk.id for item in ranked}
         hop_chunk_ids = [expected_chunk_ids(hop) for hop in hops]
         baseline_hops = sum(bool(source_ids & retrieved_ids) for source_ids in hop_chunk_ids)
@@ -191,17 +196,21 @@ def evaluate_graph_ab(
                 and relation.relation_type == hop["relation_type"]
                 and relation.target_entity == hop["target_entity"]
                 and bool(source_ids & set(relation.chunk_ids))
-                for relation in graph_store.query_neighborhood(hop["source_entity"], tenant_id=tenant_id)
+                for relation in graph_store.query_neighborhood(
+                    hop["source_entity"], tenant_id=tenant_id
+                )
             )
             graph_hops += int(found and bool(source_ids & retrieved_ids))
-        rows.append({
-            "id": case["id"],
-            "hops": len(hops),
-            "baseline_hop_recall": baseline_hops / len(hops),
-            "graph_grounded_hop_recall": graph_hops / len(hops),
-            "baseline_complete_path": baseline_hops == len(hops),
-            "graph_complete_path": graph_hops == len(hops),
-        })
+        rows.append(
+            {
+                "id": case["id"],
+                "hops": len(hops),
+                "baseline_hop_recall": baseline_hops / len(hops),
+                "graph_grounded_hop_recall": graph_hops / len(hops),
+                "baseline_complete_path": baseline_hops == len(hops),
+                "graph_complete_path": graph_hops == len(hops),
+            }
+        )
 
     case_count = len(rows)
     if not case_count:
@@ -303,14 +312,23 @@ def main() -> int:
     parser.add_argument("--docs")
     parser.add_argument("--top-k", type=int)
     parser.add_argument("--tenant", default="eval")
-    parser.add_argument("--report", help="Write the full JSON report to this path for CI summaries and artifacts")
-    parser.add_argument("--summary", help="Append a markdown metrics summary to this path (e.g. $GITHUB_STEP_SUMMARY)")
-    parser.add_argument("--graph", action="store_true", help="Run the multi-hop graph A/B evidence comparison")
+    parser.add_argument(
+        "--report", help="Write the full JSON report to this path for CI summaries and artifacts"
+    )
+    parser.add_argument(
+        "--summary",
+        help="Append a markdown metrics summary to this path (e.g. $GITHUB_STEP_SUMMARY)",
+    )
+    parser.add_argument(
+        "--graph", action="store_true", help="Run the multi-hop graph A/B evidence comparison"
+    )
     args = parser.parse_args()
 
     from packages.core.settings import get_settings
 
-    dataset_path = args.dataset or ("evals/graph_golden_dataset.json" if args.graph else "evals/golden_dataset.json")
+    dataset_path = args.dataset or (
+        "evals/graph_golden_dataset.json" if args.graph else "evals/golden_dataset.json"
+    )
     docs_path = args.docs or ("evals/graph_corpus" if args.graph else "sample_docs")
     cases = json.loads(Path(dataset_path).read_text(encoding="utf-8"))
     thresholds = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
@@ -318,7 +336,11 @@ def main() -> int:
     top_k = args.top_k if args.top_k is not None else settings.retrieval_default_top_k
     with tempfile.TemporaryDirectory(prefix="eval_retrieval_") as tmp:
         retriever, _store = build_engine(
-            Path(docs_path), Path(tmp), settings.embedding_model, settings.fastembed_cache_path, args.tenant
+            Path(docs_path),
+            Path(tmp),
+            settings.embedding_model,
+            settings.fastembed_cache_path,
+            args.tenant,
         )
         report = evaluate(
             retriever,
@@ -339,7 +361,9 @@ def main() -> int:
     report["thresholds"] = thresholds
     if args.graph:
         report["gate"] = "NOT_APPLICABLE"
-        report["gate_note"] = "The multi-hop graph set measures evidence coverage, not answer quality gates."
+        report["gate_note"] = (
+            "The multi-hop graph set measures evidence coverage, not answer quality gates."
+        )
         failures = []
     else:
         failures = gate_failures(report, thresholds)
