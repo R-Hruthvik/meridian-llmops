@@ -218,6 +218,38 @@ class HybridRetriever:
     def expand_neighbors(self, chunks: list[Any], window: int = 1) -> list[Any]:
         return self.expand_adjacent(chunks, window=window)
 
+    def group_chunks(self, chunks: list[Any] | None = None) -> dict[tuple[str, str], list[Any]]:
+        pool = chunks if chunks is not None else list(getattr(self.bm25_index, "chunks", []) or [])
+        groups: dict[tuple[str, str], list[Any]] = {}
+        for chunk in pool:
+            groups.setdefault(self.group_key(chunk), []).append(chunk)
+        return groups
+
+    def group_by_document_and_heading(self, chunks: list[Any] | None = None) -> dict[tuple[str, str], list[Any]]:
+        return self.group_chunks(chunks)
+
+    def groups(self, chunks: list[Any] | None = None) -> dict[tuple[str, str], list[Any]]:
+        return self.group_chunks(chunks)
+
+    def expand(self, chunks: list[Any], window: int = 1) -> list[Any]:
+        return self.expand_adjacent(chunks, window=window)
+
+    def expand_context(self, chunks: list[Any], window: int = 1) -> list[Any]:
+        return self.expand_adjacent(chunks, window=window)
+
+    def expand_chunk(self, chunk: Any, window: int = 1) -> list[Any]:
+        return [chunk] + self.adjacent_chunks(chunk, window=window)
+
+    def prefer_same_session(self, chunks: list[Any], session_id: str) -> list[Any]:
+        seen_groups = self.session_groups(session_id)
+        seen = set(self.session_chunks(session_id))
+        return sorted(
+            list(chunks or []),
+            key=lambda chunk: (
+                0 if (chunk.id in seen or self.group_key(chunk) in seen_groups) else 1,
+            ),
+        )
+
     def remove_chunks(self, chunk_ids: list[str]) -> None:
         """Evict chunks from the lexical index when their documents are deleted."""
         with self._bm25_lock:
@@ -417,3 +449,15 @@ class HybridRetriever:
 
 def _ms(started: float) -> float:
     return (time.perf_counter() - started) * 1000
+
+
+def group_chunks_by_document_and_heading(chunks: list[Any]) -> dict[tuple[str, str], list[Any]]:
+    """Module-level helper grouping chunks by (document_id, heading_path)."""
+    groups: dict[tuple[str, str], list[Any]] = {}
+    for chunk in chunks or []:
+        heading = getattr(chunk, "metadata", {}).get("heading_path") if hasattr(chunk, "metadata") and isinstance(chunk.metadata, dict) else None
+        if heading is None:
+            heading = getattr(chunk, "section_heading", None)
+        key = (str(getattr(chunk, "document_id", "")), str(heading or ""))
+        groups.setdefault(key, []).append(chunk)
+    return groups

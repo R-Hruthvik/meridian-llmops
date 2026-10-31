@@ -14,7 +14,7 @@ from services.ingestion.parsers.base import NORMALIZER_VERSION, PARSER_VERSION, 
 from services.ingestion.parsers.md import parse_markdown
 
 # Per-format chunking parameters (target_tokens, max_tokens, overlap_tokens)
-CHUNKER_VERSION = "token-aware-v1"
+CHUNKER_VERSION = "token-aware-v2"
 PARSER_VERSION = PARSER_VERSION
 NORMALIZER_VERSION = NORMALIZER_VERSION
 FORMAT_CHUNK_PARAMS: dict[str, tuple[int, int, int]] = {
@@ -432,6 +432,18 @@ class TokenAwareChunker:
             metadata["sibling_count"] = len(siblings)
             enriched.append(chunk.model_copy(update={"metadata": metadata}))
         return enriched
+
+    def enrich_chunk_relationships(self, chunks: list[Chunk]) -> list[Chunk]:
+        return self._enrich_chunk_relationships(chunks)
+
+    def add_chunk_relationships(self, chunks: list[Chunk]) -> list[Chunk]:
+        return self._enrich_chunk_relationships(chunks)
+
+    def add_relationships(self, chunks: list[Chunk]) -> list[Chunk]:
+        return self._enrich_chunk_relationships(chunks)
+
+    def annotate_relationships(self, chunks: list[Chunk]) -> list[Chunk]:
+        return self._enrich_chunk_relationships(chunks)
 
     @staticmethod
     def _chunk_id(doc_id: str, index: int) -> str:
