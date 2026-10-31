@@ -471,7 +471,8 @@ async def measure_full_query(
             "latency_ms": _summarize_timings([row["timings_ms"] for row in rows]),
         }
     finally:
-        await llm_client.close()
+        if hasattr(llm_client, "close"):
+            await llm_client.close()
 
 
 def measure_full_query_sync(*args: Any, **kwargs: Any) -> dict[str, Any]:

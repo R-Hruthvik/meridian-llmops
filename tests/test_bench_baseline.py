@@ -9,10 +9,12 @@ import pytest
 from scripts.bench_baseline import (
     SUPPORTED_RETRIEVAL_PATHS,
     load_golden_dataset,
+    measure_full_query,
     measure_retrieval_paths,
     provider_configured,
     resolve_provider_config,
     retrieval_path_context,
+    run_benchmark,
 )
 from tests.fakes import FakeEmbedder
 
@@ -114,7 +116,110 @@ def test_measure_retrieval_paths_returns_all_paths():
         assert "throughput_qps" in result[path]
 
 
-def test_provider_configured_false_without_env(monkeypatch):
-    for key in ("API_KEY", "MODEL", "BASE_URL", "PROVIDER", "LLM_API_KEY", "LLM_MODEL", "LLM_BASE_URL", "LLM_PROVIDER"):
-        monkeypatch.delenv(key, raising=False)
+def test_measure_full_query_skips_without_provider(monkeypatch):
+    monkeypatch.setattr("scripts.bench_baseline.resolve_provider_config", lambda **kwargs: None)
+    from services.ingestion.vector_store import QdrantChunkStore
+    from qdrant_client import QdrantClient
+    from services.rag_engine.retrieval.bm25 import BM25Index
+    from services.rag_engine.retrieval.hybrid import HybridRetriever
+
+    embedder = FakeEmbedder(8)
+    store = QdrantChunkStore(QdrantClient(":memory:"), "test", embedder.dim)
+    store.ensure_collection()
+    from packages.core.models import Chunk
+
+    chunk = Chunk(
+        id="c1",
+        document_id="d1",
+        text="Qdrant is a vector database.",
+        chunk_index=0,
+        section_heading="s",
+        metadata={"tenant_id": "t", "filename": "doc.md", "title": "doc"},
+    )
+    store.upsert_chunks([chunk], embedder.embed_passages(["Qdrant is a vector database."]))
+    retriever = HybridRetriever(embedder, store, BM25Index([chunk]))
+    cases = [{"id": "q1", "question": "What is Qdrant?"}]
+    result = asyncio.run(measure_full_query(retriever, cases, provider_config=None, tenant_id="t"))
+    assert result["status"] == "skipped"
+
+
+def test_measure_full_query_completes_with_fake_provider(monkeypatch):
+    from tests.fakes import FakeLLM
+
+    monkeypatch.setattr("services.gateway.client.LiteLLMClient", lambda: FakeLLM(content="Qdrant is a vector database [1]."))
+    from services.ingestion.vector_store import QdrantChunkStore
+    from qdrant_client import QdrantClient
+    from services.rag_engine.retrieval.bm25 import BM25Index
+    from services.rag_engine.retrieval.hybrid import HybridRetriever
+
+    embedder = FakeEmbedder(8)
+    store = QdrantChunkStore(QdrantClient(":memory:"), "test", embedder.dim)
+    store.ensure_collection()
+    from packages.core.models import Chunk
+
+    chunk = Chunk(
+        id="c1",
+        document_id="d1",
+        text="Qdrant is a vector database used for dense similarity search.",
+        chunk_index=0,
+        section_heading="s",
+        metadata={"tenant_id": "t", "filename": "doc.md", "title": "doc"},
+    )
+    store.upsert_chunks([chunk], embedder.embed_passages([chunk.text]))
+    retriever = HybridRetriever(embedder, store, BM25Index([chunk]))
+    cases = [{"id": "q1", "question": "What is Qdrant?"}]
+    provider_config = {"provider": "fake", "model": "fake", "api_key": None, "base_url": ""}
+    result = asyncio.run(
+        measure_full_query(
+            retriever,
+            cases,
+            provider_config=provider_config,
+            tenant_id="t",
+            min_dense_score=0.0,
+        )
+    )
+    assert result["status"] == "completed"
+    assert result["cases"][0]["answer_status"] == "answered"
+
+
+def test_run_benchmark_skip_full_query(tmp_path: Path):
+    from services.ingestion.vector_store import QdrantChunkStore
+    from qdrant_client import QdrantClient
+
+    # Use a tiny in-memory engine by monkeypatching build_golden_engine.
+    from services.rag_engine.retrieval.bm25 import BM25Index
+    from services.rag_engine.retrieval.hybrid import HybridRetriever
+
+    embedder = FakeEmbedder(8)
+    store = QdrantChunkStore(QdrantClient(":memory:"), "test", embedder.dim)
+    store.ensure_collection()
+    from packages.core.models import Chunk
+
+    chunk = Chunk(
+        id="c1",
+        document_id="d1",
+        text="Qdrant is a vector database.",
+        chunk_index=0,
+        section_heading="s",
+        metadata={"tenant_id": "t", "filename": "doc.md", "title": "doc"},
+    )
+    store.upsert_chunks([chunk], embedder.embed_passages([chunk.text]))
+    retriever = HybridRetriever(embedder, store, BM25Index([chunk]))
+
+    def fake_build(*args, **kwargs):
+        return retriever, store
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("scripts.bench_baseline.build_golden_engine", fake_build)
+    golden = tmp_path / "golden.json"
+    golden.write_text(json.dumps([{"id": "q1", "question": "What is Qdrant?"}]))
+    report = run_benchmark(
+        golden_path=golden,
+        tenant_id="t",
+        top_k=2,
+        run_full_query=False,
+        embedder=embedder,
+    )
+    monkeypatch.undo()
+def test_provider_configured_false_without_env():
     assert provider_configured(environ={}) is False
