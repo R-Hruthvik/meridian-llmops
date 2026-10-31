@@ -151,6 +151,7 @@ def _default_services() -> dict[str, Any]:
         set_live_value("_default_service_cache", service_cache)
     return cast(dict[str, Any], service_cache)
 
+
 _settings = _ServiceProxy("settings")
 vector_store = _ServiceProxy("vector_store")
 graph_store = _ServiceProxy("graph_store")
@@ -206,6 +207,7 @@ def _current_settings_file() -> Path:
 def _get_secrets_file() -> Path:
     return ingestion_storage.get_default_storage_root() / "secrets.json"
 
+
 _default_llm_settings: dict[str, Any] = {
     "active_provider": "openai",
     "openai_api_key": "",
@@ -236,6 +238,7 @@ _default_llm_settings: dict[str, Any] = {
     },
 }
 
+
 def _load_persisted_settings() -> dict[str, Any]:
     settings = dict(_default_llm_settings)
     settings_file = _current_settings_file()
@@ -249,12 +252,26 @@ def _load_persisted_settings() -> dict[str, Any]:
         except (OSError, ValueError, TypeError):
             logger.warning("Could not load settings file.")
     legacy_secrets = {k: v for k, v in saved.items() if k.endswith(SECRET_SUFFIX)}
-    settings.update({k: v for k, v in saved.items() if not k.endswith(SECRET_SUFFIX) and k != "api_key"})
+    settings.update(
+        {k: v for k, v in saved.items() if not k.endswith(SECRET_SUFFIX) and k != "api_key"}
+    )
     # Normalize provider_models keys to supported providers on load.
     pm = settings.get("provider_models")
     if isinstance(pm, dict):
-        supported = {"openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom", "litellm", "openai_compatible"}
-        settings["provider_models"] = {str(k).lower(): v for k, v in pm.items() if str(k).lower() in supported}
+        supported = {
+            "openai",
+            "anthropic",
+            "groq",
+            "openrouter",
+            "deepseek",
+            "ollama",
+            "custom",
+            "litellm",
+            "openai_compatible",
+        }
+        settings["provider_models"] = {
+            str(k).lower(): v for k, v in pm.items() if str(k).lower() in supported
+        }
     secrets_file = _get_secrets_file()
     secrets = load_secrets(secrets_file)
     if legacy_secrets:
@@ -268,6 +285,7 @@ def _load_persisted_settings() -> dict[str, Any]:
             logger.warning("Could not remove migrated secrets from settings file.")
     settings.update(secrets)
     return settings
+
 
 def _is_masked(value: str) -> bool:
     return "..." in value or value == "***"
@@ -371,6 +389,7 @@ def _save_persisted_settings(settings: dict[str, Any]) -> None:
     except (OSError, ValueError, TypeError):
         logger.warning("Could not save settings.")
 
+
 class _RuntimeSettings(MutableMapping[str, Any]):
     """Load persisted LLM settings on first use and scope them to the active app."""
 
@@ -420,8 +439,13 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
         "base_url": env_settings.base_url,
         "model": env_settings.model,
     }
-    generic_active = any(isinstance(v, str) and v.strip() for k, v in generic.items() if k != "provider")
-    provider = (generic["provider"] or ("custom" if generic_active else settings.get("active_provider", "openai"))).lower()
+    generic_active = any(
+        isinstance(v, str) and v.strip() for k, v in generic.items() if k != "provider"
+    )
+    provider = (
+        generic["provider"]
+        or ("custom" if generic_active else settings.get("active_provider", "openai"))
+    ).lower()
     if generic_active:
         defaults = {
             "openai": ("https://api.openai.com/v1", "gpt-4o-mini"),
@@ -451,14 +475,33 @@ def _resolve_active_llm_config_with_secrets() -> dict[str, Any]:
             "provider": "litellm",
             "model": configured_model or settings.get("default_model") or "gpt-4o-mini",
             "api_key": _settings.litellm_master_key or settings.get("litellm_master_key"),
-            "base_url": _settings.litellm_base_url or settings.get("litellm_base_url") or "http://localhost:4000",
+            "base_url": _settings.litellm_base_url
+            or settings.get("litellm_base_url")
+            or "http://localhost:4000",
         }
     if provider not in PROVIDERS:
-        return {"provider": provider, "model": configured_model or "", "api_key": None, "base_url": ""}
-    default_models = {"openai": "gpt-4o-mini", "anthropic": "claude-3-5-sonnet-20241022", "openrouter": "meta-llama/llama-3.3-70b-instruct", "deepseek": "deepseek-chat", "groq": "llama-3.3-70b-versatile", "ollama": "llama3:latest", "custom": ""}
+        return {
+            "provider": provider,
+            "model": configured_model or "",
+            "api_key": None,
+            "base_url": "",
+        }
+    default_models = {
+        "openai": "gpt-4o-mini",
+        "anthropic": "claude-3-5-sonnet-20241022",
+        "openrouter": "meta-llama/llama-3.3-70b-instruct",
+        "deepseek": "deepseek-chat",
+        "groq": "llama-3.3-70b-versatile",
+        "ollama": "llama3:latest",
+        "custom": "",
+    }
     model = configured_model or provider_models.get(provider) or default_models[provider]
     api_key = getattr(_settings, f"{provider}_api_key") or settings.get(f"{provider}_api_key")
-    base_url = getattr(_settings, f"{provider}_base_url") or settings.get(f"{provider}_base_url") or PROVIDERS[provider]["base_url_default"]
+    base_url = (
+        getattr(_settings, f"{provider}_base_url")
+        or settings.get(f"{provider}_base_url")
+        or PROVIDERS[provider]["base_url_default"]
+    )
     if provider == "custom":
         base_url = _settings.custom_base_url or settings.get("custom_base_url") or base_url
 

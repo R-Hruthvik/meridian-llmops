@@ -73,7 +73,9 @@ async def health_check(
     return {
         **response,
         # Live count, same source as /v1/documents - a boot-time snapshot went stale on ingest.
-        "storage_documents": len(await asyncio.to_thread(ingestion_pipeline.get_documents, tenant_id=tenant_id)),
+        "storage_documents": len(
+            await asyncio.to_thread(ingestion_pipeline.get_documents, tenant_id=tenant_id)
+        ),
         "vector_chunks": await _count_vector_chunks(vector_store, tenant_id=tenant_id),
         "services": request.app.state.service_status,
     }
@@ -113,7 +115,10 @@ async def reindex_endpoint(request: Request, tenant_id: str = Depends(require_ad
         raise HTTPException(status_code=500, detail=f"Reindex failed: {error}") from error
     disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
     request.app.state.index_consistency = await asyncio.to_thread(
-        check_consistency, request.app.state.settings, await asyncio.to_thread(vector_store.count), disk_chunks
+        check_consistency,
+        request.app.state.settings,
+        await asyncio.to_thread(vector_store.count),
+        disk_chunks,
     )
     if getattr(request.app.state, "use_legacy_services", False):
         # Legacy singleton mirror lives on the aggregation module.

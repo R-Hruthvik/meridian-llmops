@@ -94,12 +94,17 @@ def _read_vector(vector_store: Any) -> tuple[VectorIndexStatus, BackendHealth]:
         logger.warning("Qdrant live inspection failed: %s", e)
         return (
             VectorIndexStatus(
-                collections=[], points_per_collection={},
-                total_points=None, vector_dimension=None, is_fallback=False,
+                collections=[],
+                points_per_collection={},
+                total_points=None,
+                vector_dimension=None,
+                is_fallback=False,
                 detail=f"Qdrant query failed, so no collection data is reported: {e}",
             ),
             BackendHealth(
-                reachable=False, is_fallback=False, endpoint=endpoint,
+                reachable=False,
+                is_fallback=False,
+                endpoint=endpoint,
                 detail=f"Qdrant query failed: {e}",
             ),
         )
@@ -138,9 +143,7 @@ def _read_graph(graph_store: Any) -> tuple[GraphIndexStatus, BackendHealth]:
     try:
         with driver.session() as session:
             node_count = int(session.run("MATCH (n) RETURN count(n) AS c").single()["c"])
-            rel_count = int(
-                session.run("MATCH ()-[r]->() RETURN count(r) AS c").single()["c"]
-            )
+            rel_count = int(session.run("MATCH ()-[r]->() RETURN count(r) AS c").single()["c"])
         return (
             GraphIndexStatus(
                 node_count=node_count,
@@ -160,11 +163,16 @@ def _read_graph(graph_store: Any) -> tuple[GraphIndexStatus, BackendHealth]:
         logger.warning("Neo4j live inspection failed: %s", e)
         return (
             GraphIndexStatus(
-                node_count=None, relationship_count=None, entity_index_size=None,
-                is_fallback=True, detail=f"Neo4j query failed, so no counts are reported: {e}",
+                node_count=None,
+                relationship_count=None,
+                entity_index_size=None,
+                is_fallback=True,
+                detail=f"Neo4j query failed, so no counts are reported: {e}",
             ),
             BackendHealth(
-                reachable=False, is_fallback=True, endpoint=endpoint,
+                reachable=False,
+                is_fallback=True,
+                endpoint=endpoint,
                 detail=f"Neo4j query failed: {e}",
             ),
         )
@@ -179,11 +187,15 @@ def _read_lexical(retriever: Any) -> tuple[LexicalIndexStatus, BackendHealth]:
     if not isinstance(chunks, list):
         return (
             LexicalIndexStatus(
-                corpus_size=None, document_count=None, is_fallback=True,
+                corpus_size=None,
+                document_count=None,
+                is_fallback=True,
                 detail="BM25 index is not readable from the retriever.",
             ),
             BackendHealth(
-                reachable=False, is_fallback=True, endpoint=endpoint,
+                reachable=False,
+                is_fallback=True,
+                endpoint=endpoint,
                 detail="No BM25 index present on the retriever.",
             ),
         )
@@ -242,11 +254,16 @@ async def _read_relational(db: Any) -> tuple[RelationalIndexStatus, BackendHealt
         logger.warning("Relational live inspection failed: %s", e)
         return (
             RelationalIndexStatus(
-                dialect=None, tables=[], total_rows=0, is_fallback=True,
+                dialect=None,
+                tables=[],
+                total_rows=0,
+                is_fallback=True,
                 detail=f"Relational store unreachable, so no tables are reported: {e}",
             ),
             BackendHealth(
-                reachable=False, is_fallback=True, endpoint=endpoint,
+                reachable=False,
+                is_fallback=True,
+                endpoint=endpoint,
                 detail=f"Relational store unreachable: {e}",
             ),
         )

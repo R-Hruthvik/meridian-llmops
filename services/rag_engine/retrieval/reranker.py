@@ -15,7 +15,25 @@ class LexicalReranker:
     """word-overlap heuristic; not a learned model"""
 
     def score_pair(self, query: str, text: str) -> float:
-        stopwords = {"the", "is", "at", "which", "on", "a", "an", "and", "or", "to", "in", "for", "with", "what", "how", "why", "where"}
+        stopwords = {
+            "the",
+            "is",
+            "at",
+            "which",
+            "on",
+            "a",
+            "an",
+            "and",
+            "or",
+            "to",
+            "in",
+            "for",
+            "with",
+            "what",
+            "how",
+            "why",
+            "where",
+        }
         query_words = set(re.findall(r"\w+", query.lower())) - stopwords
         text_words = set(re.findall(r"\w+", text.lower())) - stopwords
 
@@ -58,7 +76,11 @@ class CrossEncoderReranker:
     back to the lexical heuristic instead of raising during startup.
     """
 
-    _FALLBACK_MODELS = ("BAAI/bge-reranker-base", "BAAI/bge-reranker-v2-m3", "Xenova/ms-marco-MiniLM-L-6-v2")
+    _FALLBACK_MODELS = (
+        "BAAI/bge-reranker-base",
+        "BAAI/bge-reranker-v2-m3",
+        "Xenova/ms-marco-MiniLM-L-6-v2",
+    )
 
     def __init__(self, model_name: str | None = None, cache_path: str | None = None):
         settings = get_settings()

@@ -20,7 +20,9 @@ def index_text(chunk: Chunk) -> str:
     The header carries the same title/heading context the embedder sees, so
     lexical and dense retrieval operate on comparable strings.
     """
-    header = " > ".join(part for part in (chunk.metadata.get("title"), chunk.section_heading) if part)
+    header = " > ".join(
+        part for part in (chunk.metadata.get("title"), chunk.section_heading) if part
+    )
     return f"{header}\n{chunk.text}" if header else chunk.text
 
 
@@ -70,11 +72,16 @@ class BM25Index:
         postings = {}
         for token, frequencies in frequencies_by_token.items():
             positions = np.fromiter((position for position, _ in frequencies), dtype=np.intp)
-            token_frequencies = np.fromiter((frequency for _, frequency in frequencies), dtype=np.float64)
-            lengths = np.asarray([index.doc_len[position] for position in positions], dtype=np.float64)
-            weights = token_frequencies * (index.k1 + 1) / (
+            token_frequencies = np.fromiter(
+                (frequency for _, frequency in frequencies), dtype=np.float64
+            )
+            lengths = np.asarray(
+                [index.doc_len[position] for position in positions], dtype=np.float64
+            )
+            weights = (
                 token_frequencies
-                + index.k1 * (1 - index.b + index.b * lengths / index.avgdl)
+                * (index.k1 + 1)
+                / (token_frequencies + index.k1 * (1 - index.b + index.b * lengths / index.avgdl))
             )
             postings[token] = (positions, weights)
         return postings

@@ -28,7 +28,7 @@ def reciprocal_rank_fusion(
     ranks: dict[str, dict[str, int]] = defaultdict(dict)
     scores: dict[str, dict[str, float]] = defaultdict(dict)
 
-    for name, rank_list in (('dense', dense), ('bm25', sparse)):
+    for name, rank_list in (("dense", dense), ("bm25", sparse)):
         for rank, (doc_id, score) in enumerate(rank_list, start=1):
             rrf_scores[doc_id] += 1.0 / (k + rank)
             ranks[doc_id][name] = rank
@@ -36,6 +36,8 @@ def reciprocal_rank_fusion(
 
     ordered = sorted(rrf_scores.items(), key=lambda item: item[1], reverse=True)
     return [
-        FusedCandidate(chunk_id=doc_id, rrf=score, ranks=dict(ranks[doc_id]), scores=dict(scores[doc_id]))
+        FusedCandidate(
+            chunk_id=doc_id, rrf=score, ranks=dict(ranks[doc_id]), scores=dict(scores[doc_id])
+        )
         for doc_id, score in ordered
     ]

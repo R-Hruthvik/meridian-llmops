@@ -51,7 +51,9 @@ _runtime_llm_settings = runtime_llm_settings_ref
 
 
 class TestAndFetchModelsRequest(BaseModel):
-    provider: str = Field("openai", description="openai, anthropic, groq, openrouter, deepseek, ollama, or custom")
+    provider: str = Field(
+        "openai", description="openai, anthropic, groq, openrouter, deepseek, ollama, or custom"
+    )
     api_key: str | None = None
     base_url: str | None = None
     organization_id: str | None = None
@@ -65,7 +67,11 @@ async def get_llm_settings(tenant_id: str = Depends(require_admin)):
     resolved = _resolve_active_llm_config_with_secrets()
     provider_names = ("openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom")
     provider_flags = {
-        name: bool(getattr(_settings, f"{name}_api_key") or _runtime_llm_settings.get(f"{name}_api_key") or name == "ollama")
+        name: bool(
+            getattr(_settings, f"{name}_api_key")
+            or _runtime_llm_settings.get(f"{name}_api_key")
+            or name == "ollama"
+        )
         for name in provider_names
     }
     if resolved["provider"] in provider_flags and resolved.get("api_key"):
@@ -91,7 +97,11 @@ async def get_providers_status(tenant_id: str = Depends(require_admin)):
     active_config = _resolve_active_llm_config_with_secrets()
     active = active_config["provider"].lower()
     provider_configured = {
-        name: bool(getattr(_settings, f"{name}_api_key") or _runtime_llm_settings.get(f"{name}_api_key") or name == "ollama")
+        name: bool(
+            getattr(_settings, f"{name}_api_key")
+            or _runtime_llm_settings.get(f"{name}_api_key")
+            or name == "ollama"
+        )
         for name in ("openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom")
     }
     if active in provider_configured and active_config.get("api_key"):
@@ -100,7 +110,8 @@ async def get_providers_status(tenant_id: str = Depends(require_admin)):
         "openai": _runtime_llm_settings.get("openai_base_url") or "https://api.openai.com/v1",
         "anthropic": _runtime_llm_settings.get("anthropic_base_url") or "https://api.anthropic.com",
         "groq": _runtime_llm_settings.get("groq_base_url") or "https://api.groq.com/openai/v1",
-        "openrouter": _runtime_llm_settings.get("openrouter_base_url") or "https://openrouter.ai/api/v1",
+        "openrouter": _runtime_llm_settings.get("openrouter_base_url")
+        or "https://openrouter.ai/api/v1",
         "deepseek": _runtime_llm_settings.get("deepseek_base_url") or "https://api.deepseek.com/v1",
         "ollama": _runtime_llm_settings.get("ollama_base_url") or "http://localhost:11434/v1",
         "custom": _runtime_llm_settings.get("custom_base_url") or "",
@@ -117,7 +128,9 @@ async def get_providers_status(tenant_id: str = Depends(require_admin)):
             "configured": provider_configured["openai"],
             "is_active": active == "openai",
             "base_url": provider_urls["openai"],
-            "current_model": active_config["model"] if active == "openai" else prov_models.get("openai", "gpt-4o-mini"),
+            "current_model": active_config["model"]
+            if active == "openai"
+            else prov_models.get("openai", "gpt-4o-mini"),
             "models": ["gpt-4o-mini", "gpt-4o", "o3-mini", "o1"],
             "type": "cloud",
         },
@@ -128,8 +141,14 @@ async def get_providers_status(tenant_id: str = Depends(require_admin)):
             "configured": provider_configured["anthropic"],
             "is_active": active == "anthropic",
             "base_url": provider_urls["anthropic"],
-            "current_model": active_config["model"] if active == "anthropic" else prov_models.get("anthropic", "claude-3-5-sonnet-20241022"),
-            "models": ["claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+            "current_model": active_config["model"]
+            if active == "anthropic"
+            else prov_models.get("anthropic", "claude-3-5-sonnet-20241022"),
+            "models": [
+                "claude-3-7-sonnet-20250219",
+                "claude-3-5-sonnet-20241022",
+                "claude-3-5-haiku-20241022",
+            ],
             "type": "cloud",
         },
         {
@@ -139,7 +158,9 @@ async def get_providers_status(tenant_id: str = Depends(require_admin)):
             "configured": provider_configured["groq"],
             "is_active": active == "groq",
             "base_url": provider_urls["groq"],
-            "current_model": active_config["model"] if active == "groq" else prov_models.get("groq", "llama-3.3-70b-versatile"),
+            "current_model": active_config["model"]
+            if active == "groq"
+            else prov_models.get("groq", "llama-3.3-70b-versatile"),
             "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
             "type": "cloud",
         },
@@ -150,8 +171,15 @@ async def get_providers_status(tenant_id: str = Depends(require_admin)):
             "configured": provider_configured["openrouter"],
             "is_active": active == "openrouter",
             "base_url": provider_urls["openrouter"],
-            "current_model": active_config["model"] if active == "openrouter" else prov_models.get("openrouter", "meta-llama/llama-3.3-70b-instruct"),
-            "models": ["meta-llama/llama-3.3-70b-instruct", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat"],
+            "current_model": active_config["model"]
+            if active == "openrouter"
+            else prov_models.get("openrouter", "meta-llama/llama-3.3-70b-instruct"),
+            "models": [
+                "meta-llama/llama-3.3-70b-instruct",
+                "openai/gpt-4o",
+                "anthropic/claude-3.5-sonnet",
+                "deepseek/deepseek-chat",
+            ],
             "type": "cloud",
         },
         {
@@ -161,7 +189,9 @@ async def get_providers_status(tenant_id: str = Depends(require_admin)):
             "configured": provider_configured["deepseek"],
             "is_active": active == "deepseek",
             "base_url": provider_urls["deepseek"],
-            "current_model": active_config["model"] if active == "deepseek" else prov_models.get("deepseek", "deepseek-chat"),
+            "current_model": active_config["model"]
+            if active == "deepseek"
+            else prov_models.get("deepseek", "deepseek-chat"),
             "models": ["deepseek-chat", "deepseek-reasoner"],
             "type": "cloud",
         },
@@ -172,7 +202,9 @@ async def get_providers_status(tenant_id: str = Depends(require_admin)):
             "configured": provider_configured["ollama"],
             "is_active": active == "ollama",
             "base_url": provider_urls["ollama"],
-            "current_model": active_config["model"] if active == "ollama" else prov_models.get("ollama", "llama3"),
+            "current_model": active_config["model"]
+            if active == "ollama"
+            else prov_models.get("ollama", "llama3"),
             "models": ["llama3:latest", "mistral:latest", "qwen2.5:latest"],
             "type": "local",
         },
@@ -180,10 +212,15 @@ async def get_providers_status(tenant_id: str = Depends(require_admin)):
             "id": "custom",
             "name": "Custom OpenAI-Compatible / Local vLLM",
             "description": "Custom API endpoint (vLLM, LMStudio, TGI, SGLang)",
-            "configured": bool(provider_configured["custom"] or (active == "custom" and active_config.get("base_url"))),
+            "configured": bool(
+                provider_configured["custom"]
+                or (active == "custom" and active_config.get("base_url"))
+            ),
             "is_active": active in ["custom", "openai_compatible"],
             "base_url": provider_urls["custom"],
-            "current_model": active_config["model"] if active == "custom" else prov_models.get("custom", "llama-3.3-70b-versatile"),
+            "current_model": active_config["model"]
+            if active == "custom"
+            else prov_models.get("custom", "llama-3.3-70b-versatile"),
             "models": ["llama-3.3-70b-versatile", "deepseek-chat", "gpt-4o-mini"],
             "type": "custom",
         },
@@ -206,9 +243,23 @@ async def update_llm_settings(
     async with _settings_lock:
         if "active_provider" in updates and updates.get("active_provider") is not None:
             candidate = str(updates["active_provider"]).lower()
-            if candidate not in {"openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom", "openai_compatible", "litellm"}:
-                raise HTTPException(status_code=400, detail=f"Unsupported active_provider: {candidate}")
-        selected_provider = (updates.get("active_provider") or _runtime_llm_settings.get("active_provider", "openai")).lower()
+            if candidate not in {
+                "openai",
+                "anthropic",
+                "groq",
+                "openrouter",
+                "deepseek",
+                "ollama",
+                "custom",
+                "openai_compatible",
+                "litellm",
+            }:
+                raise HTTPException(
+                    status_code=400, detail=f"Unsupported active_provider: {candidate}"
+                )
+        selected_provider = (
+            updates.get("active_provider") or _runtime_llm_settings.get("active_provider", "openai")
+        ).lower()
         if updates.get("api_key") is not None:
             updates[f"{selected_provider}_api_key"] = updates["api_key"]
         if updates.get("base_url") is not None:
@@ -230,7 +281,17 @@ async def update_llm_settings(
                 _runtime_llm_settings["provider_models"] = {}
             _runtime_llm_settings["provider_models"][prov] = model
         # Normalize provider_models keys to supported providers (lowercase).
-        supported = {"openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom", "litellm", "openai_compatible"}
+        supported = {
+            "openai",
+            "anthropic",
+            "groq",
+            "openrouter",
+            "deepseek",
+            "ollama",
+            "custom",
+            "litellm",
+            "openai_compatible",
+        }
         pm = _runtime_llm_settings.get("provider_models")
         if isinstance(pm, dict):
             _runtime_llm_settings["provider_models"] = {
@@ -239,7 +300,9 @@ async def update_llm_settings(
 
         await asyncio.to_thread(_save_persisted_settings, dict(_runtime_llm_settings))
 
-        new_llm_client = LiteLLMClient(allow_private_provider_urls=_settings.allow_private_provider_urls)
+        new_llm_client = LiteLLMClient(
+            allow_private_provider_urls=_settings.allow_private_provider_urls
+        )
         llm_client = new_llm_client
         try:
             import services.rag_engine.routers.api as _api
@@ -310,7 +373,9 @@ async def test_and_fetch_models(
             transport=transport,
         ) as client:
             if provider == "openai":
-                url = (base_url.rstrip("/") if base_url else "https://api.openai.com/v1") + "/models"
+                url = (
+                    base_url.rstrip("/") if base_url else "https://api.openai.com/v1"
+                ) + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
                 if org_id:
                     headers["OpenAI-Organization"] = org_id
@@ -321,11 +386,16 @@ async def test_and_fetch_models(
                 if resp.status_code == 200:
                     data = resp.json()
                     all_ids = [m["id"] for m in data.get("data", [])]
-                    models = sorted([
-                        m for m in all_ids 
-                        if any(p in m for p in ["gpt", "o1", "o3", "text-embedding", "chatgpt"])
-                    ])
-                    status_msg = f"Successfully authenticated with OpenAI! Fetched {len(models)} models."
+                    models = sorted(
+                        [
+                            m
+                            for m in all_ids
+                            if any(p in m for p in ["gpt", "o1", "o3", "text-embedding", "chatgpt"])
+                        ]
+                    )
+                    status_msg = (
+                        f"Successfully authenticated with OpenAI! Fetched {len(models)} models."
+                    )
                     is_success = True
                 elif resp.status_code == 401:
                     status_msg = "Authentication Failed (HTTP 401): The provided OpenAI API key is invalid or expired."
@@ -345,7 +415,9 @@ async def test_and_fetch_models(
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["id"] for m in data.get("data", [])]
-                    status_msg = f"Successfully authenticated with Anthropic! Fetched {len(models)} models."
+                    status_msg = (
+                        f"Successfully authenticated with Anthropic! Fetched {len(models)} models."
+                    )
                     is_success = True
                 elif resp.status_code == 401:
                     status_msg = "Authentication Failed (HTTP 401): The provided Anthropic API key is invalid."
@@ -363,13 +435,17 @@ async def test_and_fetch_models(
                     status_msg = f"Anthropic error (HTTP {resp.status_code})."
 
             elif provider == "groq":
-                url = (base_url.rstrip("/") if base_url else "https://api.groq.com/openai/v1") + "/models"
+                url = (
+                    base_url.rstrip("/") if base_url else "https://api.groq.com/openai/v1"
+                ) + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
                 resp = await _model_fetch_get(client, transport, provider, url, headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["id"] for m in data.get("data", [])]
-                    status_msg = f"Successfully authenticated with Groq Cloud! Fetched {len(models)} models."
+                    status_msg = (
+                        f"Successfully authenticated with Groq Cloud! Fetched {len(models)} models."
+                    )
                     is_success = True
                 elif resp.status_code == 401:
                     status_msg = "Authentication Failed (HTTP 401): The Groq API key is invalid."
@@ -377,35 +453,49 @@ async def test_and_fetch_models(
                     status_msg = f"Groq error (HTTP {resp.status_code})."
 
             elif provider == "openrouter":
-                url = (base_url.rstrip("/") if base_url else "https://openrouter.ai/api/v1") + "/models"
+                url = (
+                    base_url.rstrip("/") if base_url else "https://openrouter.ai/api/v1"
+                ) + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
                 resp = await _model_fetch_get(client, transport, provider, url, headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["id"] for m in data.get("data", [])]
-                    status_msg = f"Successfully authenticated with OpenRouter! Fetched {len(models)} models."
+                    status_msg = (
+                        f"Successfully authenticated with OpenRouter! Fetched {len(models)} models."
+                    )
                     is_success = True
                 elif resp.status_code == 401:
-                    status_msg = "Authentication Failed (HTTP 401): The OpenRouter API key is invalid."
+                    status_msg = (
+                        "Authentication Failed (HTTP 401): The OpenRouter API key is invalid."
+                    )
                 else:
                     status_msg = f"OpenRouter error (HTTP {resp.status_code})."
 
             elif provider == "deepseek":
-                url = (base_url.rstrip("/") if base_url else "https://api.deepseek.com/v1") + "/models"
+                url = (
+                    base_url.rstrip("/") if base_url else "https://api.deepseek.com/v1"
+                ) + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"}
                 resp = await _model_fetch_get(client, transport, provider, url, headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["id"] for m in data.get("data", [])]
-                    status_msg = f"Successfully authenticated with DeepSeek! Fetched {len(models)} models."
+                    status_msg = (
+                        f"Successfully authenticated with DeepSeek! Fetched {len(models)} models."
+                    )
                     is_success = True
                 elif resp.status_code == 401:
-                    status_msg = "Authentication Failed (HTTP 401): The DeepSeek API key is invalid."
+                    status_msg = (
+                        "Authentication Failed (HTTP 401): The DeepSeek API key is invalid."
+                    )
                 else:
                     status_msg = f"DeepSeek error (HTTP {resp.status_code})."
 
             elif provider in ["ollama"]:
-                target_url = (base_url.rstrip("/") if base_url else "http://localhost:11434") + "/api/tags"
+                target_url = (
+                    base_url.rstrip("/") if base_url else "http://localhost:11434"
+                ) + "/api/tags"
                 resp = await _model_fetch_get(client, transport, provider, target_url)
                 if resp.status_code == 200:
                     data = resp.json()
@@ -413,19 +503,27 @@ async def test_and_fetch_models(
                     status_msg = f"Successfully connected to local Ollama! Found {len(models)} installed models."
                     is_success = True
                 else:
-                    status_msg = f"Ollama connection error (HTTP {resp.status_code}). Is Ollama running?"
+                    status_msg = (
+                        f"Ollama connection error (HTTP {resp.status_code}). Is Ollama running?"
+                    )
 
             elif provider in ["custom", "openai_compatible"]:
-                target_url = (base_url.rstrip("/") if base_url else "http://localhost:8000/v1") + "/models"
+                target_url = (
+                    base_url.rstrip("/") if base_url else "http://localhost:8000/v1"
+                ) + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
                 resp = await _model_fetch_get(client, transport, provider, target_url, headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["id"] for m in data.get("data", [])]
-                    status_msg = f"Successfully connected to custom endpoint! Fetched {len(models)} models."
+                    status_msg = (
+                        f"Successfully connected to custom endpoint! Fetched {len(models)} models."
+                    )
                     is_success = True
                 elif resp.status_code == 401:
-                    status_msg = "Authentication Failed (HTTP 401): Invalid API key for custom endpoint."
+                    status_msg = (
+                        "Authentication Failed (HTTP 401): Invalid API key for custom endpoint."
+                    )
                 else:
                     status_msg = f"Endpoint error (HTTP {resp.status_code})."
 
@@ -445,7 +543,12 @@ async def test_and_fetch_models(
             _runtime_llm_settings["provider_available_models"][provider] = models
             if api_key and not _is_masked(api_key):
                 _runtime_llm_settings[f"{provider}_api_key"] = api_key
-            if base_url and provider in ["openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom"] and not _is_masked(base_url):
+            if (
+                base_url
+                and provider
+                in ["openai", "anthropic", "groq", "openrouter", "deepseek", "ollama", "custom"]
+                and not _is_masked(base_url)
+            ):
                 _runtime_llm_settings[f"{provider}_base_url"] = base_url
             await asyncio.to_thread(_save_persisted_settings, dict(_runtime_llm_settings))
 

@@ -147,7 +147,13 @@ async def _stream_completion(
         "provider": last.get("provider") or provider,
         "requested_model": model,
         "raw_response": {"model": served_model, "choices": [{"message": {"content": draft}}]},
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": draft}, "finish_reason": "stop"}],
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": draft},
+                "finish_reason": "stop",
+            }
+        ],
         "usage": None,
     }
 
@@ -189,7 +195,11 @@ def _first_pass_retrieval_weak(chunks: Any, min_dense_score: float = 0.60) -> bo
         if not isinstance(scores, dict):
             scores = {key: data.get(key) for key in ("dense", "bm25")}
         dense = scores.get("dense")
-        if isinstance(dense, (int, float)) and not isinstance(dense, bool) and dense >= min_dense_score:
+        if (
+            isinstance(dense, (int, float))
+            and not isinstance(dense, bool)
+            and dense >= min_dense_score
+        ):
             return False
     return True
 
@@ -251,7 +261,9 @@ def build_rag_agent_graph(
     client = llm_client or LiteLLMClient()
     verifier = verify_fn or verify_answer
     refusal_generator = SafeRefusalGenerator()
-    insufficient_answer = "I don't have enough information in the provided documents to answer that."
+    insufficient_answer = (
+        "I don't have enough information in the provided documents to answer that."
+    )
 
     def retrieve_node(state: RagAgentState, config: RunnableConfig) -> dict[str, Any]:
         query = state.get("current_search_query") or state["query"]
@@ -277,16 +289,48 @@ def build_rag_agent_graph(
             tenant_entities_by_name = {entity.name: entity for entity in tenant_entities}
             query_words = [re.sub(r"[^\w-]", "", word).strip() for word in query.split()]
             stopwords = {
-                "the", "and", "for", "what", "which", "who", "does", "did", "is", "are", "was", "were",
-                "its", "how", "why", "when", "where", "use", "uses", "used", "using", "each", "provide",
-                "because", "between", "from", "with", "that", "this", "into", "about", "can", "will",
+                "the",
+                "and",
+                "for",
+                "what",
+                "which",
+                "who",
+                "does",
+                "did",
+                "is",
+                "are",
+                "was",
+                "were",
+                "its",
+                "how",
+                "why",
+                "when",
+                "where",
+                "use",
+                "uses",
+                "used",
+                "using",
+                "each",
+                "provide",
+                "because",
+                "between",
+                "from",
+                "with",
+                "that",
+                "this",
+                "into",
+                "about",
+                "can",
+                "will",
             }
             exact_hits: list[Entity] = []
             fuzzy_hits: list[Entity] = []
             seen: set[str] = set()
             normalized_query = " ".join(re.findall(r"\w+", query.casefold()))
             for candidate in tenant_entities:
-                name = candidate.normalized_name or " ".join(re.findall(r"\w+", candidate.name.casefold()))
+                name = candidate.normalized_name or " ".join(
+                    re.findall(r"\w+", candidate.name.casefold())
+                )
                 if name and f" {name} " in f" {normalized_query} " and candidate.name not in seen:
                     exact_hits.append(candidate)
                     seen.add(candidate.name)
@@ -315,18 +359,26 @@ def build_rag_agent_graph(
             for _depth in range(2):
                 next_frontier: list[Entity] = []
                 for entity in frontier:
-                    for relation in graph_store.query_neighborhood(entity.name, tenant_id=tenant_id):
-                        edge = (relation.source_entity, relation.relation_type, relation.target_entity)
+                    for relation in graph_store.query_neighborhood(
+                        entity.name, tenant_id=tenant_id
+                    ):
+                        edge = (
+                            relation.source_entity,
+                            relation.relation_type,
+                            relation.target_entity,
+                        )
                         if edge not in traversed:
                             traversed.add(edge)
                             cited_chunk_ids = sorted(set(relation.chunk_ids) & source_chunk_ids)
                             if graph_context_enabled and cited_chunk_ids:
-                                graph_context.append({
-                                    "source_entity": relation.source_entity,
-                                    "relation_type": relation.relation_type,
-                                    "target_entity": relation.target_entity,
-                                    "chunk_ids": cited_chunk_ids,
-                                })
+                                graph_context.append(
+                                    {
+                                        "source_entity": relation.source_entity,
+                                        "relation_type": relation.relation_type,
+                                        "target_entity": relation.target_entity,
+                                        "chunk_ids": cited_chunk_ids,
+                                    }
+                                )
                         for target in (relation.source_entity, relation.target_entity):
                             if target and target not in matched_names:
                                 matched_names.add(target)
@@ -441,19 +493,31 @@ def build_rag_agent_graph(
                         cost_usd=usage["cost_usd"],
                     )
             if debug_log_prompts:
-                _log_debug_payload("response", state.get("request_id", ""), response.get("raw_response", response), api_key)
+                _log_debug_payload(
+                    "response",
+                    state.get("request_id", ""),
+                    response.get("raw_response", response),
+                    api_key,
+                )
             if not draft.strip():
                 return {
                     "draft_answer": insufficient_answer,
                     "answer_status": "insufficient_context",
-                    "verification_result": VerificationResult(status="unchecked", scope="unchecked"),
+                    "verification_result": VerificationResult(
+                        status="unchecked", scope="unchecked"
+                    ),
                 }
         except ProviderError as error:
-            if "empty completion" in str(error.message if hasattr(error, "message") else error).lower():
+            if (
+                "empty completion"
+                in str(error.message if hasattr(error, "message") else error).lower()
+            ):
                 return {
                     "draft_answer": insufficient_answer,
                     "answer_status": "insufficient_context",
-                    "verification_result": VerificationResult(status="unchecked", scope="unchecked"),
+                    "verification_result": VerificationResult(
+                        status="unchecked", scope="unchecked"
+                    ),
                 }
             raise
         except Exception as exc:
@@ -461,14 +525,19 @@ def build_rag_agent_graph(
             if api_key:
                 provider_message = provider_message.replace(api_key, "[REDACTED]")
             logger.error("LLM generation failed via %s (%s): %s", provider, model, provider_message)
-            raise ProviderError(provider, 502, f"Provider {provider} request failed", provider_message) from exc
+            raise ProviderError(
+                provider, 502, f"Provider {provider} request failed", provider_message
+            ) from exc
 
         timings = dict(state.get("timings_ms") or {})
         timings["generate"] = timings.get("generate", 0.0) + (time.perf_counter() - started) * 1000
         draft_status = (
             "insufficient_context"
             if isinstance(draft, str)
-            and (draft.strip() == insufficient_answer or draft.strip().startswith(insufficient_answer))
+            and (
+                draft.strip() == insufficient_answer
+                or draft.strip().startswith(insufficient_answer)
+            )
             else "answered"
         )
         return {
@@ -537,7 +606,9 @@ def build_rag_agent_graph(
         llm_available = bool(cfg.get("api_key") or cfg.get("base_url"))
         top_k = state.get("base_top_k", DEFAULT_TOP_K)
         short_query = _is_short_factual_query(query)
-        retrieval_weak = _first_pass_retrieval_weak(state.get("retrieved_chunks", []), min_dense_score)
+        retrieval_weak = _first_pass_retrieval_weak(
+            state.get("retrieved_chunks", []), min_dense_score
+        )
         use_llm_reformulation = (
             (not short_query)
             and retrieval_weak
@@ -555,7 +626,10 @@ def build_rag_agent_graph(
                 else:
                     rewritten = await _rewrite_query(query, client, cfg)
             except Exception as exc:  # noqa: BLE001 - a failed rewrite falls back to broader retrieval.
-                logger.warning("Query reformulation failed (%s); retrying with broader retrieval", type(exc).__name__)
+                logger.warning(
+                    "Query reformulation failed (%s); retrying with broader retrieval",
+                    type(exc).__name__,
+                )
                 rewritten = query
                 next_top_k = min(max(next_top_k * 2, MIN_TOP_K), MAX_TOP_K)
         else:
@@ -578,7 +652,10 @@ def build_rag_agent_graph(
         draft = state.get("draft_answer", "")
         if state.get("answer_status") == "insufficient_context" or (
             isinstance(draft, str)
-            and (draft.strip() == insufficient_answer or draft.strip().startswith(insufficient_answer))
+            and (
+                draft.strip() == insufficient_answer
+                or draft.strip().startswith(insufficient_answer)
+            )
         ):
             return "end"
         if result is None or result.status not in {"citations_failed", "unsupported"}:
@@ -623,7 +700,12 @@ def build_rag_agent_graph(
     workflow.add_conditional_edges(
         "route",
         route_after_verification,
-        {"end": END, "reformulate": "reformulate", "unverified": "finish_failed", "refused": "finish_failed"},
+        {
+            "end": END,
+            "reformulate": "reformulate",
+            "unverified": "finish_failed",
+            "refused": "finish_failed",
+        },
     )
     workflow.add_edge("reformulate", "retrieve")
     workflow.add_edge("finish_failed", END)

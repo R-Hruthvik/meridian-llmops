@@ -58,18 +58,20 @@ async def list_pending_review_items(
 
     items = []
     for item, field in rows:
-        items.append(ReviewItemResponse(
-            id=item.id,
-            extracted_field_id=field.id,
-            document_id=field.document_id,
-            field_name=field.field_name,
-            value=field.value,
-            confidence=field.confidence,
-            provenance_page=field.provenance_page,
-            status=item.status,
-            corrected_value=item.corrected_value,
-            notes=item.notes
-        ))
+        items.append(
+            ReviewItemResponse(
+                id=item.id,
+                extracted_field_id=field.id,
+                document_id=field.document_id,
+                field_name=field.field_name,
+                value=field.value,
+                confidence=field.confidence,
+                provenance_page=field.provenance_page,
+                status=item.status,
+                corrected_value=item.corrected_value,
+                notes=item.notes,
+            )
+        )
 
     return items
 
@@ -105,7 +107,9 @@ async def process_review_action(
         field.review_status = "rejected"
     elif action == "correct":
         if not action_data.corrected_value:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Corrected value required")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Corrected value required"
+            )
         item.status = "corrected"
         item.corrected_value = action_data.corrected_value
         field.value = action_data.corrected_value
@@ -127,7 +131,7 @@ async def process_review_action(
         provenance_page=field.provenance_page,
         status=item.status,
         corrected_value=item.corrected_value,
-        notes=item.notes
+        notes=item.notes,
     )
 
 
@@ -157,7 +161,9 @@ async def export_golden_cases(
     chunks_by_doc: dict[str, list[str]] = {doc_id: [] for doc_id in document_ids}
     if document_ids:
         chunk_result = await db.execute(
-            select(ORMChunk.document_id, ORMChunk.content).where(ORMChunk.document_id.in_(document_ids))
+            select(ORMChunk.document_id, ORMChunk.content).where(
+                ORMChunk.document_id.in_(document_ids)
+            )
         )
         for doc_id, content in chunk_result.all():
             chunks_by_doc.setdefault(doc_id, []).append(content)

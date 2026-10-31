@@ -180,7 +180,9 @@ async def lifespan(app: FastAPI):
     if _index_consistency.ok:
         logger.info("Index consistent: %d chunks across disk and Qdrant.", disk_chunks)
     else:
-        logger.error("Index inconsistent; queries are refused until reindex: %s", _index_consistency.reasons)
+        logger.error(
+            "Index inconsistent; queries are refused until reindex: %s", _index_consistency.reasons
+        )
     try:
         await init_db()
     except Exception as e:  # noqa: BLE001 - preserve existing database startup behavior
@@ -196,19 +198,23 @@ router.include_router(documents_router)
 router.include_router(query_router)
 
 
-async def handle_index_error(request: Request, error: IndexWriteError | IndexReadError) -> JSONResponse:
-    code = 'index_write_error' if isinstance(error, IndexWriteError) else 'index_read_error'
-    return JSONResponse(status_code=503, content={'error': {'code': code, 'message': str(error)}})
+async def handle_index_error(
+    request: Request, error: IndexWriteError | IndexReadError
+) -> JSONResponse:
+    code = "index_write_error" if isinstance(error, IndexWriteError) else "index_read_error"
+    return JSONResponse(status_code=503, content={"error": {"code": code, "message": str(error)}})
 
 
 async def handle_provider_error(request: Request, error: ProviderError) -> JSONResponse:
     return JSONResponse(
         status_code=error.status,
-        content={"error": {
-            "code": "provider_error",
-            "message": error.message,
-            "provider_message": error.provider_message,
-        }},
+        content={
+            "error": {
+                "code": "provider_error",
+                "message": error.message,
+                "provider_message": error.provider_message,
+            }
+        },
     )
 
 
@@ -218,8 +224,6 @@ async def limit_model_fetch_json_body(request: Request, call_next):
         if len(body) > 1024 * 1024:
             return JSONResponse(status_code=413, content={"detail": "Request body too large."})
     return await call_next(request)
-
-
 
 
 # Startup consistency verdict; None until the lifespan has run.
@@ -257,11 +261,19 @@ def _check_docker_services(settings=None) -> dict[str, Any]:
 
     qdrant_host = getattr(settings, "qdrant_host", "localhost") if settings else "localhost"
     qdrant_port = getattr(settings, "qdrant_port", 6333) if settings else 6333
-    qdrant_url = f"http://{qdrant_host}:{qdrant_port}/collections" if settings else "http://localhost:6333/collections"
+    qdrant_url = (
+        f"http://{qdrant_host}:{qdrant_port}/collections"
+        if settings
+        else "http://localhost:6333/collections"
+    )
 
     from urllib.parse import urlparse
 
-    neo4j_uri = getattr(settings, "neo4j_uri", "bolt://localhost:7687") if settings else "bolt://localhost:7687"
+    neo4j_uri = (
+        getattr(settings, "neo4j_uri", "bolt://localhost:7687")
+        if settings
+        else "bolt://localhost:7687"
+    )
     try:
         parsed = urlparse(str(neo4j_uri))
         neo4j_host = parsed.hostname or "localhost"
@@ -271,16 +283,32 @@ def _check_docker_services(settings=None) -> dict[str, Any]:
     neo4j_http_url = f"http://{neo4j_host}:7474"
     neo4j_endpoint = f"bolt://{neo4j_host}:{neo4j_port}"
 
-    litellm_url = f"{getattr(settings, 'litellm_base_url', 'http://localhost:4000').rstrip('/')}/health" if settings else "http://localhost:4000/health"
+    litellm_url = (
+        f"{getattr(settings, 'litellm_base_url', 'http://localhost:4000').rstrip('/')}/health"
+        if settings
+        else "http://localhost:4000/health"
+    )
 
     qdrant_ok = _probe_http(qdrant_url)
     neo4j_ok = _probe_http(neo4j_http_url) or _probe_tcp(neo4j_host, neo4j_port)
     litellm_ok = _probe_http(litellm_url) or _probe_http(f"{litellm_url}/readiness")
 
     statuses: dict[str, Any] = {
-        "qdrant": {"status": "reachable" if qdrant_ok else "degraded", "endpoint": qdrant_url, "reachable": qdrant_ok},
-        "neo4j": {"status": "reachable" if neo4j_ok else "degraded", "endpoint": neo4j_endpoint, "reachable": neo4j_ok},
-        "litellm": {"status": "reachable" if litellm_ok else "degraded", "endpoint": litellm_url, "reachable": litellm_ok},
+        "qdrant": {
+            "status": "reachable" if qdrant_ok else "degraded",
+            "endpoint": qdrant_url,
+            "reachable": qdrant_ok,
+        },
+        "neo4j": {
+            "status": "reachable" if neo4j_ok else "degraded",
+            "endpoint": neo4j_endpoint,
+            "reachable": neo4j_ok,
+        },
+        "litellm": {
+            "status": "reachable" if litellm_ok else "degraded",
+            "endpoint": litellm_url,
+            "reachable": litellm_ok,
+        },
     }
     return statuses
 
@@ -314,9 +342,16 @@ def create_app(settings=None, overrides=None) -> FastAPI:
             services["runtime_llm_settings"] = _runtime_llm_settings._target()
         else:
             required_services = {
-            "vector_store", "graph_store", "ingestion_pipeline", "tracer", "retriever",
-            "llm_client", "input_guardrails", "output_guardrails", "agent_graph",
-        }
+                "vector_store",
+                "graph_store",
+                "ingestion_pipeline",
+                "tracer",
+                "retriever",
+                "llm_client",
+                "input_guardrails",
+                "output_guardrails",
+                "agent_graph",
+            }
             if required_services.issubset(service_overrides):
                 services = dict(service_overrides)
             else:
@@ -363,7 +398,9 @@ def create_app(settings=None, overrides=None) -> FastAPI:
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
         response.headers.setdefault("Content-Security-Policy", "default-src 'self'")
         return response
 
@@ -384,10 +421,20 @@ def create_app(settings=None, overrides=None) -> FastAPI:
 async def bind_app_services(request: Request, call_next):
     services = getattr(request.app.state, "service_overrides", {})
     if getattr(request.app.state, "vector_store", None) is not None:
-        services = {name: getattr(request.app.state, name) for name in (
-            "vector_store", "graph_store", "ingestion_pipeline", "tracer", "retriever",
-            "llm_client", "input_guardrails", "output_guardrails", "agent_graph",
-        )}
+        services = {
+            name: getattr(request.app.state, name)
+            for name in (
+                "vector_store",
+                "graph_store",
+                "ingestion_pipeline",
+                "tracer",
+                "retriever",
+                "llm_client",
+                "input_guardrails",
+                "output_guardrails",
+                "agent_graph",
+            )
+        }
         services["settings"] = (
             _core_get_settings()
             if getattr(request.app.state, "use_legacy_services", False)
@@ -402,10 +449,22 @@ async def bind_app_services(request: Request, call_next):
 
 
 def _build_services(settings) -> dict[str, Any]:
-    client = (QdrantClient(':memory:') if settings.qdrant_local_path == ':memory:' else QdrantClient(path=settings.qdrant_local_path)) if settings.vector_backend == 'qdrant_local' else QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port, timeout=5)
+    client = (
+        (
+            QdrantClient(":memory:")
+            if settings.qdrant_local_path == ":memory:"
+            else QdrantClient(path=settings.qdrant_local_path)
+        )
+        if settings.vector_backend == "qdrant_local"
+        else QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port, timeout=5)
+    )
     vector = QdrantChunkStore(client, settings.qdrant_collection, settings.qdrant_vector_dim)
     graph = KnowledgeGraphStore(in_memory=not settings.graph_enabled)
-    pipeline = IngestionPipeline(vector_store=vector, graph_store=graph, max_upload_bytes=settings.max_upload_mb * 1024 * 1024)
+    pipeline = IngestionPipeline(
+        vector_store=vector,
+        graph_store=graph,
+        max_upload_bytes=settings.max_upload_mb * 1024 * 1024,
+    )
     trace = LangfuseTracer()
     retrieval = HybridRetriever(embedder=None, vector_store=vector, tracer=trace)
     llm = LiteLLMClient(allow_private_provider_urls=settings.allow_private_provider_urls)
@@ -456,7 +515,9 @@ async def _startup(application: FastAPI, settings) -> None:
     await asyncio.to_thread(application.state.vector_store.ensure_collection)
     await asyncio.to_thread(application.state.ingestion_pipeline.load_persisted_knowledge_base)
     application.state.retriever.update_chunks(application.state.vector_store.get_all_chunks(None))
-    disk_chunks = await asyncio.to_thread(lambda: len(application.state.ingestion_pipeline.storage.load_all_chunks()))
+    disk_chunks = await asyncio.to_thread(
+        lambda: len(application.state.ingestion_pipeline.storage.load_all_chunks())
+    )
     qdrant_points = await asyncio.to_thread(application.state.vector_store.count)
     service_overrides = application.state.service_overrides
     if "index_consistency" not in service_overrides:
@@ -479,6 +540,8 @@ async def _startup(application: FastAPI, settings) -> None:
 
 # Mount Web UI frontend if built
 web_dist = Path(__file__).parents[2] / "web" / "dist"
+
+
 def mount_web(app: FastAPI) -> None:
     if web_dist.exists():
         app.mount("/", StaticFiles(directory=str(web_dist), html=True), name="web")

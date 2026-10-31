@@ -141,12 +141,14 @@ class HybridRetriever:
         session_id: str | None = None,
     ) -> RetrievalResult:
         pool = max(self.pool_min, 4 * top_k)
-        timings: dict[str, float] = {name: 0.0 for name in ("embed", "dense", "bm25", "fusion", "rerank")}
+        timings: dict[str, float] = {
+            name: 0.0 for name in ("embed", "dense", "bm25", "fusion", "rerank")
+        }
         started = time.perf_counter()
 
         stage = time.perf_counter()
         if self.embedder is None:
-            raise RuntimeError('Embedder must be initialized at startup or explicitly injected')
+            raise RuntimeError("Embedder must be initialized at startup or explicitly injected")
         with self._embed_lock, self._span("embed_query", tenant_id=tenant_id):
             query_vector = self.embedder.embed_query(query)
         timings["embed"] = _ms(stage)
@@ -230,8 +232,14 @@ class HybridRetriever:
             seen_session = set(self.session_chunks(session_id))
             if seen_session:
                 candidates = [
-                    (chunk, {**scores, "session_boost": 0.1 if chunk.id in seen_session else 0.0,
-                             "final": scores["final"] + (0.01 if chunk.id in seen_session else 0.0)})
+                    (
+                        chunk,
+                        {
+                            **scores,
+                            "session_boost": 0.1 if chunk.id in seen_session else 0.0,
+                            "final": scores["final"] + (0.01 if chunk.id in seen_session else 0.0),
+                        },
+                    )
                     for chunk, scores in candidates
                 ]
                 candidates.sort(key=lambda item: item[1]["final"], reverse=True)

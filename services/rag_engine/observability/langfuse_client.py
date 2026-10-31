@@ -245,7 +245,9 @@ class LocalTracer:
             }
         )
 
-    def trace(self, name: str, tenant_id: str = "default", query: str | None = None) -> _TraceContext:
+    def trace(
+        self, name: str, tenant_id: str = "default", query: str | None = None
+    ) -> _TraceContext:
         return _TraceContext(self, name, tenant_id, query)
 
     def _observation_context(self, as_type: str, name: str, attributes: dict[str, Any]):
@@ -292,13 +294,16 @@ class LocalTracer:
         metric = self._metrics[tenant_id]
         latencies = sorted(metric["latencies"])
         request_traces = [
-            trace for trace in self.traces
+            trace
+            for trace in self.traces
             if trace.get("tenant_id") == tenant_id and trace.get("query") is not None
         ]
         retrieval_latencies = sorted(
             sum(
-                span["duration_ms"] for span in trace["spans"]
-                if span["name"] in {"embed_query", "dense_search", "bm25_search", "fusion", "rerank"}
+                span["duration_ms"]
+                for span in trace["spans"]
+                if span["name"]
+                in {"embed_query", "dense_search", "bm25_search", "fusion", "rerank"}
             )
             for trace in request_traces
             if any(
@@ -416,9 +421,7 @@ def _finish_observation(remote_context, observation, span: Span, exc_type, exc, 
                     "input": span.prompt_tokens,
                     "output": span.completion_tokens,
                 },
-                cost_details=(
-                    {"total": span.cost_usd} if span.cost_usd is not None else None
-                ),
+                cost_details=({"total": span.cost_usd} if span.cost_usd is not None else None),
                 metadata=metadata,
             )
         else:
@@ -492,7 +495,9 @@ class LangfuseTracer(LocalTracer):
         setting_enabled = os.getenv("LANGFUSE_ENABLED", "").lower() == "true"
         public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
         secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-        self.enabled = (setting_enabled if enabled is None else enabled) and bool(public_key and secret_key)
+        self.enabled = (setting_enabled if enabled is None else enabled) and bool(
+            public_key and secret_key
+        )
         self._client = None
         if self.enabled:
             try:
@@ -504,7 +509,10 @@ class LangfuseTracer(LocalTracer):
                     host=os.getenv("LANGFUSE_HOST", "http://localhost:3000"),
                 )
             except Exception as error:  # noqa: BLE001 - remote tracing must never prevent startup
-                logger.warning("Langfuse initialization failed; continuing with local tracing (%s)", type(error).__name__)
+                logger.warning(
+                    "Langfuse initialization failed; continuing with local tracing (%s)",
+                    type(error).__name__,
+                )
                 self.enabled = False
 
     def _observation_context(self, as_type: str, name: str, attributes: dict[str, Any]):

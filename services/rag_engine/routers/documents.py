@@ -53,8 +53,12 @@ async def upload_documents_endpoint(
             while block := await upload.read(min(64 * 1024, limit + 1 - len(data))):
                 data.extend(block)
                 if len(data) > limit:
-                    raise IngestionError(f"{filename} exceeds the {limit / (1024 * 1024):g} MB upload limit")
-            result = await asyncio.to_thread(ingestion_pipeline.ingest_file, filename, bytes(data), tenant_id=tenant_id)
+                    raise IngestionError(
+                        f"{filename} exceeds the {limit / (1024 * 1024):g} MB upload limit"
+                    )
+            result = await asyncio.to_thread(
+                ingestion_pipeline.ingest_file, filename, bytes(data), tenant_id=tenant_id
+            )
             results.append(result.to_dict())
         except IngestionError as error:
             results.append(
@@ -90,8 +94,11 @@ async def upload_documents_endpoint(
         settings = request.app.state.settings
         disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
         qdrant_points = vector_store.count()
-        request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
+        request.app.state.index_consistency = check_consistency(
+            settings, qdrant_points, disk_chunks
+        )
         import services.rag_engine.routers.api as _api
+
         _api._index_consistency = request.app.state.index_consistency
     except Exception as error:  # noqa: BLE001
         logger.warning("Index consistency refresh failed: %s", error)
@@ -111,7 +118,9 @@ async def ingest_document_endpoint(
             text=payload.text,
             title=payload.title or "Uploaded Document",
             source=payload.filename or payload.source or "manual",
-            doc_format=DocumentFormat(payload.format) if payload.format else DocumentFormat.MARKDOWN,
+            doc_format=DocumentFormat(payload.format)
+            if payload.format
+            else DocumentFormat.MARKDOWN,
             tenant_id=tenant_id,
             metadata=payload.metadata,
         )
@@ -126,8 +135,11 @@ async def ingest_document_endpoint(
         settings = request.app.state.settings
         disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
         qdrant_points = vector_store.count()
-        request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
+        request.app.state.index_consistency = check_consistency(
+            settings, qdrant_points, disk_chunks
+        )
         import services.rag_engine.routers.api as _api
+
         _api._index_consistency = request.app.state.index_consistency
     except Exception as error:  # noqa: BLE001
         logger.warning("Index consistency refresh failed: %s", error)
@@ -147,12 +159,19 @@ async def clear_all_documents_endpoint(request: Request, tenant_id: str = Depend
         settings = request.app.state.settings
         disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
         qdrant_points = vector_store.count()
-        request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
+        request.app.state.index_consistency = check_consistency(
+            settings, qdrant_points, disk_chunks
+        )
         import services.rag_engine.routers.api as _api
+
         _api._index_consistency = request.app.state.index_consistency
     except Exception as error:  # noqa: BLE001
         logger.warning("Index consistency refresh failed: %s", error)
-    return {"status": "cleared", "deleted_count": count, "message": f"All {count} documents removed from storage"}
+    return {
+        "status": "cleared",
+        "deleted_count": count,
+        "message": f"All {count} documents removed from storage",
+    }
 
 
 @router.post("/v1/documents/seed-samples")
@@ -178,8 +197,11 @@ async def seed_sample_documents_endpoint(request: Request, tenant_id: str = Depe
         settings = request.app.state.settings
         disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
         qdrant_points = vector_store.count()
-        request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
+        request.app.state.index_consistency = check_consistency(
+            settings, qdrant_points, disk_chunks
+        )
         import services.rag_engine.routers.api as _api
+
         _api._index_consistency = request.app.state.index_consistency
     except Exception as error:  # noqa: BLE001
         logger.warning("Index consistency refresh failed: %s", error)
@@ -215,6 +237,7 @@ async def catalog_alias_endpoint(tenant_id: str = Depends(require_user)):
     # Keep this static alias before the /{doc_id} routes below.
     response = _get_document_list_response(tenant_id)
     from fastapi.responses import JSONResponse
+
     return JSONResponse(content=response, headers={"Deprecation": "true", "Sunset": "2027-01-01"})
 
 
@@ -228,7 +251,9 @@ async def get_document_chunks_endpoint(
     """Returns a page of structural chunks for a document with headings and pages."""
     doc = await asyncio.to_thread(ingestion_pipeline.get_document, doc_id, tenant_id=tenant_id)
     if not doc:
-        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
+        raise HTTPException(
+            status_code=404, detail=f"Document '{doc_id}' not found in knowledge base."
+        )
     chunks = doc.get("chunks", [])
     return {
         "document_id": doc_id,
@@ -245,27 +270,40 @@ async def get_document_details_endpoint(doc_id: str, tenant_id: str = Depends(re
     """Retrieves full document metadata and its constituent chunks."""
     doc = await asyncio.to_thread(ingestion_pipeline.get_document, doc_id, tenant_id=tenant_id)
     if not doc:
-        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
+        raise HTTPException(
+            status_code=404, detail=f"Document '{doc_id}' not found in knowledge base."
+        )
     return doc
 
 
 @router.delete("/v1/documents/{doc_id}")
-async def delete_document_endpoint(doc_id: str, request: Request, tenant_id: str = Depends(require_user)):
+async def delete_document_endpoint(
+    doc_id: str, request: Request, tenant_id: str = Depends(require_user)
+):
     """Deletes a document and evicts its chunks from vector, lexical, and graph stores."""
     doc = await asyncio.to_thread(ingestion_pipeline.get_document, doc_id, tenant_id=tenant_id)
     if not doc:
-        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
+        raise HTTPException(
+            status_code=404, detail=f"Document '{doc_id}' not found in knowledge base."
+        )
     chunk_ids = [chunk["id"] for chunk in doc.get("chunks", [])]
-    deleted = await asyncio.to_thread(ingestion_pipeline.delete_document, doc_id, tenant_id=tenant_id)
+    deleted = await asyncio.to_thread(
+        ingestion_pipeline.delete_document, doc_id, tenant_id=tenant_id
+    )
     if not deleted:
-        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found in knowledge base.")
+        raise HTTPException(
+            status_code=404, detail=f"Document '{doc_id}' not found in knowledge base."
+        )
     retriever.remove_chunks(chunk_ids)
     try:
         settings = request.app.state.settings
         disk_chunks = len(ingestion_pipeline.storage.load_all_chunks())
         qdrant_points = vector_store.count()
-        request.app.state.index_consistency = check_consistency(settings, qdrant_points, disk_chunks)
+        request.app.state.index_consistency = check_consistency(
+            settings, qdrant_points, disk_chunks
+        )
         import services.rag_engine.routers.api as _api
+
         _api._index_consistency = request.app.state.index_consistency
     except Exception as error:  # noqa: BLE001
         logger.warning("Index consistency refresh failed: %s", error)

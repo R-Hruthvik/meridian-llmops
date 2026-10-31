@@ -13,9 +13,7 @@ VerificationMode = Literal["citations", "llm", "off"]
 VerificationStatus = Literal[
     "citations_ok", "citations_failed", "supported", "unsupported", "unchecked"
 ]
-VerificationScope = Literal[
-    "format_and_numeric_consistency", "llm_judgment", "unchecked"
-]
+VerificationScope = Literal["format_and_numeric_consistency", "llm_judgment", "unchecked"]
 
 
 class VerificationSource(BaseModel):
@@ -92,7 +90,9 @@ def _normalized_values(text: str) -> tuple[set[str], list[tuple[str, str]], dict
         number = sign + re.sub(r"[,\s]", "", match.group("number"))
         prefix = (match.group("prefix") or "").upper()
         suffix = (match.group("suffix") or "").upper()
-        currency = prefix if prefix in {"$", "€", "£", "¥", "₹", "USD", "EUR", "GBP", "INR"} else suffix
+        currency = (
+            prefix if prefix in {"$", "€", "£", "¥", "₹", "USD", "EUR", "GBP", "INR"} else suffix
+        )
         percent = bool(match.group("percent"))
         if currency:
             key = f"currency:{currency}:{number}"
@@ -105,7 +105,9 @@ def _normalized_values(text: str) -> tuple[set[str], list[tuple[str, str]], dict
     return set(displays), dates, displays
 
 
-def _date_sequence_is_supported(answer_dates: list[tuple[str, str]], source_dates: list[tuple[str, str]]) -> bool:
+def _date_sequence_is_supported(
+    answer_dates: list[tuple[str, str]], source_dates: list[tuple[str, str]]
+) -> bool:
     source_keys = [key for key, _ in source_dates]
     source_position = 0
     for key, _ in answer_dates:
@@ -116,7 +118,9 @@ def _date_sequence_is_supported(answer_dates: list[tuple[str, str]], source_date
     return True
 
 
-def _verify_citations(answer: str, sources: Sequence[VerificationSource], answer_status: str | None) -> VerificationResult:
+def _verify_citations(
+    answer: str, sources: Sequence[VerificationSource], answer_status: str | None
+) -> VerificationResult:
     valid_sources = {source.index: source.text for source in sources}
     invalid_citations: set[int] = set()
     uncited_claims: list[str] = []
@@ -148,9 +152,7 @@ def _verify_citations(answer: str, sources: Sequence[VerificationSource], answer
                 citation for citation in later_citations if citation in valid_sources
             ]
             sentence_numbers, sentence_dates, sentence_displays = _normalized_values(sentence)
-            cited_text = "\n".join(
-                valid_sources[citation] for citation in valid_later_citations
-            )
+            cited_text = "\n".join(valid_sources[citation] for citation in valid_later_citations)
             source_numbers, source_dates, _ = _normalized_values(cited_text)
             numeric_mismatches.update(
                 sentence_displays[value] for value in sentence_numbers - source_numbers
@@ -160,7 +162,9 @@ def _verify_citations(answer: str, sources: Sequence[VerificationSource], answer
             continue
 
         valid_citations = [citation for citation in citations if citation in valid_sources]
-        invalid_citations.update(citation for citation in citations if citation not in valid_sources)
+        invalid_citations.update(
+            citation for citation in citations if citation not in valid_sources
+        )
         sentence_numbers, sentence_dates, sentence_displays = _normalized_values(sentence)
         cited_text = "\n".join(valid_sources[citation] for citation in valid_citations)
         source_numbers, source_dates, _ = _normalized_values(cited_text)
@@ -170,7 +174,11 @@ def _verify_citations(answer: str, sources: Sequence[VerificationSource], answer
         if not _date_sequence_is_supported(sentence_dates, source_dates):
             numeric_mismatches.update(display for _, display in sentence_dates)
 
-    if not _CITATION_RE.search(answer) and not sentences and answer_status != "insufficient_context":
+    if (
+        not _CITATION_RE.search(answer)
+        and not sentences
+        and answer_status != "insufficient_context"
+    ):
         uncited_claims.append(answer.strip() or "(empty answer)")
 
     failed = bool(invalid_citations or uncited_claims or numeric_mismatches)
@@ -184,7 +192,9 @@ def _verify_citations(answer: str, sources: Sequence[VerificationSource], answer
     )
 
 
-def _judge_prompt(question: str, answer: str, sources: Sequence[VerificationSource]) -> list[dict[str, str]]:
+def _judge_prompt(
+    question: str, answer: str, sources: Sequence[VerificationSource]
+) -> list[dict[str, str]]:
     numbered_sources = "\n".join(f"[{source.index}] {source.text}" for source in sources)
     return [
         {
@@ -282,7 +292,9 @@ async def verify_answer(
 ) -> VerificationResult:
     """Verify citation/numeric formatting or ask an injected async LLM judge."""
     if mode == "off":
-        return VerificationResult(status="unchecked", scope="unchecked", details="Verification is disabled.")
+        return VerificationResult(
+            status="unchecked", scope="unchecked", details="Verification is disabled."
+        )
     if mode == "llm":
         return await _verify_with_judge(question, answer, sources, llm_client, llm_config, model)
     return _verify_citations(answer, sources, answer_status)

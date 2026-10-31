@@ -126,14 +126,18 @@ async def _review_flags(db: AsyncSession, tenant_id: str) -> set[str]:
     try:
         return await review_flagged_chunk_ids(db, tenant_id)
     except Exception as error:  # noqa: BLE001 - retrieval proceeds unpenalized when the review store is down
-        logger.warning("Review-flag lookup failed; retrieving without penalties (%s)", type(error).__name__)
+        logger.warning(
+            "Review-flag lookup failed; retrieving without penalties (%s)", type(error).__name__
+        )
         return set()
 
 
 class _FinalizedQueryResult(tuple):
     """Carrier for :func:`_finalize_query_result` output."""
 
-    def __new__(cls, final_answer: Any, verification: Any, final_state: dict[str, Any] | None = None):
+    def __new__(
+        cls, final_answer: Any, verification: Any, final_state: dict[str, Any] | None = None
+    ):
         obj = super().__new__(cls, (final_answer, verification))
         obj.final_answer = final_answer
         obj.answer = final_answer
@@ -300,12 +304,13 @@ async def query_endpoint(
     llm_served = bool(provider_value and model_value)
 
     chunks_data = [
-        SearchResult.model_validate(chunk)
-        for chunk in final_state.get("retrieved_chunks", [])
+        SearchResult.model_validate(chunk) for chunk in final_state.get("retrieved_chunks", [])
     ]
 
     degraded_reason: str | None = final_state.get("generation_error")
-    flagged_chunk_ids = await _review_flags(db, tenant_id) & {chunk.chunk_id for chunk in chunks_data}
+    flagged_chunk_ids = await _review_flags(db, tenant_id) & {
+        chunk.chunk_id for chunk in chunks_data
+    }
     logger.info("RAG query completed", extra={"request_id": request_id, "trace_id": trace.id})
     return QueryResponse(
         query=req.query,
