@@ -18,8 +18,12 @@ def _collect_files(path: Path, recursive: bool) -> list[Path]:
     if not path.is_dir():
         raise FileNotFoundError(str(path))
     if recursive:
-        return sorted(p for p in path.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES)
-    return sorted(p for p in path.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES)
+        return sorted(
+            p for p in path.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES
+        )
+    return sorted(
+        p for p in path.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES
+    )
 
 
 def ingest_path(client: MeridianClient, path: str, recursive: bool = False) -> dict[str, Any]:
@@ -48,11 +52,14 @@ def ingest_path(client: MeridianClient, path: str, recursive: bool = False) -> d
                         continue
                 text = "\n".join((page.extract_text() or "") for page in reader.pages)
                 if not text.strip():
-                    skipped.append({"file": str(f), "reason": "no extractable text (scanned/empty)"})
+                    skipped.append(
+                        {"file": str(f), "reason": "no extractable text (scanned/empty)"}
+                    )
                     continue
                 fmt = "md"
             elif suffix == ".docx":
                 from docx import Document as DocxDocument
+
                 doc = DocxDocument(str(f))
                 parts = [p.text for p in doc.paragraphs]
                 for table in getattr(doc, "tables", []):

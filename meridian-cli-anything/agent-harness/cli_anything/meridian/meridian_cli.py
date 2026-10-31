@@ -35,9 +35,13 @@ def get_session() -> session_core.Session:
     return _session
 
 
-def _emit(ok: bool, command: str, data: Any = None, message: str = "", error: str | None = None) -> None:
+def _emit(
+    ok: bool, command: str, data: Any = None, message: str = "", error: str | None = None
+) -> None:
     if _json_output:
-        click.echo(json.dumps({"ok": ok, "command": command, "data": data, "error": error}, default=str))
+        click.echo(
+            json.dumps({"ok": ok, "command": command, "data": data, "error": error}, default=str)
+        )
         return
     if ok:
         if message:
@@ -75,17 +79,38 @@ def handle_error(func):
             _emit(False, func.__name__, error=str(exc))
             if not _repl_mode:
                 sys.exit(1)
+
     return wrapper
 
 
 @click.group(invoke_without_command=True)
 @click.option("--json", "use_json", is_flag=True, help="Emit machine-readable JSON output.")
-@click.option("--base-url", "base_url", default=None, envvar="MERIDIAN_BASE_URL", help="Backend base URL.")
+@click.option(
+    "--base-url", "base_url", default=None, envvar="MERIDIAN_BASE_URL", help="Backend base URL."
+)
 @click.option("--api-key", "api_key", default=None, envvar="MERIDIAN_API_KEY", help="User API key.")
-@click.option("--admin-key", "--admin-api-key", "admin_key", default=None, envvar="MERIDIAN_ADMIN_API_KEY", help="Admin API key.")
-@click.option("--timeout", "timeout", default=60.0, envvar="MERIDIAN_TIMEOUT", type=float, help="Request timeout seconds.")
-@click.option("--project", "project_path", type=str, default=None, help="Path to a session JSON file.")
-@click.option("--dry-run", "dry_run", is_flag=True, default=False, help="Run without saving session changes.")
+@click.option(
+    "--admin-key",
+    "--admin-api-key",
+    "admin_key",
+    default=None,
+    envvar="MERIDIAN_ADMIN_API_KEY",
+    help="Admin API key.",
+)
+@click.option(
+    "--timeout",
+    "timeout",
+    default=60.0,
+    envvar="MERIDIAN_TIMEOUT",
+    type=float,
+    help="Request timeout seconds.",
+)
+@click.option(
+    "--project", "project_path", type=str, default=None, help="Path to a session JSON file."
+)
+@click.option(
+    "--dry-run", "dry_run", is_flag=True, default=False, help="Run without saving session changes."
+)
 @click.pass_context
 def cli(ctx, use_json, base_url, api_key, admin_key, timeout, project_path, dry_run):
     global _json_output, _base_url, _api_key, _admin_key, _timeout
@@ -114,7 +139,9 @@ def cli(ctx, use_json, base_url, api_key, admin_key, timeout, project_path, dry_
 
 
 @cli.result_callback()
-def auto_save_on_exit(result, use_json, base_url, api_key, admin_key, timeout, project_path, dry_run, **kwargs):
+def auto_save_on_exit(
+    result, use_json, base_url, api_key, admin_key, timeout, project_path, dry_run, **kwargs
+):
     if _repl_mode:
         return
     if dry_run:
@@ -147,7 +174,12 @@ def retrieve(query, top_k, debug):
     client = _make_client()
     data = retrieve_core.retrieve(client, query, top_k=top_k, debug=debug)
     chunks = data.get("chunks", [])
-    _emit(True, "retrieve", data=data, message=f"Retrieved {len(chunks)} chunks (top_k={data.get('top_k', top_k)})")
+    _emit(
+        True,
+        "retrieve",
+        data=data,
+        message=f"Retrieved {len(chunks)} chunks (top_k={data.get('top_k', top_k)})",
+    )
 
 
 # query
@@ -272,7 +304,12 @@ def models_list(provider, base_url, api_key):
     if not (data.get("success") or data.get("status") == "success"):
         raise click.ClickException(data.get("message") or "Model fetch failed")
     models = data.get("models", [])
-    _emit(True, "models.list", data=data, message=data.get("message") or f"Fetched {len(models)} models for {provider}")
+    _emit(
+        True,
+        "models.list",
+        data=data,
+        message=data.get("message") or f"Fetched {len(models)} models for {provider}",
+    )
 
 
 # smoke
@@ -301,11 +338,15 @@ def session_group():
 @handle_error
 def session_new(name, output):
     sess = get_session()
-    proj = session_core.create_session_state(name=name, base_url=_base_url, api_key=_api_key, admin_key=_admin_key, timeout=_timeout)
+    proj = session_core.create_session_state(
+        name=name, base_url=_base_url, api_key=_api_key, admin_key=_admin_key, timeout=_timeout
+    )
     sess.set_project(proj, output)
     if output:
         sess.save_session(output)
-    _emit(True, "session.new", data={"name": name, "path": output}, message=f"Created session: {name}")
+    _emit(
+        True, "session.new", data={"name": name, "path": output}, message=f"Created session: {name}"
+    )
 
 
 @session_group.command("open")

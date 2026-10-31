@@ -31,7 +31,9 @@ class TestCLISubprocess:
         e = dict(os.environ)
         if env:
             e.update(env)
-        return subprocess.run(self.CLI_BASE + args, capture_output=True, text=True, check=check, env=e)
+        return subprocess.run(
+            self.CLI_BASE + args, capture_output=True, text=True, check=check, env=e
+        )
 
     def test_help(self):
         result = self._run(["--help"])

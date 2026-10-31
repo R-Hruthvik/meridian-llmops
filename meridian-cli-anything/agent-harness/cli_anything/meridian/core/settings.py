@@ -22,7 +22,10 @@ def set_provider(
     base_url: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
-    return cast(dict[str, Any], client.settings_set_provider(provider, model, base_url=base_url, api_key=api_key))
+    return cast(
+        dict[str, Any],
+        client.settings_set_provider(provider, model, base_url=base_url, api_key=api_key),
+    )
 
 
 def list_models(
