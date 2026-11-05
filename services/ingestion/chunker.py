@@ -331,24 +331,60 @@ class TokenAwareChunker:
                 result.append(" ".join(window))
             return result
 
+        def _code_sections(units: list[_Unit]) -> list[list[_Unit]]:
+            """Group code lines into sections separated by blank lines.
+
+            Blank lines typically separate functions/classes, so keeping each
+            section whole avoids cutting mid-function.
+            """
+            sections: list[list[_Unit]] = []
+            current_section: list[_Unit] = []
+            for unit in units:
+                if not unit.text.strip():
+                    if current_section:
+                        sections.append(current_section)
+                        current_section = []
+                    continue
+                current_section.append(unit)
+            if current_section:
+                sections.append(current_section)
+            return sections or [units]
+
         current: list[str] = []
         current_tokens = 0
-        for unit in units:
-            if unit.tokens > self.max_tokens:
-                if current:
-                    pieces.append(("\n".join(current), current_tokens))
-                    current, current_tokens = [], 0
-                for piece_text in _recursive_split_text(unit.text, piece_budget):
-                    if piece_text.strip():
-                        pieces.append((piece_text, count_tokens(piece_text)))
-                continue
-            if current_tokens + unit.tokens > piece_budget and current:
+
+        def flush_current() -> None:
+            nonlocal current, current_tokens
+            if current:
                 pieces.append(("\n".join(current), current_tokens))
                 current, current_tokens = [], 0
-            current.append(unit.text)
-            current_tokens += unit.tokens
-        if current:
-            pieces.append(("\n".join(current), current_tokens))
+
+        sections = _code_sections(units) if block.kind == "code" else [units]
+        for section in sections:
+            section_tokens = sum(u.tokens for u in section)
+            if section_tokens > piece_budget:
+                # Section itself oversized: flush pending, then split section.
+                flush_current()
+                for unit in section:
+                    if unit.tokens > self.max_tokens:
+                        if current:
+                            flush_current()
+                        for piece_text in _recursive_split_text(unit.text, piece_budget):
+                            if piece_text.strip():
+                                pieces.append((piece_text, count_tokens(piece_text)))
+                    else:
+                        if current_tokens + unit.tokens > piece_budget and current:
+                            flush_current()
+                        current.append(unit.text)
+                        current_tokens += unit.tokens
+                flush_current()
+            else:
+                if current_tokens + section_tokens > piece_budget and current:
+                    flush_current()
+                for unit in section:
+                    current.append(unit.text)
+                    current_tokens += unit.tokens
+        flush_current()
         return pieces
 
     def _merge_tiny(self, chunks: list[Chunk]) -> list[Chunk]:
