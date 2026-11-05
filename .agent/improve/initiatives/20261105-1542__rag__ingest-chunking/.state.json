@@ -1,0 +1,25 @@
+{
+  "locks": {
+    "3-plan.v1.md": "de2fbd840605146830d066b2164357679392d68769304f8529871fe456a70377"
+  },
+  "gate": {
+    "name": "B",
+    "presented_at": "2026-11-05T15:55:27.938435",
+    "approved_at": "2026-11-05T16:05:47.843168"
+  },
+  "last_user_msg": {
+    "at": "2026-11-05T16:06:45.238464",
+    "text": "use subagents"
+  },
+  "baseline_dirty": [
+    " D MERIDIAN_FIX_AND_IMPLEMENTATION_PLAN.md",
+    " M services/rag_engine/routers/query.py",
+    " M web/src/services/api.ts",
+    "?? .agent/",
+    "?? evals/reports/"
+  ],
+  "override": null,
+  "needs_regate": true,
+  "phase": "done",
+  "stop_block_count": 0
+}

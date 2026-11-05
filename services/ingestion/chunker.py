@@ -10,19 +10,24 @@ import re
 from dataclasses import dataclass
 
 from packages.core.models import Chunk, Document, DocumentFormat
-from services.ingestion.parsers.base import NORMALIZER_VERSION, PARSER_VERSION, ParsedDocument
-from services.ingestion.parsers.md import parse_markdown
+from services.ingestion.parsers.base import (  # noqa: F401
+    NORMALIZER_VERSION,
+    PARSER_VERSION,
+    ParsedDocument,
+)
 
 # Per-format chunking parameters (target_tokens, max_tokens, overlap_tokens)
 CHUNKER_VERSION = "token-aware-v2"
-PARSER_VERSION = PARSER_VERSION
-NORMALIZER_VERSION = NORMALIZER_VERSION
 FORMAT_CHUNK_PARAMS: dict[str, tuple[int, int, int]] = {
     "md": (350, 450, 50),
     "txt": (300, 400, 40),
     "html": (300, 400, 40),
     "pdf": (400, 500, 50),
     "docx": (350, 450, 50),
+    "csv": (400, 500, 40),
+    "json": (300, 400, 40),
+    "code": (300, 400, 30),
+    "yaml": (300, 400, 40),
     "default": (350, 450, 50),
 }
 CONTEXT_HEADER_MAX_TOKENS = 50
@@ -103,7 +108,14 @@ class TokenAwareChunker:
 
     def chunk(self, doc: Document) -> list[Chunk]:
         """Legacy entry point: parse the document text, then chunk it."""
-        parsed = parse_markdown(doc.text, title=doc.title)
+        from services.ingestion.parsers import parse_text
+
+        doc_format = getattr(doc.format, "value", doc.format)
+        try:
+            parsed_format = DocumentFormat(doc_format)
+        except (ValueError, KeyError):
+            parsed_format = DocumentFormat.MARKDOWN
+        parsed = parse_text(doc.text, parsed_format, title=doc.title)
         return self.chunk_document(
             parsed,
             doc_id=doc.id,
@@ -269,34 +281,110 @@ class TokenAwareChunker:
                 self.target_tokens, self.max_tokens - min(self.overlap_tokens, self.max_tokens - 1)
             ),
         )
+        # Recursive separator fallback for oversized single units: try clause
+        # boundaries before degrading to a hard word split.
+        separators = ["\n\n", "\n", ". ", "; ", ", ", " "]
+
+        def _recursive_split_text(text: str, budget: int) -> list[str]:
+            text = text.strip()
+            if not text or count_tokens(text) <= budget:
+                return [text] if text else []
+            for sep in separators:
+                if sep not in text:
+                    continue
+                parts = [p for p in text.split(sep) if p.strip()]
+                if len(parts) < 2:
+                    continue
+                # Greedily group parts up to budget.
+                groups: list[str] = []
+                current: list[str] = []
+                current_tokens = 0
+                for part in parts:
+                    cost = count_tokens(part)
+                    if current and current_tokens + cost > budget:
+                        groups.append(sep.join(current).strip())
+                        current = [part]
+                        current_tokens = cost
+                    else:
+                        current.append(part)
+                        current_tokens += cost
+                if current:
+                    groups.append(sep.join(current).strip())
+                if len(groups) > 1:
+                    out: list[str] = []
+                    for g in groups:
+                        out.extend(_recursive_split_text(g, budget))
+                    return out
+            # Last resort: hard word split.
+            words = text.split()
+            result: list[str] = []
+            window: list[str] = []
+            window_tokens = 0
+            for word in words:
+                cost = count_tokens(word)
+                if window and window_tokens + cost > budget:
+                    result.append(" ".join(window))
+                    window, window_tokens = [], 0
+                window.append(word)
+                window_tokens += cost
+            if window:
+                result.append(" ".join(window))
+            return result
+
+        def _code_sections(units: list[_Unit]) -> list[list[_Unit]]:
+            """Group code lines into sections separated by blank lines.
+
+            Blank lines typically separate functions/classes, so keeping each
+            section whole avoids cutting mid-function.
+            """
+            sections: list[list[_Unit]] = []
+            current_section: list[_Unit] = []
+            for unit in units:
+                if not unit.text.strip():
+                    if current_section:
+                        sections.append(current_section)
+                        current_section = []
+                    continue
+                current_section.append(unit)
+            if current_section:
+                sections.append(current_section)
+            return sections or [units]
+
         current: list[str] = []
         current_tokens = 0
-        for unit in units:
-            if unit.tokens > self.max_tokens:
-                # A single unit (very long sentence/row/line) is hard-split by words.
-                if current:
-                    pieces.append(("\n".join(current), current_tokens))
-                    current, current_tokens = [], 0
-                words = unit.text.split()
-                window: list[str] = []
-                window_tokens = 0
-                for word in words:
-                    cost = count_tokens(word)
-                    if window and window_tokens + cost > piece_budget:
-                        pieces.append((" ".join(window), window_tokens))
-                        window, window_tokens = [], 0
-                    window.append(word)
-                    window_tokens += cost
-                if window:
-                    pieces.append((" ".join(window), window_tokens))
-                continue
-            if current_tokens + unit.tokens > piece_budget and current:
+
+        def flush_current() -> None:
+            nonlocal current, current_tokens
+            if current:
                 pieces.append(("\n".join(current), current_tokens))
                 current, current_tokens = [], 0
-            current.append(unit.text)
-            current_tokens += unit.tokens
-        if current:
-            pieces.append(("\n".join(current), current_tokens))
+
+        sections = _code_sections(units) if block.kind == "code" else [units]
+        for section in sections:
+            section_tokens = sum(u.tokens for u in section)
+            if section_tokens > piece_budget:
+                # Section itself oversized: flush pending, then split section.
+                flush_current()
+                for unit in section:
+                    if unit.tokens > self.max_tokens:
+                        if current:
+                            flush_current()
+                        for piece_text in _recursive_split_text(unit.text, piece_budget):
+                            if piece_text.strip():
+                                pieces.append((piece_text, count_tokens(piece_text)))
+                    else:
+                        if current_tokens + unit.tokens > piece_budget and current:
+                            flush_current()
+                        current.append(unit.text)
+                        current_tokens += unit.tokens
+                flush_current()
+            else:
+                if current_tokens + section_tokens > piece_budget and current:
+                    flush_current()
+                for unit in section:
+                    current.append(unit.text)
+                    current_tokens += unit.tokens
+        flush_current()
         return pieces
 
     def _merge_tiny(self, chunks: list[Chunk]) -> list[Chunk]:
