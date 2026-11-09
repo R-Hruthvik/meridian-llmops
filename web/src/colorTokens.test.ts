@@ -115,13 +115,26 @@ const VARIANTS = [
   'hover:text-white',
   'focus-visible:ring-accent',
 ]
+// Phase 1 chat surfaces: DoubleBezelCard, IslandButton, CommandDock.
+const CHAT_SURFACE = [
+  'bg-black/10',
+  'bg-emerald-400/10',
+  'bg-zinc-900/90',
+  'border-emerald-400/50',
+  'border-sky-400/50',
+  'border-white/10',
+  'dark:bg-white/10',
+  'dark:bg-zinc-900/90',
+  'dark:bg-zinc-950/40',
+  'hover:bg-white/5',
+]
 
 describe('instrument colour tokens: opacity modifiers emit real CSS', () => {
   it('finds the opacity-modified utilities in the source tree', () => {
     const found = opacityClasses()
     // Guards the sweep itself: if this regex ever stops matching, the rest of
     // the suite would pass vacuously.
-    expect(found).toEqual([...REPORTED, ...SWEPT].sort())
+    expect(found).toEqual([...REPORTED, ...SWEPT, ...CHAT_SURFACE].sort())
   })
 
   it.each([...REPORTED, ...SWEPT, ...BASE_OF_SWEPT])(
