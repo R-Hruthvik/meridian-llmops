@@ -20,6 +20,8 @@ export interface CommandDockProps {
   onGuardrailsChange: (g: boolean) => void;
   disabled?: boolean;
   className?: string;
+  followUpContext?: { turnId: string; query: string; sourceCount: number } | null;
+  onClearFollowUpContext?: () => void;
 }
 
 export function CommandDock({
@@ -34,6 +36,8 @@ export function CommandDock({
   onGuardrailsChange,
   disabled = false,
   className = '',
+  followUpContext,
+  onClearFollowUpContext,
 }: CommandDockProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isFocused, setIsFocused] = useState(false);
@@ -83,6 +87,27 @@ export function CommandDock({
           disabled={disabled}
           className="w-full resize-none bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none disabled:opacity-50"
         />
+
+        {followUpContext && onClearFollowUpContext && (
+          <div
+            data-testid="followup-context-chip"
+            className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface-sunken px-3 py-1 text-label text-ink"
+          >
+            <span className="font-mono text-micro text-muted">
+              Context: {followUpContext.sourceCount} sources
+            </span>
+            <button
+              type="button"
+              onClick={onClearFollowUpContext}
+              aria-label="Clear follow-up context"
+              className="inline-flex items-center justify-center size-4 rounded-full text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1" role="group" aria-label="Top-K results">

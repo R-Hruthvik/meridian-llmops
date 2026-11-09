@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { AlertTriangle, ArrowUpRight, Clock, FileText } from 'lucide-react';
 import { api } from '../services/api';
 import { useWorkbench } from '../WorkbenchContext';
@@ -7,6 +7,7 @@ import { ChatStreamView } from './chat/ChatStreamView';
 import { CitationInspectorDrawer } from './chat/CitationInspectorDrawer';
 import { CommandDock } from './chat/CommandDock';
 import { useRagChat } from './chat/useRagChat';
+import type { ChatTurn } from './chat/useRagChat';
 
 interface RagWorkspaceProps {
   tenantId: string;
@@ -27,6 +28,7 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
   const [recentDocuments, setRecentDocuments] = useState<DocumentSummary[]>([]);
   const [recentDocumentsLoaded, setRecentDocumentsLoaded] = useState(false);
   const [recentDocumentsUnavailable, setRecentDocumentsUnavailable] = useState(false);
+  const [followUpContext, setFollowUpContext] = useState<{ turnId: string; query: string; sourceCount: number } | null>(null);
   const workbench = useWorkbench();
   const chat = useRagChat({ tenantId });
 
@@ -51,12 +53,29 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     return () => { active = false; };
   }, [tenantId]);
 
-  const submitQuery = (queryText: string) => {
+  const submitQuery = useCallback((queryText: string) => {
     const text = queryText.trim();
     if (!text) return;
     setQuery('');
+    setFollowUpContext(null);
     void chat.submitQuery(text, { topK, maxCycles: 3, enforceGuardrails });
-  };
+  }, [chat, topK, enforceGuardrails]);
+
+  const handleFollowUp = useCallback((turn: ChatTurn) => {
+    const context = `Context from previous turn (${turn.sources.length} sources): ${turn.query}`;
+    setFollowUpContext({ turnId: turn.id, query: turn.query, sourceCount: turn.sources.length });
+    setQuery(context);
+  }, []);
+
+  const handleRerun = useCallback((turn: ChatTurn) => {
+    setFollowUpContext({ turnId: turn.id, query: turn.query, sourceCount: turn.sources.length });
+    setQuery(turn.query);
+  }, []);
+
+  const handleClearFollowUpContext = useCallback(() => {
+    setFollowUpContext(null);
+    setQuery('');
+  }, []);
 
   const openInspector = (chunk: SearchResult) => {
     setActiveChunk(chunk);
@@ -166,6 +185,8 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
           isLoading={chat.isLoading}
           onSelectChunk={openInspector}
           onRetryQuery={submitQuery}
+          onFollowUp={handleFollowUp}
+          onRerun={handleRerun}
         />
       </section>
 
@@ -180,6 +201,8 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
           onTopKChange={setTopK}
           guardrails={enforceGuardrails}
           onGuardrailsChange={setEnforceGuardrails}
+          followUpContext={followUpContext}
+          onClearFollowUpContext={handleClearFollowUpContext}
         />
       </div>
 

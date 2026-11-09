@@ -144,7 +144,6 @@ describe('SettingsModal - Security: No API keys in localStorage', () => {
 
   it('does not write provider API keys to localStorage on save', async () => {
     const user = userEvent.setup();
-    const onSave = vi.fn();
 
     render(
       <SettingsModal

@@ -1025,3 +1025,81 @@ describe('RagWorkspace instrument readouts', () => {
     expect(readout).toBeInTheDocument();
   });
 });
+
+describe('RagWorkspace follow-up and re-run actions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (api.query as ReturnType<typeof vi.fn>).mockReset();
+    (api.getDocuments as ReturnType<typeof vi.fn>).mockReset();
+    (api.getDocuments as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503, body: null }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('shows follow-up context chip and populates dock when Follow-up is clicked', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(makeResponse());
+
+    renderCanvas();
+    await ask(user, 'original query');
+
+    await user.click(screen.getByRole('button', { name: /follow-up/i }));
+
+    const chip = screen.getByTestId('followup-context-chip');
+    expect(chip).toBeInTheDocument();
+    expect(chip).toHaveTextContent(/Context: 1 sources/);
+    expect(dockInput()).toHaveValue('Context from previous turn (1 sources): original query');
+  });
+
+  it('clears follow-up context chip when close button is clicked', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(makeResponse());
+
+    renderCanvas();
+    await ask(user, 'original query');
+    await user.click(screen.getByRole('button', { name: /follow-up/i }));
+
+    expect(screen.getByTestId('followup-context-chip')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /clear follow-up context/i }));
+
+    expect(screen.queryByTestId('followup-context-chip')).not.toBeInTheDocument();
+    expect(dockInput()).toHaveValue('');
+  });
+
+  it('populates dock with original query when Re-run is clicked', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(makeResponse());
+
+    renderCanvas();
+    await ask(user, 'original query');
+
+    await user.click(screen.getByRole('button', { name: /re-run/i }));
+
+    expect(dockInput()).toHaveValue('original query');
+  });
+
+  it('submits follow-up query with context when submitted after Follow-up', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(makeResponse())
+      .mockResolvedValueOnce(makeResponse({ answer: 'Follow-up answer' }));
+
+    renderCanvas();
+    await ask(user, 'original query');
+    await user.click(screen.getByRole('button', { name: /follow-up/i }));
+    await ask(user, 'follow-up question');
+
+    await waitFor(() =>
+      expect(api.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: expect.stringContaining('Context from previous turn'),
+        }),
+      ),
+    );
+  });
+});

@@ -237,4 +237,148 @@ describe('ChatStreamView', () => {
 
     expect(onRetryQuery).toHaveBeenCalledWith('What does Meridian use for retrieval?');
   });
+
+  describe('Follow-up and Re-run actions', () => {
+    it('renders Follow-up and Re-run buttons on a complete turn with an answer', () => {
+      const onFollowUp = vi.fn();
+      const onRerun = vi.fn();
+      render(
+        <ChatStreamView
+          turns={[makeTurn()]}
+          onFollowUp={onFollowUp}
+          onRerun={onRerun}
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: /follow-up/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /re-run/i })).toBeInTheDocument();
+    });
+
+    it('calls onFollowUp with the turn when Follow-up button is clicked', () => {
+      const onFollowUp = vi.fn();
+      const turn = makeTurn();
+      render(
+        <ChatStreamView
+          turns={[turn]}
+          onFollowUp={onFollowUp}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /follow-up/i }));
+      expect(onFollowUp).toHaveBeenCalledWith(turn);
+    });
+
+    it('calls onRerun with the turn when Re-run button is clicked', () => {
+      const onRerun = vi.fn();
+      const turn = makeTurn();
+      render(
+        <ChatStreamView
+          turns={[turn]}
+          onRerun={onRerun}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /re-run/i }));
+      expect(onRerun).toHaveBeenCalledWith(turn);
+    });
+
+    it('does not render Follow-up and Re-run buttons when turn has no answer', () => {
+      const onFollowUp = vi.fn();
+      const onRerun = vi.fn();
+      render(
+        <ChatStreamView
+          turns={[makeTurn({ answer: '', status: 'complete' })]}
+          onFollowUp={onFollowUp}
+          onRerun={onRerun}
+        />,
+      );
+
+      expect(screen.queryByRole('button', { name: /follow-up/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /re-run/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Scroll intent detachment and Resume Live Stream pill', () => {
+    it('shows Resume Live Stream pill when user scrolls up during streaming', () => {
+      const turn = makeTurn({
+        status: 'generating',
+        activeStage: { name: 'generating', status: 'started' },
+        answer: 'Streaming answer',
+      });
+      const { container: scrollContainer } = render(
+        <ChatStreamView
+          turns={[turn]}
+          isLoading
+        />,
+      );
+
+      const chatContainer = scrollContainer.querySelector('[data-testid="chat-stream-view"]') as HTMLDivElement;
+      Object.defineProperty(chatContainer, 'scrollTop', { value: 0, writable: true });
+      Object.defineProperty(chatContainer, 'scrollHeight', { value: 1000, writable: true });
+      Object.defineProperty(chatContainer, 'clientHeight', { value: 500, writable: true });
+      fireEvent.scroll(chatContainer);
+
+      expect(screen.getByTestId('resume-stream-pill')).toBeInTheDocument();
+      expect(screen.getByText('Resume Live Stream')).toBeInTheDocument();
+    });
+
+    it('clicking Resume Live Stream pill scrolls to bottom and hides pill', () => {
+      const turn = makeTurn({
+        status: 'generating',
+        activeStage: { name: 'generating', status: 'started' },
+        answer: 'Streaming answer',
+      });
+      const { container: scrollContainer } = render(
+        <ChatStreamView
+          turns={[turn]}
+          isLoading
+        />,
+      );
+
+      const chatContainer = scrollContainer.querySelector('[data-testid="chat-stream-view"]') as HTMLDivElement;
+      Object.defineProperty(chatContainer, 'scrollTop', { value: 0, writable: true });
+      Object.defineProperty(chatContainer, 'scrollHeight', { value: 1000, writable: true });
+      Object.defineProperty(chatContainer, 'clientHeight', { value: 500, writable: true });
+      fireEvent.scroll(chatContainer);
+      expect(screen.getByTestId('resume-stream-pill')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('resume-stream-pill'));
+      expect(screen.queryByTestId('resume-stream-pill')).not.toBeInTheDocument();
+      expect(chatContainer.scrollTop).toBe(chatContainer.scrollHeight);
+    });
+
+    it('does not show Resume Live Stream pill when not streaming', () => {
+      const { container: scrollContainer } = render(<ChatStreamView turns={[makeTurn()]} />);
+
+      const chatContainer = scrollContainer.querySelector('[data-testid="chat-stream-view"]') as HTMLDivElement;
+      Object.defineProperty(chatContainer, 'scrollTop', { value: 0, writable: true });
+      Object.defineProperty(chatContainer, 'scrollHeight', { value: 1000, writable: true });
+      Object.defineProperty(chatContainer, 'clientHeight', { value: 500, writable: true });
+      fireEvent.scroll(chatContainer);
+
+      expect(screen.queryByTestId('resume-stream-pill')).not.toBeInTheDocument();
+    });
+
+    it('does not show Resume Live Stream pill when at bottom during streaming', () => {
+      const turn = makeTurn({
+        status: 'generating',
+        activeStage: { name: 'generating', status: 'started' },
+        answer: 'Streaming answer',
+      });
+      const { container: scrollContainer } = render(
+        <ChatStreamView
+          turns={[turn]}
+          isLoading
+        />,
+      );
+
+      const chatContainer = scrollContainer.querySelector('[data-testid="chat-stream-view"]') as HTMLDivElement;
+      Object.defineProperty(chatContainer, 'scrollTop', { value: 500, writable: true });
+      Object.defineProperty(chatContainer, 'scrollHeight', { value: 1000, writable: true });
+      Object.defineProperty(chatContainer, 'clientHeight', { value: 500, writable: true });
+      fireEvent.scroll(chatContainer);
+
+      expect(screen.queryByTestId('resume-stream-pill')).not.toBeInTheDocument();
+    });
+  });
 });

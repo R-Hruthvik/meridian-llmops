@@ -1,5 +1,5 @@
-import React, { Suspense, useEffect, useRef, useState } from 'react';
-import { Check, Copy, FileText, RefreshCw } from 'lucide-react';
+import React, { Suspense, useEffect, useRef, useState, useCallback } from 'react';
+import { Check, Copy, FileText, RefreshCw, ArrowLeft, RotateCcw } from 'lucide-react';
 
 import { StatusChip, type StatusChipVariant } from '../StatusChip';
 import type { SearchResult } from '../../types/api';
@@ -142,9 +142,18 @@ const EvidenceRecoverySurface: React.FC<{
   </div>
 );
 
-const TurnFooter: React.FC<{ turn: ChatTurn; onSelectChunk?: (chunk: SearchResult) => void }> = ({
+interface TurnFooterProps {
+  turn: ChatTurn;
+  onSelectChunk?: (chunk: SearchResult) => void;
+  onFollowUp?: (turn: ChatTurn) => void;
+  onRerun?: (turn: ChatTurn) => void;
+}
+
+const TurnFooter: React.FC<TurnFooterProps> = ({
   turn,
   onSelectChunk,
+  onFollowUp,
+  onRerun,
 }) => {
   const verdict = verdictFor(turn);
   const latency = formatLatency(turn.execution_time_ms);
@@ -180,8 +189,30 @@ const TurnFooter: React.FC<{ turn: ChatTurn; onSelectChunk?: (chunk: SearchResul
       )}
 
       {turn.answer.trim() ? (
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-2">
           <CopyAnswerButton text={turn.answer} />
+          {onFollowUp && (
+            <button
+              type="button"
+              onClick={() => onFollowUp?.(turn)}
+              aria-label="Ask follow-up with this context"
+              className="inline-flex items-center gap-1.5 rounded-sm border border-hairline px-2.5 py-1 text-label text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <ArrowLeft className="size-3.5 text-muted" aria-hidden="true" />
+              <span>Follow-up</span>
+            </button>
+          )}
+          {onRerun && (
+            <button
+              type="button"
+              onClick={() => onRerun?.(turn)}
+              aria-label="Re-run with parameter tuning"
+              className="inline-flex items-center gap-1.5 rounded-sm border border-hairline px-2.5 py-1 text-label text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <RotateCcw className="size-3.5 text-muted" aria-hidden="true" />
+              <span>Re-run</span>
+            </button>
+          )}
         </span>
       ) : null}
     </div>
@@ -193,13 +224,25 @@ const TurnFooter: React.FC<{ turn: ChatTurn; onSelectChunk?: (chunk: SearchResul
  * bezel; evidence never disappears on a refusal, so the recovered chunks stay
  * inspectable even when Meridian could not ground an answer.
  */
+export interface ChatStreamViewProps {
+  turns: ChatTurn[];
+  isLoading?: boolean;
+  onSelectChunk?: (chunk: SearchResult) => void;
+  onRetryQuery?: (query: string) => void;
+  onFollowUp?: (turn: ChatTurn) => void;
+  onRerun?: (turn: ChatTurn) => void;
+}
+
 export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
   turns,
   isLoading = false,
   onSelectChunk,
   onRetryQuery,
+  onFollowUp,
+  onRerun,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
 
   const latestTurn = turns[turns.length - 1];
   const announcedStage =
@@ -210,10 +253,33 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
       ? latestTurn.activeStage?.name ?? latestTurn.status
       : null;
 
+  const handleScroll = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const { scrollTop, scrollHeight, clientHeight } = node;
+    const isAtBottom = scrollTop + clientHeight >= scrollHeight - 8;
+    if (!isAtBottom && isLoading) {
+      setIsUserScrolledUp(true);
+    } else if (isAtBottom) {
+      setIsUserScrolledUp(false);
+    }
+  }, [isLoading]);
+
   useEffect(() => {
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [turns]);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    node.addEventListener('scroll', handleScroll, { passive: true });
+    node.addEventListener('wheel', handleScroll, { passive: true });
+    return () => {
+      node.removeEventListener('scroll', handleScroll);
+      node.removeEventListener('wheel', handleScroll);
+    };
+  }, [handleScroll]);
 
   return (
     <div
@@ -309,7 +375,12 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
                     ) : null}
 
                     {turn.status === 'complete' ? (
-                      <TurnFooter turn={turn} onSelectChunk={onSelectChunk} />
+                      <TurnFooter
+                        turn={turn}
+                        onSelectChunk={onSelectChunk}
+                        onFollowUp={onFollowUp}
+                        onRerun={onRerun}
+                      />
                     ) : null}
                   </div>
                 </div>
@@ -317,6 +388,25 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
             );
           })}
         </ol>
+      )}
+
+      {isLoading && isUserScrolledUp && (
+        <button
+          type="button"
+          onClick={() => {
+            const node = scrollRef.current;
+            if (node) {
+              node.scrollTop = node.scrollHeight;
+              setIsUserScrolledUp(false);
+            }
+          }}
+          data-testid="resume-stream-pill"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-4 py-2 text-label font-semibold text-ink shadow-lg transition-opacity duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          aria-label="Resume live stream"
+        >
+          <span aria-hidden="true">↓</span>
+          <span>Resume Live Stream</span>
+        </button>
       )}
 
       <div
