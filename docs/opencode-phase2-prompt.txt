@@ -1,0 +1,194 @@
+You are executing Phase 2 of the Meridian Conversational RAG Chat Interface redesign.
+Do NOT explore or search the codebase.
+Work strictly within the current directory (.worktrees/chat-interface/web).
+
+Your task is to implement three cohesive, production-grade components and their full unit tests:
+1. `src/components/chat/useRagChat.ts` and `src/components/chat/useRagChat.test.ts`
+2. `src/components/chat/CitationInspectorDrawer.tsx` and `src/components/chat/CitationInspectorDrawer.test.tsx`
+3. `src/components/chat/ChatStreamView.tsx` and `src/components/chat/ChatStreamView.test.tsx`
+
+IMPORTANT ENVIRONMENT RULES:
+- Always `import React from 'react';` in any JSX or TSX file for Vitest / React 19 compatibility.
+- Use `lucide-react` for icons.
+- Import `SearchResult`, `VerificationSummary`, `QueryRequest`, `QueryResponse` from `../../types/api` or `../types/api`.
+- Follow strict single-edge hairline borders (`border-hairline`, `border-b border-hairline`), depth without heavy drop-shadows, and accessible focus styles.
+- If you use Tailwind color tokens that trigger snapshot checks in `colorTokens.test.ts`, update `colorTokens.test.ts` to include them.
+
+---------------------------------------------------------
+SPECIFICATION 1: `src/components/chat/useRagChat.ts` & `src/components/chat/useRagChat.test.ts`
+---------------------------------------------------------
+Export interface `ChatTurn`:
+```typescript
+import type { SearchResult, VerificationSummary } from '../../types/api';
+
+export interface ChatTurn {
+  id: string;
+  query: string;
+  createdAt: number;
+  status: 'idle' | 'retrieving' | 'generating' | 'verifying' | 'complete' | 'error';
+  activeStage?: {
+    name: 'retrieving' | 'generating' | 'verifying';
+    status: 'started' | 'complete';
+    timings_ms?: Record<string, number>;
+  };
+  answer: string;
+  sources: SearchResult[];
+  verified: boolean;
+  refusal: boolean;
+  degraded_reason?: string | null;
+  answer_status?: 'answered' | 'insufficient_context' | 'unverified' | 'refused';
+  timings_ms: Record<string, number>;
+  execution_time_ms: number;
+  verification?: VerificationSummary | null;
+  error?: { message: string; status?: number };
+}
+
+export interface UseRagChatOptions {
+  tenantId?: string;
+  initialTurns?: ChatTurn[];
+}
+```
+
+Export hook `useRagChat(options?: UseRagChatOptions)`:
+- State:
+  - `turns: ChatTurn[]`
+  - `activeTurnId: string | null`
+  - `isLoading: boolean`
+  - `activeTurn: ChatTurn | null` (computed from activeTurnId)
+- Functions:
+  - `submitQuery(queryText: string, queryOptions?: { topK?: number; maxCycles?: number; enforceGuardrails?: boolean }): Promise<void>`:
+    - Generates a unique `id` (e.g. `crypto.randomUUID()` or timestamp-based fallback).
+    - Creates a new turn with status `'retrieving'`, empty answer, empty sources.
+    - Uses `AbortController` (stores controller in ref for cancellation).
+    - Attempts SSE POST to `/v1/query/stream` with headers `{ 'Content-Type': 'application/json', 'X-Tenant-Id': tenantId }`.
+    - If `response.ok` and `response.body`:
+      - Read SSE stream chunks line by line. Parse `event: ...` and `data: ...`:
+        - `event: stage`: updates `activeStage` and `status` to `'retrieving' | 'generating' | 'verifying'`.
+        - `event: token`: updates `status` to `'generating'`, appends `data.delta` to `answer`.
+        - `event: retrieval_complete`: updates `timings_ms`.
+        - `event: verification_complete`: updates `verification` and `verified` (`data.status === 'citations_ok' || data.status === 'supported'`).
+        - `event: error`: sets `error: { message: data.message }`, `status: 'error'`.
+        - `event: done`: updates `answer: data.answer || turn.answer`, `answer_status: data.answer_status`, sets `status: 'complete'`.
+    - Fallback: If fetch throws or returns non-200 / not ok, fall back to `api.query(...)` from `../../services/api`. Update turn with response fields (`answer`, `sources: response.sources || response.source_chunks`, `verified`, `refusal`, `degraded_reason`, `answer_status`, `timings_ms`, `execution_time_ms`).
+    - If fallback also fails, set turn `status: 'error'`, `error: { message, status }`.
+  - `abortCurrentQuery()`: aborts current controller, marks in-flight turn as complete or cancelled.
+  - `clearTurns()`: resets `turns` to `[]`.
+  - `removeTurn(id: string)`: filters out turn by id.
+
+In `useRagChat.test.ts`:
+- Test submitting query with successful SSE stream tokens and stage progression.
+- Test fallback to `api.query` when SSE endpoint is unavailable.
+- Test aborting query mid-stream.
+- Test clearing turns and removing turn.
+
+---------------------------------------------------------
+SPECIFICATION 2: `src/components/chat/CitationInspectorDrawer.tsx` & `src/components/chat/CitationInspectorDrawer.test.tsx`
+---------------------------------------------------------
+Export component `CitationInspectorDrawer`:
+```typescript
+import React from 'react';
+import type { SearchResult, VerificationSummary } from '../../types/api';
+
+export interface CitationInspectorDrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  activeChunk: SearchResult | null;
+  chunks: SearchResult[];
+  onSelectChunk?: (chunk: SearchResult) => void;
+  timings?: Record<string, number>;
+  verification?: VerificationSummary | null;
+  onOpenCorpus?: (chunk: SearchResult) => void;
+}
+```
+Features:
+- Fixed slide-in drawer on the right: `fixed inset-y-0 right-0 w-[380px] max-w-full z-40 bg-surface-raised border-l border-hairline flex flex-col shadow-none`
+- Close button (`X` icon from `lucide-react`) and listen to `Escape` key to call `onClose()`.
+- 3 Tabs:
+  - Tab 1: `Evidence Chunks` (with count badge e.g. `(3)`):
+    - When `activeChunk` is selected:
+      - Header with document title / filename, `heading_path`, page number (e.g. `p. 4`), relevance score (tabular digits, formatted to 2 decimals or percentage).
+      - Verbatim snippet inside sunken mono container (`bg-surface-sunken border border-hairline p-3 font-mono text-xs`).
+      - "Copy snippet" button with 2-second copied state.
+      - "Open in Corpus" button (if `onOpenCorpus` is provided) calling `onOpenCorpus(activeChunk)`.
+    - List of available chunks (`chunks` array):
+      - Clicking any chunk calls `onSelectChunk(chunk)`.
+      - Displays rank, title/filename, score, and brief text snippet.
+      - Highlight border if it is the currently selected `activeChunk`.
+  - Tab 2: `Latency Waterfall`:
+    - Shows breakdown of pipeline timings (`timings` prop).
+    - Renders horizontal bar for each timing key (`dense`, `sparse_bm25`, `graph`, `llm`, `verify`, etc.) with duration in ms and proportional bar width.
+  - Tab 3: `Dual-Memory Health`:
+    - Shows storage engine status badges:
+      - `[V]` Qdrant Dense Vector Index
+      - `[G]` Neo4j Knowledge Graph
+      - `[R]` SQLite Provenance & Relational Index
+
+In `CitationInspectorDrawer.test.tsx`:
+- Test drawer rendering when `isOpen` is true and not rendering when `false`.
+- Test tab switching between Chunks, Waterfall, and Health.
+- Test selecting a chunk from the list calls `onSelectChunk`.
+- Test copy snippet button copies text to clipboard.
+- Test clicking close button or pressing Escape key calls `onClose`.
+
+---------------------------------------------------------
+SPECIFICATION 3: `src/components/chat/ChatStreamView.tsx` & `src/components/chat/ChatStreamView.test.tsx`
+---------------------------------------------------------
+Export component `ChatStreamView`:
+```typescript
+import React from 'react';
+import type { ChatTurn } from './useRagChat';
+import type { SearchResult } from '../../types/api';
+
+export interface ChatStreamViewProps {
+  turns: ChatTurn[];
+  isLoading?: boolean;
+  onSelectChunk?: (chunk: SearchResult) => void;
+  onRetryQuery?: (query: string) => void;
+}
+```
+Features:
+- Scrollable chat container with native bottom sentinel:
+  `<div data-testid="chat-bottom-sentinel" style={{ overflowAnchor: 'auto', height: 1 }} />`
+- Empty state (when `turns.length === 0`):
+  - High-end clean cockpit welcome panel: "Meridian Dual-Memory RAG Cockpit", brief explanation of verified grounded answers with citations.
+- Turn list:
+  - User turn:
+    - Right-aligned island bubble (`bg-surface-sunken border border-hairline rounded-lg px-4 py-2.5 max-w-[85%] self-end text-ink`).
+  - Assistant turn:
+    - Uses `DoubleBezelCard` from `./DoubleBezelCard` (or double-bezel styled container).
+    - If turn is active (`turn.status === 'retrieving' | 'generating' | 'verifying'`):
+      - Stage badge with pulsing indicator and label:
+        - `retrieving`: "Retrieving relevant context from dual-memory..."
+        - `generating`: "Generating grounded response..."
+        - `verifying`: "Verifying citations and factual consistency..."
+    - Answer body:
+      - Renders `turn.answer`. If empty and retrieving, shows subtle loading pulse.
+      - Use `MarkdownRenderer` from `../MarkdownRenderer` or formatted markdown container.
+    - Evidence Recovery Surface:
+      - If `turn.refusal` is true or `turn.degraded_reason` is set, AND `turn.sources && turn.sources.length > 0`:
+        - Render dedicated callout box (`data-testid="evidence-recovery-surface"`):
+          - Title: "Meridian could not verify a grounded answer, but recovered {N} relevant chunks from your index"
+          - Horizontal or grid list of recovered chunk cards showing chunk snippet, title, score, and "Inspect" button calling `onSelectChunk(chunk)`.
+    - Turn footer bar (on complete turns):
+      - Verdict chip (`StatusChip` from `../StatusChip`):
+        - `VERIFIED GROUNDED` (variant ok) if `turn.verified` is true
+        - `REFUSED` (variant fail) if `turn.refusal` is true
+        - `DEGRADED` (variant warn) if `turn.degraded_reason` is present
+        - `UNVERIFIED` (variant faint) otherwise
+      - Latency readout (e.g. using `formatLatency` or ms readout)
+      - Sources count button (e.g. `{turn.sources.length} sources` or `Evidence Chunks`), clicking the first chunk calls `onSelectChunk(turn.sources[0])`.
+      - Quick copy button for the answer text with visual checkmark feedback for 2 seconds.
+
+In `ChatStreamView.test.tsx`:
+- Test renders empty state when turns is empty.
+- Test renders user query and assistant answer.
+- Test renders active stage progress indicator during streaming.
+- Test renders Evidence Recovery Surface when turn is refused or degraded with recovered sources.
+- Test bottom sentinel exists with `overflowAnchor: auto`.
+- Test clicking source badge or recovered chunk calls `onSelectChunk`.
+- Test copy answer button copies text to clipboard.
+
+---------------------------------------------------------
+VERIFICATION:
+Run `npm test -- --run` in `.worktrees/chat-interface/web` to confirm that all test suites pass.
+Ensure zero typescript or lint errors.

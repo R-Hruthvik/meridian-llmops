@@ -1,0 +1,220 @@
+import React from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+
+import type { SearchResult } from '../../types/api';
+import { ChatStreamView } from './ChatStreamView';
+import type { ChatTurn } from './useRagChat';
+
+const SOURCES: SearchResult[] = [
+  {
+    chunk_id: 'chunk-1',
+    document_id: 'doc-1',
+    text: 'Qdrant holds dense vectors for semantic retrieval.',
+    score: 0.93,
+    retrieval_method: 'dense',
+    filename: 'qdrant.md',
+    title: 'Dense Memory',
+    page_start: 4,
+    heading_path: 'Storage > Dense',
+  },
+  {
+    chunk_id: 'chunk-2',
+    document_id: 'doc-2',
+    text: 'Neo4j holds the knowledge graph.',
+    score: 0.82,
+    retrieval_method: 'graph',
+    filename: 'graph.md',
+    title: 'Knowledge Graph',
+    page_start: 9,
+    heading_path: 'Storage > Graph',
+  },
+];
+
+let turnCounter = 0;
+
+function makeTurn(overrides: Partial<ChatTurn> = {}): ChatTurn {
+  turnCounter += 1;
+  return {
+    id: `turn-${turnCounter}`,
+    query: 'What does Meridian use for retrieval?',
+    createdAt: Date.now(),
+    status: 'complete',
+    answer: 'Meridian combines dense vectors in Qdrant with a Neo4j knowledge graph.',
+    sources: SOURCES,
+    verified: true,
+    refusal: false,
+    timings_ms: { dense: 12, llm: 240 },
+    execution_time_ms: 1420,
+    verification: null,
+    ...overrides,
+  };
+}
+
+describe('ChatStreamView', () => {
+  let writeText: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders the cockpit welcome panel when there are no turns', () => {
+    render(<ChatStreamView turns={[]} />);
+
+    expect(screen.getByRole('heading', { name: /meridian dual-memory rag cockpit/i })).toBeInTheDocument();
+    expect(screen.getByText(/verified, grounded answers/i)).toBeInTheDocument();
+  });
+
+  it('renders the user query and the assistant answer', () => {
+    const turn = makeTurn();
+    render(<ChatStreamView turns={[turn]} />);
+
+    expect(screen.getByText(turn.query)).toBeInTheDocument();
+    expect(
+      screen.getByText('Meridian combines dense vectors in Qdrant with a Neo4j knowledge graph.'),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ['retrieving', 'Retrieving relevant context from dual-memory...'],
+    ['generating', 'Generating grounded response...'],
+    ['verifying', 'Verifying citations and factual consistency...'],
+  ] as const)('renders the %s stage indicator while streaming', (stage, label) => {
+    render(
+      <ChatStreamView
+        turns={[
+          makeTurn({
+            status: stage,
+            activeStage: { name: stage, status: 'started' },
+            answer: stage === 'generating' ? 'Streaming answer' : '',
+          }),
+        ]}
+        isLoading
+      />,
+    );
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByTestId('active-stage-indicator')).toBeInTheDocument();
+  });
+
+  it('renders the evidence recovery surface for refusals that still recovered sources', () => {
+    const onSelectChunk = vi.fn();
+    const turn = makeTurn({
+      answer: '',
+      verified: false,
+      refusal: true,
+      degraded_reason: 'No upstream model answered.',
+    });
+    render(<ChatStreamView turns={[turn]} onSelectChunk={onSelectChunk} />);
+
+    const surface = screen.getByTestId('evidence-recovery-surface');
+    expect(surface).toBeInTheDocument();
+    expect(
+      screen.getByText(/recovered 2 relevant chunks from your index/i),
+    ).toBeInTheDocument();
+
+    const inspectButtons = screen.getAllByRole('button', { name: /inspect/i });
+    expect(inspectButtons).toHaveLength(2);
+    fireEvent.click(inspectButtons[0]);
+    expect(onSelectChunk).toHaveBeenCalledWith(SOURCES[0]);
+  });
+
+  it('renders the evidence recovery surface for degraded turns with recovered sources', () => {
+    render(
+      <ChatStreamView
+        turns={[makeTurn({ verified: false, refusal: false, degraded_reason: 'LLM timeout' })]}
+      />,
+    );
+
+    expect(screen.getByTestId('evidence-recovery-surface')).toBeInTheDocument();
+    expect(screen.getByText(/recovered 2 relevant chunks from your index/i)).toBeInTheDocument();
+  });
+
+  it('does not render the recovery surface when nothing was recovered', () => {
+    render(
+      <ChatStreamView
+        turns={[makeTurn({ refusal: true, verified: false, sources: [] })]}
+      />,
+    );
+
+    expect(screen.queryByTestId('evidence-recovery-surface')).not.toBeInTheDocument();
+  });
+
+  it('ends with a native bottom sentinel for scroll anchoring', () => {
+    render(<ChatStreamView turns={[makeTurn()]} />);
+
+    const sentinel = screen.getByTestId('chat-bottom-sentinel');
+    expect(sentinel).toBeInTheDocument();
+    expect(sentinel.style.overflowAnchor).toBe('auto');
+    expect(sentinel.style.height).toBe('1px');
+  });
+
+  it('calls onSelectChunk with the first source when the source badge is clicked', () => {
+    const onSelectChunk = vi.fn();
+    render(<ChatStreamView turns={[makeTurn()]} onSelectChunk={onSelectChunk} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /2 sources/i }));
+
+    expect(onSelectChunk).toHaveBeenCalledWith(SOURCES[0]);
+  });
+
+  it('copies the answer text with copied feedback', async () => {
+    const turn = makeTurn();
+    render(<ChatStreamView turns={[turn]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy answer' }));
+
+    expect(writeText).toHaveBeenCalledWith(turn.answer);
+    expect(await screen.findByText('Copied')).toBeInTheDocument();
+  });
+
+  it('shows the verdict, latency, and source count on a complete turn', () => {
+    render(<ChatStreamView turns={[makeTurn()]} />);
+
+    expect(screen.getByText('VERIFIED GROUNDED')).toBeInTheDocument();
+    expect(screen.getByText('1.4')).toBeInTheDocument();
+    expect(screen.getByText('s')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /2 sources/i })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['refusal', { verified: false, refusal: true, degraded_reason: null }, 'REFUSED'],
+    ['degraded', { verified: false, refusal: false, degraded_reason: 'LLM timeout' }, 'DEGRADED'],
+    ['unverified', { verified: false, refusal: false, degraded_reason: null }, 'UNVERIFIED'],
+  ] as const)('labels a %s turn with its verdict chip', (_name, overrides, verdict) => {
+    render(<ChatStreamView turns={[makeTurn(overrides)]} />);
+
+    expect(screen.getByText(verdict)).toBeInTheDocument();
+  });
+
+  it('offers a retry action for an errored turn', () => {
+    const onRetryQuery = vi.fn();
+    render(
+      <ChatStreamView
+        turns={[
+          makeTurn({
+            status: 'error',
+            answer: '',
+            sources: [],
+            verified: false,
+            error: { message: 'Backend unavailable', status: 503 },
+          }),
+        ]}
+        onRetryQuery={onRetryQuery}
+      />,
+    );
+
+    expect(screen.getByText('Backend unavailable')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+
+    expect(onRetryQuery).toHaveBeenCalledWith('What does Meridian use for retrieval?');
+  });
+});
