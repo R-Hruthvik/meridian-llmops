@@ -1,6 +1,6 @@
 'use client';
 
-import React, { type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { type ButtonHTMLAttributes, type ReactNode } from 'react';
 
 export type IslandButtonVariant = 'primary' | 'secondary' | 'ghost';
 

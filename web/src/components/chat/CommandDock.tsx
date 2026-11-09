@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowUpRight, Shield, Square } from 'lucide-react';
 
 import { DoubleBezelCard } from './DoubleBezelCard';

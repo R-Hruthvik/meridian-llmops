@@ -123,14 +123,13 @@ describe('Meridian workbench navigation', () => {
   it('keeps the question and answer in memory when leaving Ask', async () => {
     const user = userEvent.setup();
     render(<App />);
-    const question = screen.getByPlaceholderText(/ask about your sources/i);
-    await user.clear(question);
+    const question = screen.getByPlaceholderText(/Ask Meridian RAG/i);
     await user.type(question, 'What storage engines does Meridian use?');
-    await user.click(screen.getByRole('button', { name: /Ask/i }));
+    await user.click(screen.getByRole('button', { name: 'Submit' }));
     expect(await screen.findByText('Qdrant and Neo4j.')).toBeInTheDocument();
     await user.click(go('Sources'));
     await user.click(go('Ask'));
-    expect(screen.getByPlaceholderText(/ask about your sources/i)).toHaveValue('What storage engines does Meridian use?');
+    expect(screen.getByText('What storage engines does Meridian use?')).toBeInTheDocument();
     expect(screen.getByText('Qdrant and Neo4j.')).toBeInTheDocument();
   });
 
@@ -138,13 +137,14 @@ describe('Meridian workbench navigation', () => {
     const user = userEvent.setup();
     (api.getDocuments as ReturnType<typeof vi.fn>).mockResolvedValue({ total_documents: 1, total_chunks: 2, total_entities: 4, documents: [DOC] });
     render(<App />);
-    await user.type(screen.getByPlaceholderText(/ask about your sources/i), 'What storage engines?');
-    await user.click(screen.getByRole('button', { name: /Ask/i }));
+    await user.type(screen.getByPlaceholderText(/Ask Meridian RAG/i), 'What storage engines?');
+    await user.click(screen.getByRole('button', { name: 'Submit' }));
     await screen.findByText('Qdrant and Neo4j.');
-    await user.click(screen.getByRole('button', { name: /chunk 1 • vector/i }));
+    await user.click(screen.getByRole('button', { name: /1 source/i }));
+    await user.click(screen.getByRole('button', { name: /open in corpus/i }));
     expect(window.location.hash).toBe('#/sources');
     await waitFor(() => expect(api.getDocument).toHaveBeenCalledWith('doc-arch-1', 'default'));
-    expect(await screen.findByText('Second chunk of the architecture doc')).toBeInTheDocument();
+    expect((await screen.findAllByText('Second chunk of the architecture doc')).length).toBeGreaterThan(0);
     expect(document.querySelector('[data-focused-chunk="chunk-b"]')).toBeInTheDocument();
   });
 

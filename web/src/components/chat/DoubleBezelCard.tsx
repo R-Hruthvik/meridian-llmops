@@ -1,6 +1,6 @@
 'use client';
 
-import React, { type HTMLAttributes, type ReactNode } from 'react';
+import { type HTMLAttributes, type ReactNode } from 'react';
 
 export interface DoubleBezelCardProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;

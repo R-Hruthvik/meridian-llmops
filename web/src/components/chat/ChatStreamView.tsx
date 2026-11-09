@@ -1,10 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { Check, Copy, FileText, RefreshCw } from 'lucide-react';
 
-import { MarkdownRenderer } from '../MarkdownRenderer';
 import { StatusChip, type StatusChipVariant } from '../StatusChip';
 import type { SearchResult } from '../../types/api';
 import type { ChatTurn } from './useRagChat';
+
+// The markdown parser is the heaviest dependency in the app and there is nothing
+// to parse until an answer exists. Deferring it keeps it out of first paint.
+const MarkdownRenderer = React.lazy(() =>
+  import('../MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
+);
 
 export interface ChatStreamViewProps {
   turns: ChatTurn[];
@@ -33,9 +38,9 @@ const formatScore = (score: number): string =>
   Number.isFinite(score) ? score.toFixed(2) : '—';
 
 const verdictFor = (turn: ChatTurn): { label: string; variant: StatusChipVariant } => {
-  if (turn.verified) return { label: 'VERIFIED GROUNDED', variant: 'ok' };
   if (turn.refusal) return { label: 'REFUSED', variant: 'fail' };
   if (turn.degraded_reason) return { label: 'DEGRADED', variant: 'warn' };
+  if (turn.verified) return { label: 'VERIFIED GROUNDED', variant: 'ok' };
   return { label: 'UNVERIFIED', variant: 'faint' };
 };
 
@@ -267,7 +272,15 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
                         ) : null}
                       </div>
                     ) : turn.answer.trim() ? (
-                      <MarkdownRenderer content={turn.answer} />
+                      <Suspense
+                        fallback={
+                          <p className="whitespace-pre-wrap break-words text-body text-ink">
+                            {turn.answer}
+                          </p>
+                        }
+                      >
+                        <MarkdownRenderer content={turn.answer} />
+                      </Suspense>
                     ) : activeStage ? (
                       <AnswerSkeleton />
                     ) : (

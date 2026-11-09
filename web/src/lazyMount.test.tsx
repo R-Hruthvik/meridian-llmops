@@ -164,8 +164,8 @@ describe('the answer body is deferred until an answer exists', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'What storage engines?');
-    await user.click(screen.getByRole('button', { name: /Ask/i }));
+    await user.type(screen.getByPlaceholderText(/Ask Meridian RAG/i), 'What storage engines?');
+    await user.click(screen.getByRole('button', { name: 'Submit' }));
 
     expect(await screen.findByTestId('markdown-surface')).toBeInTheDocument();
     expect(evaluated).toContain('markdown');
