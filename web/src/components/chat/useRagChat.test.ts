@@ -308,4 +308,19 @@ describe('useRagChat', () => {
 
     expect(result.current.turns.map((turn) => turn.id)).toEqual(['keep']);
   });
+
+  it('clears the transcript when the tenant changes', () => {
+    const { result, rerender } = renderHook(
+      ({ tenantId }: { tenantId: string }) =>
+        useRagChat({ tenantId, initialTurns: [makeTurn({ id: 'tenant-a-turn' })] }),
+      { initialProps: { tenantId: 'tenant-a' } },
+    );
+
+    expect(result.current.turns).toHaveLength(1);
+
+    rerender({ tenantId: 'tenant-b' });
+
+    expect(result.current.turns).toEqual([]);
+    expect(result.current.activeTurnId).toBeNull();
+  });
 });

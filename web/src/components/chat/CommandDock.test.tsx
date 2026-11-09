@@ -27,6 +27,7 @@ describe('CommandDock', () => {
     ) as HTMLTextAreaElement;
 
     expect(textarea.value).toBe('hello');
+    expect(screen.getByRole('textbox', { name: 'Ask Meridian RAG' })).toBe(textarea);
   });
 
   it('reports text input changes', () => {

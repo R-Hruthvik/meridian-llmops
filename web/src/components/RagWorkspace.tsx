@@ -8,19 +8,6 @@ import { CitationInspectorDrawer } from './chat/CitationInspectorDrawer';
 import { CommandDock } from './chat/CommandDock';
 import { useRagChat } from './chat/useRagChat';
 
-export const formatLatency = (ms: number): { value: string; unit: string } => {
-  if (!Number.isFinite(ms)) return { value: '—', unit: 'ms' };
-  const rounded = Math.round(ms);
-  if (Math.abs(rounded) < 1000) return { value: String(rounded), unit: 'ms' };
-  return { value: (ms / 1000).toFixed(1), unit: 's' };
-};
-
-export const shortId = (id: string | undefined | null, keep = 8): string => {
-  if (!id) return '—';
-  if (id.length <= keep) return id;
-  return `${id.slice(0, keep)}…`;
-};
-
 interface RagWorkspaceProps {
   tenantId: string;
 }
@@ -85,8 +72,8 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     : null;
   const inspectorChunks = inspectorTurn?.sources ?? (activeChunk ? [activeChunk] : []);
 
-  const erroredTurn = [...chat.turns].reverse().find((turn) => turn.status === 'error');
-  const error = erroredTurn?.error ?? null;
+  const latestTurn = chat.turns[chat.turns.length - 1];
+  const error = latestTurn?.status === 'error' ? latestTurn.error ?? null : null;
 
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6">

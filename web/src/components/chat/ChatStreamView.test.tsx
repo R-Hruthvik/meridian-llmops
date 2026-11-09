@@ -105,6 +105,26 @@ describe('ChatStreamView', () => {
     expect(screen.getByTestId('active-stage-indicator')).toBeInTheDocument();
   });
 
+  it('announces the active stage through a polite live region', () => {
+    render(
+      <ChatStreamView
+        turns={[
+          makeTurn({
+            status: 'verifying',
+            activeStage: { name: 'verifying', status: 'started' },
+            answer: 'Streaming answer',
+          }),
+        ]}
+        isLoading
+      />,
+    );
+
+    const announcer = screen.getByTestId('stage-announcer');
+    expect(announcer).toHaveAttribute('role', 'status');
+    expect(announcer).toHaveAttribute('aria-live', 'polite');
+    expect(announcer).toHaveTextContent('Stage: Verifying citations and factual consistency...');
+  });
+
   it('renders the evidence recovery surface for refusals that still recovered sources', () => {
     const onSelectChunk = vi.fn();
     const turn = makeTurn({

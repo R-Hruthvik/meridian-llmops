@@ -2,7 +2,8 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RagWorkspace, formatLatency, shortId } from './RagWorkspace';
+import { RagWorkspace } from './RagWorkspace';
+import { formatLatency, shortId } from './ragFormat';
 import { api, ApiError } from '../services/api';
 import { WorkbenchContext } from '../WorkbenchContext';
 import type { QueryResponse, SearchResult, VerificationSummary } from '../types/api';
@@ -487,6 +488,7 @@ describe('RagWorkspace chat integration', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(await screen.findByText('Recovered answer')).toBeInTheDocument();
+    expect(screen.queryByText('Query Intercepted / Failed')).not.toBeInTheDocument();
   });
 
   it('copies answer text to clipboard when copy button is activated', async () => {

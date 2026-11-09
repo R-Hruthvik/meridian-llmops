@@ -79,6 +79,7 @@ export function CommandDock({
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           placeholder="Ask Meridian RAG (Cmd+Enter to send)..."
+          aria-label="Ask Meridian RAG"
           disabled={disabled}
           className="w-full resize-none bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none disabled:opacity-50"
         />

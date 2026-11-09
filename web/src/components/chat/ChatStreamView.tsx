@@ -86,8 +86,6 @@ const CopyAnswerButton: React.FC<{ text: string }> = ({ text }) => {
 const ActiveStage: React.FC<{ stage: 'retrieving' | 'generating' | 'verifying' }> = ({ stage }) => (
   <div
     data-testid="active-stage-indicator"
-    role="status"
-    aria-live="polite"
     className="flex items-center gap-2 rounded-sm border border-hairline bg-surface-sunken px-2.5 py-1.5"
   >
     <span className="size-1.5 shrink-0 animate-pulse rounded-pill bg-accent" aria-hidden="true" />
@@ -203,6 +201,15 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const latestTurn = turns[turns.length - 1];
+  const announcedStage =
+    latestTurn &&
+    (latestTurn.status === 'retrieving' ||
+      latestTurn.status === 'generating' ||
+      latestTurn.status === 'verifying')
+      ? latestTurn.activeStage?.name ?? latestTurn.status
+      : null;
+
   useEffect(() => {
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
@@ -217,6 +224,16 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
       data-testid="chat-stream-view"
       className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto px-4 py-6"
     >
+      <div
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="stage-announcer"
+      >
+        {announcedStage ? `Stage: ${STAGE_LABELS[announcedStage]}` : ''}
+      </div>
+
       {turns.length === 0 ? (
         <section className="mx-auto flex w-full max-w-2xl flex-col items-start gap-3 rounded border border-hairline bg-surface-raised p-6">
           <p className="label-section text-muted">Grounded answers</p>

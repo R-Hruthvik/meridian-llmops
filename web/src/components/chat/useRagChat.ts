@@ -195,6 +195,7 @@ export function useRagChat(options: UseRagChatOptions = {}): UseRagChatResult {
 
   const controllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
+  const tenantRef = useRef(tenantId);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -204,6 +205,17 @@ export function useRagChat(options: UseRagChatOptions = {}): UseRagChatResult {
       controllerRef.current = null;
     };
   }, []);
+
+  // Transcripts are tenant-scoped: never show one workspace's turns in another.
+  useEffect(() => {
+    if (tenantRef.current === tenantId) return;
+    tenantRef.current = tenantId;
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+    setTurns([]);
+    setActiveTurnId(null);
+    setIsLoading(false);
+  }, [tenantId]);
 
   const updateTurn = useCallback(
     (id: string, updater: (turn: ChatTurn) => ChatTurn) => {
