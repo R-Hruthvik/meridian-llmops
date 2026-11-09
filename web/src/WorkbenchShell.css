@@ -121,3 +121,24 @@
   .ask-composer { padding: 1rem; }
   .ask-composer-footer { align-items: flex-end; }
 }
+
+/* Machined double-sandwich focus indicator (Domain 4.2): a 2px inner trench
+   plus a 2px outer halo, drawn with zero-blur box-shadow so the rings follow
+   each element's own border-radius. Tokens can be overridden per theme. */
+.focus-machined:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 0 0 2px var(--focus-ring-inner, #070809),
+    0 0 0 4px var(--focus-ring-outer, #ededed);
+}
+
+.focus-machined-accent:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow:
+    inset 0 1px 0 rgba(56, 189, 248, 0.25),
+    0 0 0 2px var(--focus-ring-inner, #070809),
+    0 0 0 4px var(--focus-ring-accent, #38bdf8);
+}
