@@ -12,7 +12,7 @@ const projectRoot = fileURLToPath(new URL('..', import.meta.url))
 
 function readLocalProxyEnv(): Record<string, string> {
   const values: Record<string, string> = {}
-  const paths = ['../../llm/.env', '../../llm/.env.local']
+  const paths = ['../.env', '../.env.local', '../../llm/.env', '../../llm/.env.local']
   for (const rel of paths) {
     try {
       const contents = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
