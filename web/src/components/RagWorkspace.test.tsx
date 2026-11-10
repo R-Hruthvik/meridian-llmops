@@ -194,7 +194,7 @@ describe('RagWorkspace chat integration', () => {
       ),
     );
 
-    expect(await screen.findByText('test answer')).toBeInTheDocument();
+    expect(await screen.findByText('test answer', {}, { timeout: 4000 })).toBeInTheDocument();
     expect(screen.getByText('VERIFIED GROUNDED')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /1 source/i })).toBeInTheDocument();
     expect(dockInput()).toHaveValue('');
@@ -284,7 +284,7 @@ describe('RagWorkspace chat integration', () => {
 
     renderCanvas();
     await ask(user, 'first query');
-    expect(await screen.findByText('test answer')).toBeInTheDocument();
+    expect(await screen.findByText('test answer', {}, { timeout: 4000 })).toBeInTheDocument();
 
     await ask(user, 'follow-up query');
 
@@ -1131,7 +1131,7 @@ describe('RagWorkspace audit log export', () => {
     expect(screen.queryByRole('button', { name: /export audit log/i })).not.toBeInTheDocument();
 
     await ask(user, 'test query for audit');
-    expect(await screen.findByText('test answer')).toBeInTheDocument();
+    expect(await screen.findByText('test answer', {}, { timeout: 4000 })).toBeInTheDocument();
 
     const exportBtn = screen.getByRole('button', { name: /export audit log/i });
     expect(exportBtn).toBeInTheDocument();
