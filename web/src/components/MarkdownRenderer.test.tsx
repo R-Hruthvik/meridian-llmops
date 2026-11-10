@@ -67,3 +67,103 @@ describe('MarkdownRenderer: token layer, no literal colour', () => {
   });
 });
 
+describe('MarkdownRenderer: Generative UI & Sandboxed Artifacts', () => {
+  it('intercepts widget:<name> code fence and renders DynamicWidget', () => {
+    const content = [
+      'Here are the retrieval execution timings [^1]:',
+      '',
+      '```widget:timings-waterfall',
+      JSON.stringify({
+        timings: {
+          dense_retrieval: 38,
+          graph_traversal: 14,
+        },
+      }),
+      '```',
+      '',
+      'All latencies within acceptable bounds.',
+    ].join('\n');
+
+    render(<MarkdownRenderer content={content} />);
+
+    expect(screen.getByText('Latency Breakdown')).toBeInTheDocument();
+    expect(screen.getByText('dense_retrieval')).toBeInTheDocument();
+    expect(screen.getByText('38ms')).toBeInTheDocument();
+    expect(screen.getByText('graph_traversal')).toBeInTheDocument();
+    expect(screen.getByText('14ms')).toBeInTheDocument();
+    expect(screen.getByText('All latencies within acceptable bounds.')).toBeInTheDocument();
+  });
+
+  it('intercepts html:artifact code fence and renders SandboxedHtmlArtifact', () => {
+    const content = [
+      'Interactive visual simulation below:',
+      '',
+      '```html:artifact',
+      '<div id="graph-canvas"><canvas width="200" height="100"></canvas></div>',
+      '```',
+    ].join('\n');
+
+    render(<MarkdownRenderer content={content} />);
+
+    expect(screen.getByText('Interactive Widget')).toBeInTheDocument();
+    expect(screen.getByText('HTML')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy Code' })).toBeInTheDocument();
+
+    const iframe = screen.getByTitle('Interactive Widget') as HTMLIFrameElement;
+    expect(iframe).toBeInTheDocument();
+    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
+    expect(iframe.getAttribute('srcdoc')).toContain('id="graph-canvas"');
+    expect(iframe.getAttribute('srcdoc')).toContain('https://cdn.tailwindcss.com');
+  });
+
+  it('intercepts html:interactive code fence and renders SandboxedHtmlArtifact', () => {
+    const content = [
+      '```html:interactive',
+      '<button class="p-2 bg-blue-500 text-white rounded">Click me</button>',
+      '```',
+    ].join('\n');
+
+    render(<MarkdownRenderer content={content} />);
+
+    const iframe = screen.getByTitle('Interactive Widget');
+    expect(iframe).toBeInTheDocument();
+    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
+    expect(iframe.getAttribute('srcdoc')).toContain('Click me');
+  });
+
+  it('retains clickable citations and sanitization when widgets are interleaved', () => {
+    const onCitationClick = vi.fn();
+    const content = [
+      'Corpus analysis [^1]:',
+      '',
+      '```widget:memory-health',
+      JSON.stringify({
+        engines: {
+          chroma: 'operational',
+          sqlite: 'operational',
+          redis: 'operational',
+        },
+      }),
+      '```',
+      '',
+      'See concluding evidence [^2].',
+      '<script>alert("malicious")</script>',
+    ].join('\n');
+
+    const { container } = render(
+      <MarkdownRenderer content={content} onCitationClick={onCitationClick} />,
+    );
+
+    // Citations work
+    const badge2 = screen.getByRole('button', { name: 'Citation 2' });
+    fireEvent.click(badge2);
+    expect(onCitationClick).toHaveBeenCalledWith(2);
+
+    // Widget rendered
+    expect(screen.getByText('Dual-Memory Health')).toBeInTheDocument();
+    expect(screen.getByText('[VEC:CHROMA]')).toBeInTheDocument();
+
+    // Script removed by sanitizer
+    expect(container.querySelector('script')).toBeNull();
+  });
+});
