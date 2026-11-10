@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Check, Copy, ExternalLink, X } from 'lucide-react';
 
 import { StatusChip } from '../StatusChip';
@@ -25,17 +25,17 @@ const TABS: Array<{ id: InspectorTab; label: string }> = [
 
 const MEMORY_ENGINES = [
   {
-    token: 'V',
+    monogram: '[VEC:CHROMA]',
     name: 'Qdrant Dense Vector Index',
     detail: 'Semantic similarity over embedded passages.',
   },
   {
-    token: 'G',
+    monogram: '[KG:SQLITE]',
     name: 'Neo4j Knowledge Graph',
     detail: 'Entity relationships and graph traversal.',
   },
   {
-    token: 'R',
+    monogram: '[KV:REDIS]',
     name: 'SQLite Provenance & Relational Index',
     detail: 'Document ledger, provenance, and structured records.',
   },
@@ -47,14 +47,32 @@ const chunkTitle = (chunk: SearchResult): string =>
 const formatScore = (score: number): string =>
   Number.isFinite(score) ? score.toFixed(2) : '—';
 
-const formatMs = (value: number): string =>
-  Number.isFinite(value) ? `${Math.round(value)} ms` : '—';
-
 const formatVerification = (verification: VerificationSummary): string =>
   verification.status.replace(/_/g, ' ');
 
 const isSelected = (activeChunk: SearchResult | null, chunk: SearchResult): boolean =>
   activeChunk === chunk || (activeChunk != null && activeChunk.chunk_id === chunk.chunk_id);
+
+const formatTimingBadge = (key: string, value: number): { monogram: string; label: string; ms: number } => {
+  const rounded = Math.round(value);
+  const engine = key.toLowerCase();
+  if (engine.includes('dense') || engine.includes('vector') || engine.includes('qdrant') || engine.includes('chroma')) {
+    return { monogram: '[VEC:CHROMA]', label: 'Vector', ms: rounded };
+  }
+  if (engine.includes('graph') || engine.includes('neo4j') || engine.includes('kg')) {
+    return { monogram: '[KG:SQLITE]', label: 'Graph', ms: rounded };
+  }
+  if (engine.includes('sparse') || engine.includes('bm25') || engine.includes('redis') || engine.includes('kv')) {
+    return { monogram: '[KV:REDIS]', label: 'Cache', ms: rounded };
+  }
+  if (engine.includes('llm') || engine.includes('generat') || engine.includes('synth')) {
+    return { monogram: '[LLM]', label: 'LLM Gen', ms: rounded };
+  }
+  if (engine.includes('verify') || engine.includes('guard') || engine.includes('audit')) {
+    return { monogram: '[VERIFY]', label: 'Verify', ms: rounded };
+  }
+  return { monogram: `[${key.toUpperCase()}]`, label: key, ms: rounded };
+};
 
 /**
  * Right-hand evidence inspector for one conversation. The drawer never owns
@@ -92,6 +110,14 @@ export const CitationInspectorDrawer: React.FC<CitationInspectorDrawerProps> = (
     [],
   );
 
+  const timingEntries = Object.entries(timings ?? {}).filter(([, value]) =>
+    Number.isFinite(value),
+  );
+
+  const timingBadges = useMemo(() => {
+    return timingEntries.map(([key, value]) => formatTimingBadge(key, value));
+  }, [timingEntries]);
+
   if (!isOpen) return null;
 
   const handleCopySnippet = async () => {
@@ -106,9 +132,6 @@ export const CitationInspectorDrawer: React.FC<CitationInspectorDrawerProps> = (
     }
   };
 
-  const timingEntries = Object.entries(timings ?? {}).filter(([, value]) =>
-    Number.isFinite(value),
-  );
   const maxTiming = timingEntries.reduce((max, [, value]) => Math.max(max, value), 0) || 1;
 
   return (
@@ -283,24 +306,61 @@ export const CitationInspectorDrawer: React.FC<CitationInspectorDrawerProps> = (
             {timingEntries.length === 0 ? (
               <p className="text-body text-muted">No pipeline timings were reported for this turn.</p>
             ) : (
-              timingEntries.map(([key, value]) => {
-                const width = Math.max(2, Math.round((value / maxTiming) * 100));
-                return (
-                  <div key={key} data-testid={`timing-${key}`}>
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="id-mono text-ink">{key}</span>
-                      <span className="num text-micro text-muted">{formatMs(value)}</span>
-                    </div>
-                    <div className="mt-1 h-2 w-full overflow-hidden rounded-sm border border-hairline bg-surface-sunken">
+              <>
+                {/* Segmented micro-bar */}
+                <div className="flex gap-1 h-3 w-full overflow-hidden rounded-sm border border-hairline bg-surface-sunken" role="img" aria-label={`Pipeline latency: ${timingBadges.map(b => `${b.label} ${b.ms}ms`).join(', ')}`}>
+                  {timingBadges.map((badge) => {
+                    const width = Math.max(2, Math.round((badge.ms / maxTiming) * 100));
+                    const color = badge.monogram.includes('VEC') ? 'bg-sky-500' :
+                                  badge.monogram.includes('KG') ? 'bg-emerald-500' :
+                                  badge.monogram.includes('KV') ? 'bg-amber-500' :
+                                  badge.monogram.includes('LLM') ? 'bg-violet-500' :
+                                  badge.monogram.includes('VERIFY') ? 'bg-rose-500' :
+                                  'bg-accent';
+                    return (
                       <div
-                        className="h-full rounded-sm bg-accent"
+                        key={badge.monogram}
+                        className={`${color} h-full`}
                         style={{ width: `${width}%` }}
+                        title={`${badge.monogram} ${badge.ms}ms`}
                         aria-hidden="true"
                       />
+                    );
+                  })}
+                </div>
+                {/* Legend with monograms */}
+                <div className="flex flex-wrap gap-2 text-micro">
+                  {timingBadges.map((badge) => (
+                    <span key={badge.monogram} className="id-mono text-muted flex items-center gap-1">
+                      <span className="text-ink">{badge.monogram}</span>
+                      <span>{badge.label} {badge.ms}ms</span>
+                    </span>
+                  ))}
+                </div>
+                {/* Detailed waterfall bars */}
+                <div className="flex flex-col gap-2 pt-2">
+                  {timingBadges.map((badge) => (
+                    <div key={badge.monogram} data-testid={`timing-${badge.monogram}`} className="flex flex-col gap-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="id-mono text-ink flex items-center gap-1">
+                          <span className="text-muted">{badge.monogram}</span>
+                          <span>{badge.label}</span>
+                        </span>
+                        <span className="num text-micro text-muted">{badge.ms} ms</span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-sm border border-hairline bg-surface-sunken">
+                        <div
+                          className="h-full rounded-sm"
+                          style={{
+                            width: `${Math.max(2, Math.round((badge.ms / maxTiming) * 100))}%`,
+                          }}
+                          aria-hidden="true"
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })
+                  ))}
+                </div>
+              </>
             )}
           </section>
         ) : null}
@@ -319,11 +379,11 @@ export const CitationInspectorDrawer: React.FC<CitationInspectorDrawerProps> = (
             <ul className="flex flex-col gap-2">
               {MEMORY_ENGINES.map((engine) => (
                 <li
-                  key={engine.token}
+                  key={engine.monogram}
                   className="flex items-start gap-3 rounded border border-hairline bg-surface p-3"
                 >
                   <span className="id-mono shrink-0 rounded-sm border border-hairline bg-surface-sunken px-1.5 py-0.5 text-ink">
-                    [{engine.token}]
+                    {engine.monogram}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-label font-semibold text-ink">{engine.name}</span>

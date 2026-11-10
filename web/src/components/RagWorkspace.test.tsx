@@ -761,8 +761,8 @@ describe('RagWorkspace citation inspector interactions', () => {
     // Waterfall tab
     await user.click(screen.getByRole('tab', { name: 'Latency Waterfall' }));
     expect(await screen.findByText('Pipeline latency')).toBeInTheDocument();
-    expect(screen.getByTestId('timing-dense')).toBeInTheDocument();
-    expect(screen.getByTestId('timing-llm')).toBeInTheDocument();
+    expect(screen.getByTestId('timing-[VEC:CHROMA]')).toBeInTheDocument();
+    expect(screen.getByTestId('timing-[LLM]')).toBeInTheDocument();
 
     // Health tab
     await user.click(screen.getByRole('tab', { name: 'Dual-Memory Health' }));
@@ -854,9 +854,9 @@ describe('RagWorkspace citation inspector interactions', () => {
     await user.click(await screen.findByRole('button', { name: /1 source/i }));
 
     await user.click(screen.getByRole('tab', { name: 'Dual-Memory Health' }));
-    expect(screen.getByText('[V]')).toBeInTheDocument();
-    expect(screen.getByText('[G]')).toBeInTheDocument();
-    expect(screen.getByText('[R]')).toBeInTheDocument();
+    expect(screen.getByText('[VEC:CHROMA]')).toBeInTheDocument();
+    expect(screen.getByText('[KG:SQLITE]')).toBeInTheDocument();
+    expect(screen.getByText('[KV:REDIS]')).toBeInTheDocument();
     expect(screen.getAllByText('Indexed').length).toBe(3);
   });
 

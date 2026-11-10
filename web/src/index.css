@@ -217,3 +217,56 @@ body {
   left: 0.5rem;
   top: 0.5rem;
 }
+
+/* ---------------------------------------------------------------------------
+   Machined Double-Sandwich Focus Rings (WCAG 2.4.13 AAA)
+   Two concentric zero-blur box-shadow rings for razor-sharp focus on
+   Obsidian Titanium / Cold Chalk surfaces.
+   --------------------------------------------------------------------------- */
+@layer base {
+  :root {
+    /* Cold Chalk (Light Mode) Double-Sandwich Tokens */
+    --focus-ring-inner: #FFFFFF;
+    --focus-ring-outer: #09090B;
+    --focus-ring-accent: #2563EB;
+  }
+
+  .dark {
+    /* Obsidian Titanium (Dark Mode) Double-Sandwich Tokens */
+    --focus-ring-inner: #070809;
+    --focus-ring-outer: #EDEDED;
+    --focus-ring-accent: #38BDF8;
+  }
+}
+
+@utility focus-machined {
+  &:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.15),
+      0 0 0 2px var(--focus-ring-inner),
+      0 0 0 4px var(--focus-ring-outer);
+  }
+}
+
+@utility focus-machined-accent {
+  &:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow:
+      inset 0 1px 0 rgba(56, 189, 248, 0.25),
+      0 0 0 2px var(--focus-ring-inner),
+      0 0 0 4px var(--focus-ring-accent);
+  }
+}
+
+/* Forced Colors Mode (Windows High Contrast) */
+@media (forced-colors: active) {
+  .focus-machined:focus-visible,
+  .focus-machined-accent:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+}

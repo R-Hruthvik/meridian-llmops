@@ -164,7 +164,19 @@ async function consumeEventStream(
     if (buffer.trim()) flush(buffer);
   } finally {
     signal?.removeEventListener('abort', onAbort);
-    reader.releaseLock();
+
+    if (reader) {
+      try {
+        await reader.cancel('Stream lifecycle terminated');
+      } catch {
+        // Ignore errors if stream was already closed by network abort
+      }
+      try {
+        reader.releaseLock();
+      } catch {
+        // Ignore if lock already released
+      }
+    }
   }
 }
 
@@ -196,6 +208,7 @@ export function useRagChat(options: UseRagChatOptions = {}): UseRagChatResult {
   const controllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const tenantRef = useRef(tenantId);
+  const currentRequestIdRef = useRef<number>(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -327,6 +340,8 @@ export function useRagChat(options: UseRagChatOptions = {}): UseRagChatResult {
 
       controllerRef.current?.abort();
 
+      const reqId = ++currentRequestIdRef.current;
+
       const id = createTurnId();
       const turn: ChatTurn = {
         id,
@@ -373,15 +388,18 @@ export function useRagChat(options: UseRagChatOptions = {}): UseRagChatResult {
           throw new Error(`Streaming endpoint unavailable (HTTP ${response.status})`);
         }
 
-        await consumeEventStream(response.body, controller.signal, (event) =>
-          applyStreamEvent(id, event),
-        );
+        await consumeEventStream(response.body, controller.signal, (event) => {
+          if (reqId !== currentRequestIdRef.current) return;
+          applyStreamEvent(id, event);
+        });
+
+        if (reqId !== currentRequestIdRef.current) return;
 
         updateTurn(id, (current) =>
           ACTIVE_STATUSES.has(current.status) ? { ...current, status: 'complete' } : current,
         );
       } catch {
-        if (controller.signal.aborted) {
+        if (controller.signal.aborted || reqId !== currentRequestIdRef.current) {
           updateTurn(id, (current) => ({ ...current, status: 'complete' }));
           return;
         }
@@ -395,7 +413,7 @@ export function useRagChat(options: UseRagChatOptions = {}): UseRagChatResult {
             enforce_guardrails: enforceGuardrails,
           });
 
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || reqId !== currentRequestIdRef.current) return;
 
           updateTurn(id, (current) => ({
             ...current,
@@ -403,7 +421,7 @@ export function useRagChat(options: UseRagChatOptions = {}): UseRagChatResult {
             status: 'complete',
           }));
         } catch (fallbackError) {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || reqId !== currentRequestIdRef.current) return;
           updateTurn(id, (current) => ({
             ...current,
             status: 'error',

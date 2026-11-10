@@ -129,9 +129,9 @@ describe('CitationInspectorDrawer', () => {
     renderDrawer();
 
     fireEvent.click(screen.getByRole('tab', { name: /latency waterfall/i }));
-    expect(screen.getByText('dense')).toBeInTheDocument();
+    expect(screen.getAllByText('[VEC:CHROMA]').length).toBeGreaterThan(0);
     expect(screen.getByText('120 ms')).toBeInTheDocument();
-    expect(screen.getByText('llm')).toBeInTheDocument();
+    expect(screen.getAllByText('[LLM]').length).toBeGreaterThan(0);
     expect(screen.getByText('640 ms')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: /dual-memory health/i }));
@@ -204,5 +204,67 @@ describe('CitationInspectorDrawer', () => {
 
     const panel = screen.getByRole('dialog', { name: /citation inspector/i });
     expect(within(panel).getByText(/citations ok/i)).toBeInTheDocument();
+  });
+
+  describe('Waterfall tab segmented micro-bar and monograms', () => {
+    it('renders segmented micro-bar with colored segments for each timing', () => {
+      renderDrawer();
+
+      fireEvent.click(screen.getByRole('tab', { name: /latency waterfall/i }));
+
+      const microBar = screen.getByRole('img', { name: /pipeline latency/i });
+      expect(microBar).toBeInTheDocument();
+      // Segments are decorative (aria-hidden) and expose no accessible role.
+      const segments = microBar.querySelectorAll(':scope > div');
+      expect(segments.length).toBeGreaterThan(0);
+    });
+
+    it('renders legend with engine monograms and timing labels', () => {
+      renderDrawer();
+
+      fireEvent.click(screen.getByRole('tab', { name: /latency waterfall/i }));
+
+      // Monograms repeat in the legend and the detailed waterfall rows.
+      expect(screen.getAllByText('[VEC:CHROMA]').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('[KG:SQLITE]').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('[LLM]').length).toBeGreaterThan(0);
+      expect(screen.getByText('Vector 120ms')).toBeInTheDocument();
+      expect(screen.getByText('Graph 80ms')).toBeInTheDocument();
+      expect(screen.getByText('LLM Gen 640ms')).toBeInTheDocument();
+    });
+
+    it('renders detailed waterfall bars with monograms', () => {
+      renderDrawer();
+
+      fireEvent.click(screen.getByRole('tab', { name: /latency waterfall/i }));
+
+      expect(screen.getByTestId('timing-[VEC:CHROMA]')).toBeInTheDocument();
+      expect(screen.getByTestId('timing-[KG:SQLITE]')).toBeInTheDocument();
+      expect(screen.getByTestId('timing-[LLM]')).toBeInTheDocument();
+    });
+  });
+
+  describe('Health tab storage engine monograms', () => {
+    it('renders storage engines with monogram badges', () => {
+      renderDrawer();
+
+      fireEvent.click(screen.getByRole('tab', { name: /dual-memory health/i }));
+
+      expect(screen.getByText('[VEC:CHROMA]')).toBeInTheDocument();
+      expect(screen.getByText('[KG:SQLITE]')).toBeInTheDocument();
+      expect(screen.getByText('[KV:REDIS]')).toBeInTheDocument();
+      expect(screen.getByText('Qdrant Dense Vector Index')).toBeInTheDocument();
+      expect(screen.getByText('Neo4j Knowledge Graph')).toBeInTheDocument();
+      expect(screen.getByText('SQLite Provenance & Relational Index')).toBeInTheDocument();
+    });
+
+    it('shows Indexed status chip for each engine', () => {
+      renderDrawer();
+
+      fireEvent.click(screen.getByRole('tab', { name: /dual-memory health/i }));
+
+      const indexedChips = screen.getAllByText('Indexed');
+      expect(indexedChips).toHaveLength(3);
+    });
   });
 });

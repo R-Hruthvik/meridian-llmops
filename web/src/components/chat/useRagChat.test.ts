@@ -323,4 +323,73 @@ describe('useRagChat', () => {
     expect(result.current.turns).toEqual([]);
     expect(result.current.activeTurnId).toBeNull();
   });
+
+  it('cancels the reader and releases the lock on stream termination', async () => {
+    const cancelMock = vi.fn().mockResolvedValue(undefined);
+    const releaseLockMock = vi.fn();
+    const reader = { cancel: cancelMock, releaseLock: releaseLockMock };
+
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: stage\ndata: {"name":"retrieving","status":"started"}\n\n'));
+        controller.close();
+      },
+    });
+    fetchMock.mockResolvedValue({ ok: true, status: 200, body } as unknown as Response);
+    vi.spyOn(ReadableStream.prototype, 'getReader').mockReturnValue(reader as unknown as ReadableStreamDefaultReader<Uint8Array>);
+
+    const { result } = renderHook(() => useRagChat());
+    await act(async () => {
+      await result.current.submitQuery('test query');
+    });
+
+    expect(cancelMock).toHaveBeenCalledWith('Stream lifecycle terminated');
+    expect(releaseLockMock).toHaveBeenCalled();
+  });
+
+  it('ignores stale callbacks from a previous request via monotonic request ID guard', async () => {
+    const firstBody = new ReadableStream<Uint8Array>({
+      start() {
+        // Stay open: the second submission aborts this request.
+      },
+    });
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, body: firstBody } as unknown as Response)
+      .mockResolvedValueOnce(
+        sseResponse([
+          'event: stage\ndata: {"name":"retrieving","status":"started"}\n\n',
+          'event: token\ndata: {"delta":"second"}\n\n',
+          `event: done\ndata: ${JSON.stringify({ answer: 'Second answer', answer_status: 'answered', sources: [], timings_ms: {}, execution_time_ms: 100 })}\n\n`,
+        ]),
+      );
+
+    const { result } = renderHook(() => useRagChat());
+
+    // Start first query. The submit promise is created inside a synchronous
+    // act so React flushes the turn before the stream is allowed to settle.
+    let firstPromise!: Promise<void>;
+    act(() => {
+      firstPromise = result.current.submitQuery('first query');
+    });
+
+    await waitFor(() => expect(result.current.turns).toHaveLength(1));
+    expect(result.current.turns[0].query).toBe('first query');
+
+    // Submit second query while first is still streaming (should abort first)
+    let secondPromise!: Promise<void>;
+    act(() => {
+      secondPromise = result.current.submitQuery('second query');
+    });
+
+    await act(async () => {
+      await Promise.all([firstPromise, secondPromise]);
+    });
+
+    // The guard drops the aborted request's completion, so only the second
+    // turn is marked complete with its own answer.
+    expect(result.current.turns).toHaveLength(2);
+    expect(result.current.turns[0].status).toBe('retrieving');
+    expect(result.current.turns[1].answer).toBe('Second answer');
+    expect(result.current.turns[1].status).toBe('complete');
+  });
 });

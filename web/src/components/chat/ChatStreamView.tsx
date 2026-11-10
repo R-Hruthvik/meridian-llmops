@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useRef, useState, useCallback } from 'react';
+import React, { Suspense, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Check, Copy, FileText, RefreshCw, ArrowLeft, RotateCcw } from 'lucide-react';
 
 import { StatusChip, type StatusChipVariant } from '../StatusChip';
@@ -16,6 +16,8 @@ export interface ChatStreamViewProps {
   isLoading?: boolean;
   onSelectChunk?: (chunk: SearchResult) => void;
   onRetryQuery?: (query: string) => void;
+  onFollowUp?: (turn: ChatTurn) => void;
+  onRerun?: (turn: ChatTurn) => void;
 }
 
 const STAGE_LABELS: Record<'retrieving' | 'generating' | 'verifying', string> = {
@@ -29,6 +31,27 @@ const formatLatency = (ms: number): { value: string; unit: string } => {
   const rounded = Math.round(ms);
   if (Math.abs(rounded) < 1000) return { value: String(rounded), unit: 'ms' };
   return { value: (ms / 1000).toFixed(1), unit: 's' };
+};
+
+const formatTimingBadge = (key: string, value: number): string => {
+  const rounded = Math.round(value);
+  const engine = key.toLowerCase();
+  if (engine.includes('dense') || engine.includes('vector') || engine.includes('qdrant') || engine.includes('chroma')) {
+    return `[VEC:CHROMA ${rounded}ms]`;
+  }
+  if (engine.includes('graph') || engine.includes('neo4j') || engine.includes('kg')) {
+    return `[KG:SQLITE ${rounded}ms]`;
+  }
+  if (engine.includes('sparse') || engine.includes('bm25') || engine.includes('redis') || engine.includes('kv')) {
+    return `[KV:REDIS ${rounded}ms]`;
+  }
+  if (engine.includes('llm') || engine.includes('generat') || engine.includes('synth')) {
+    return `[LLM ${rounded}ms]`;
+  }
+  if (engine.includes('verify') || engine.includes('guard') || engine.includes('audit')) {
+    return `[VERIFY ${rounded}ms]`;
+  }
+  return `[${key.toUpperCase()} ${rounded}ms]`;
 };
 
 const chunkTitle = (chunk: SearchResult): string =>
@@ -158,6 +181,11 @@ const TurnFooter: React.FC<TurnFooterProps> = ({
   const verdict = verdictFor(turn);
   const latency = formatLatency(turn.execution_time_ms);
   const sourceCount = turn.sources.length;
+  const timingBadges = useMemo(() => {
+    return Object.entries(turn.timings_ms)
+      .filter(([, value]) => Number.isFinite(value))
+      .map(([key, value]) => formatTimingBadge(key, value));
+  }, [turn.timings_ms]);
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-hairline pt-2.5">
@@ -185,6 +213,16 @@ const TurnFooter: React.FC<TurnFooterProps> = ({
           <span>
             {sourceCount} {sourceCount === 1 ? 'source' : 'sources'}
           </span>
+        </span>
+      )}
+
+      {timingBadges.length > 0 && (
+        <span className="flex flex-wrap items-center gap-1.5 border-l border-hairline pl-3">
+          {timingBadges.map((badge, idx) => (
+            <span key={idx} className="id-mono text-micro text-muted">
+              {badge}
+            </span>
+          ))}
         </span>
       )}
 
@@ -224,15 +262,6 @@ const TurnFooter: React.FC<TurnFooterProps> = ({
  * bezel; evidence never disappears on a refusal, so the recovered chunks stay
  * inspectable even when Meridian could not ground an answer.
  */
-export interface ChatStreamViewProps {
-  turns: ChatTurn[];
-  isLoading?: boolean;
-  onSelectChunk?: (chunk: SearchResult) => void;
-  onRetryQuery?: (query: string) => void;
-  onFollowUp?: (turn: ChatTurn) => void;
-  onRerun?: (turn: ChatTurn) => void;
-}
-
 export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
   turns,
   isLoading = false,
@@ -243,6 +272,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
+  const [completionAnnouncement, setCompletionAnnouncement] = useState<string>('');
 
   const latestTurn = turns[turns.length - 1];
   const announcedStage =
@@ -252,6 +282,25 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
       latestTurn.status === 'verifying')
       ? latestTurn.activeStage?.name ?? latestTurn.status
       : null;
+
+  // Announce final verified status and answer summary when a turn completes
+  useEffect(() => {
+    if (!latestTurn || latestTurn.status !== 'complete') {
+      setCompletionAnnouncement('');
+      return;
+    }
+
+    const verdict = verdictFor(latestTurn);
+    const latency = formatLatency(latestTurn.execution_time_ms);
+    const sourceCount = latestTurn.sources.length;
+    const answerPreview = latestTurn.answer.trim()
+      ? latestTurn.answer.trim().slice(0, 200)
+      : 'No answer text';
+
+    setCompletionAnnouncement(
+      `Answer complete. Status: ${verdict.label}, ${latency.value}${latency.unit}, ${sourceCount} citation${sourceCount === 1 ? '' : 's'}. ${answerPreview}`,
+    );
+  }, [latestTurn?.id, latestTurn?.status, latestTurn?.verified, latestTurn?.refusal, latestTurn?.degraded_reason, latestTurn?.answer, latestTurn?.sources.length, latestTurn?.execution_time_ms]);
 
   const handleScroll = useCallback(() => {
     const node = scrollRef.current;
@@ -299,6 +348,18 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
       >
         {announcedStage ? `Stage: ${STAGE_LABELS[announcedStage]}` : ''}
       </div>
+
+      {completionAnnouncement && (
+        <div
+          className="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="completion-announcer"
+        >
+          {completionAnnouncement}
+        </div>
+      )}
 
       {turns.length === 0 ? (
         <section className="mx-auto flex w-full max-w-2xl flex-col items-start gap-3 rounded border border-hairline bg-surface-raised p-6">

@@ -381,4 +381,109 @@ describe('ChatStreamView', () => {
       expect(screen.queryByTestId('resume-stream-pill')).not.toBeInTheDocument();
     });
   });
+
+  describe('Completion announcer', () => {
+    it('announces final verified status and answer summary when turn completes', () => {
+      const turn = makeTurn({
+        verified: true,
+        refusal: false,
+        degraded_reason: null,
+        execution_time_ms: 1420,
+        answer: 'Meridian combines dense vectors in Qdrant with a Neo4j knowledge graph.',
+        sources: SOURCES,
+      });
+      render(<ChatStreamView turns={[turn]} />);
+
+      const announcer = screen.getByTestId('completion-announcer');
+      expect(announcer).toHaveAttribute('role', 'status');
+      expect(announcer).toHaveAttribute('aria-live', 'polite');
+      expect(announcer).toHaveTextContent(/Answer complete. Status: VERIFIED GROUNDED/);
+      expect(announcer).toHaveTextContent(/1.4s/);
+      expect(announcer).toHaveTextContent(/2 citations/);
+      expect(announcer).toHaveTextContent(/Meridian combines dense vectors/);
+    });
+
+    it('announces REFUSED status when turn is refused', () => {
+      const turn = makeTurn({
+        verified: false,
+        refusal: true,
+        degraded_reason: 'Insufficient grounding',
+        execution_time_ms: 500,
+        answer: '',
+        sources: [],
+      });
+      render(<ChatStreamView turns={[turn]} />);
+
+      const announcer = screen.getByTestId('completion-announcer');
+      expect(announcer).toHaveTextContent(/Status: REFUSED/);
+    });
+
+    it('announces DEGRADED status when turn is degraded', () => {
+      const turn = makeTurn({
+        verified: false,
+        refusal: false,
+        degraded_reason: 'LLM timeout',
+        execution_time_ms: 500,
+        answer: 'Partial answer',
+        sources: SOURCES,
+      });
+      render(<ChatStreamView turns={[turn]} />);
+
+      const announcer = screen.getByTestId('completion-announcer');
+      expect(announcer).toHaveTextContent(/Status: DEGRADED/);
+    });
+
+    it('does not render completion announcer for non-complete turns', () => {
+      const turn = makeTurn({
+        status: 'generating',
+        activeStage: { name: 'generating', status: 'started' },
+        answer: 'Streaming...',
+      });
+      render(<ChatStreamView turns={[turn]} isLoading />);
+
+      expect(screen.queryByTestId('completion-announcer')).not.toBeInTheDocument();
+    });
+
+    it('clears completion announcer when turns array changes', () => {
+      const turn = makeTurn({ verified: true });
+      const { rerender } = render(<ChatStreamView turns={[turn]} />);
+
+      expect(screen.getByTestId('completion-announcer')).toBeInTheDocument();
+
+      rerender(<ChatStreamView turns={[]} />);
+
+      expect(screen.queryByTestId('completion-announcer')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('TurnFooter timing badges', () => {
+    it('renders engine monogram badges when timings are available', () => {
+      const turn = makeTurn({
+        timings_ms: { dense: 12, graph: 80, llm: 640 },
+      });
+      render(<ChatStreamView turns={[turn]} />);
+
+      expect(screen.getByText('[VEC:CHROMA 12ms]')).toBeInTheDocument();
+      expect(screen.getByText('[KG:SQLITE 80ms]')).toBeInTheDocument();
+      expect(screen.getByText('[LLM 640ms]')).toBeInTheDocument();
+    });
+
+    it('does not render timing badges when no timings are available', () => {
+      const turn = makeTurn({ timings_ms: {} });
+      render(<ChatStreamView turns={[turn]} />);
+
+      expect(screen.queryByText(/\[VEC:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/\[KG:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/\[LLM/)).not.toBeInTheDocument();
+    });
+
+    it('renders KV:REDIS badge for sparse_bm25 timing', () => {
+      const turn = makeTurn({
+        timings_ms: { sparse_bm25: 35 },
+      });
+      render(<ChatStreamView turns={[turn]} />);
+
+      expect(screen.getByText('[KV:REDIS 35ms]')).toBeInTheDocument();
+    });
+  });
 });
