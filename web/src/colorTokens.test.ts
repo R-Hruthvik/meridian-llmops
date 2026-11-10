@@ -127,6 +127,7 @@ const CHAT_SURFACE = [
   'dark:bg-zinc-900/90',
   'dark:bg-zinc-950/40',
   'hover:bg-white/5',
+  'bg-surface/80',
 ]
 
 describe('instrument colour tokens: opacity modifiers emit real CSS', () => {

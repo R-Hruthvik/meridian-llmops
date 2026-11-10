@@ -361,103 +361,91 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
         </div>
       )}
 
-      {turns.length === 0 ? (
-        <section className="mx-auto flex w-full max-w-2xl flex-col items-start gap-3 rounded border border-hairline bg-surface-raised p-6">
-          <p className="label-section text-muted">Grounded answers</p>
-          <h2 className="text-xl font-bold text-ink">Meridian Dual-Memory RAG Cockpit</h2>
-          <p className="max-w-prose text-body text-muted">
-            Ask a question and Meridian will answer from the documents you trust — returning
-            verified, grounded answers with every citation inspectable. Dense vectors, the
-            knowledge graph, and the provenance ledger all stay one click away.
-          </p>
-        </section>
-      ) : (
-        <ol className="flex flex-col gap-6">
-          {turns.map((turn) => {
-            const activeStage =
-              turn.status === 'retrieving' ||
-              turn.status === 'generating' ||
-              turn.status === 'verifying'
-                ? turn.activeStage?.name ?? turn.status
-                : null;
+      <ol className="flex flex-col gap-6">
+        {turns.map((turn) => {
+          const activeStage =
+            turn.status === 'retrieving' ||
+            turn.status === 'generating' ||
+            turn.status === 'verifying'
+              ? turn.activeStage?.name ?? turn.status
+              : null;
 
-            return (
-              <li
-                key={turn.id}
-                data-testid={`chat-turn-${turn.id}`}
-                className="flex flex-col gap-3"
-              >
-                <div className="max-w-[85%] self-end rounded-lg border border-hairline bg-surface-sunken px-4 py-2.5 text-ink">
-                  <p className="whitespace-pre-wrap break-words text-body">{turn.query}</p>
-                </div>
+          return (
+            <li
+              key={turn.id}
+              data-testid={`chat-turn-${turn.id}`}
+              className="flex flex-col gap-3"
+            >
+              <div className="max-w-[85%] self-end rounded-lg border border-hairline bg-surface-sunken px-4 py-2.5 text-ink">
+                <p className="whitespace-pre-wrap break-words text-body">{turn.query}</p>
+              </div>
 
-                <div className="relative w-full rounded-2xl border border-hairline bg-surface p-1.5">
-                  <div className="rounded-xl border border-hairline bg-surface-raised p-4">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="label-verdict text-muted">Meridian</span>
-                      {activeStage ? <ActiveStage stage={activeStage} /> : null}
-                    </div>
-
-                    {turn.status === 'error' ? (
-                      <div className="rounded border border-fail bg-fail-wash p-3">
-                        <p className="text-label font-bold text-fail">Query failed</p>
-                        <p className="mt-0.5 break-words text-body text-fail">
-                          {turn.error?.message ?? 'The query could not be completed.'}
-                        </p>
-                        {onRetryQuery ? (
-                          <button
-                            type="button"
-                            onClick={() => onRetryQuery(turn.query)}
-                            className="mt-2 inline-flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                          >
-                            <RefreshCw className="size-3.5" aria-hidden="true" />
-                            <span>Retry</span>
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : turn.answer.trim() ? (
-                      <Suspense
-                        fallback={
-                          <p className="whitespace-pre-wrap break-words text-body text-ink">
-                            {turn.answer}
-                          </p>
-                        }
-                      >
-                        <MarkdownRenderer
-                          content={turn.answer}
-                          onCitationClick={(citationNumber) => {
-                            const chunk = turn.sources[citationNumber - 1];
-                            if (chunk && onSelectChunk) {
-                              onSelectChunk(chunk);
-                            }
-                          }}
-                        />
-                      </Suspense>
-                    ) : activeStage ? (
-                      <AnswerSkeleton />
-                    ) : (
-                      <p className="text-body text-muted">No answer text was returned for this turn.</p>
-                    )}
-
-                    {(turn.refusal || Boolean(turn.degraded_reason)) && turn.sources.length > 0 ? (
-                      <EvidenceRecoverySurface turn={turn} onSelectChunk={onSelectChunk} />
-                    ) : null}
-
-                    {turn.status === 'complete' ? (
-                      <TurnFooter
-                        turn={turn}
-                        onSelectChunk={onSelectChunk}
-                        onFollowUp={onFollowUp}
-                        onRerun={onRerun}
-                      />
-                    ) : null}
+              <div className="relative w-full rounded-2xl border border-hairline bg-surface p-1.5">
+                <div className="rounded-xl border border-hairline bg-surface-raised p-4">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="label-verdict text-muted">Meridian</span>
+                    {activeStage ? <ActiveStage stage={activeStage} /> : null}
                   </div>
+
+                  {turn.status === 'error' ? (
+                    <div className="rounded border border-fail bg-fail-wash p-3">
+                      <p className="text-label font-bold text-fail">Query failed</p>
+                      <p className="mt-0.5 break-words text-body text-fail">
+                        {turn.error?.message ?? 'The query could not be completed.'}
+                      </p>
+                      {onRetryQuery ? (
+                        <button
+                          type="button"
+                          onClick={() => onRetryQuery(turn.query)}
+                          className="mt-2 inline-flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        >
+                          <RefreshCw className="size-3.5" aria-hidden="true" />
+                          <span>Retry</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : turn.answer.trim() ? (
+                    <Suspense
+                      fallback={
+                        <p className="whitespace-pre-wrap break-words text-body text-ink">
+                          {turn.answer}
+                        </p>
+                      }
+                    >
+                      <MarkdownRenderer
+                        content={turn.answer}
+                        onCitationClick={(citationNumber) => {
+                          const chunk = turn.sources[citationNumber - 1];
+                          if (chunk && onSelectChunk) {
+                            onSelectChunk(chunk);
+                          }
+                        }}
+                      />
+                    </Suspense>
+                  ) : activeStage ? (
+                    <AnswerSkeleton />
+                  ) : (
+                    <p className="text-body text-muted">No answer text was returned for this turn.</p>
+                  )}
+
+                  {(turn.refusal || Boolean(turn.degraded_reason)) && turn.sources.length > 0 ? (
+                    <EvidenceRecoverySurface turn={turn} onSelectChunk={onSelectChunk} />
+                  ) : null}
+
+                  {turn.status === 'complete' ? (
+                    <TurnFooter
+                      turn={turn}
+                      onSelectChunk={onSelectChunk}
+                      onFollowUp={onFollowUp}
+                      onRerun={onRerun}
+                    />
+                  ) : null}
                 </div>
-              </li>
-            );
-          })}
-        </ol>
-      )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
 
       {isLoading && isUserScrolledUp && (
         <button

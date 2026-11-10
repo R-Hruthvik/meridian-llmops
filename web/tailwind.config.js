@@ -113,7 +113,9 @@ export default {
         body: ['15px', { lineHeight: '1.65' }],
         verdict: ['13px', { lineHeight: '1.3' }],
         readout: ['15px', { lineHeight: '1.4' }],
-        display: ['32px', { lineHeight: '1.12' }],
+        display: ['clamp(2rem, 3.5vw + 1rem, 3.75rem)', { lineHeight: '1.08', letterSpacing: '-0.035em', fontWeight: '600' }],
+        'display-sm': ['1.5rem', { lineHeight: '1.12', letterSpacing: '-0.025em', fontWeight: '600' }],
+        hud: ['12px', { lineHeight: '1.4', fontWeight: '500', letterSpacing: '0.04em', textTransform: 'uppercase' }],
       },
       borderRadius: {
         // §9 6px flat, 4px for inputs and wells, full-pill for status chips.

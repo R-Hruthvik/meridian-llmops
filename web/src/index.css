@@ -71,20 +71,37 @@
      modifier expands to `<color>/<alpha-value>`; a bare `var(--fail)` yields
      the invalid `var(--fail)/0.3` and the whole rule is silently dropped. The
      config reads these as `rgb(var(--x) / <alpha-value>)` so `/30` works. */
-  --surface: 246 243 235;         /* #F6F3EB — paper */
-  --surface-raised: 255 254 250;  /* #FFFEFA — paper raised */
-  --surface-sunken: 236 233 224;  /* #ECE9E0 — paper muted */
-  --border: 222 217 206;          /* #DED9CE — rule */
+  --surface: 247 245 240;         /* #F7F5F0 — Raw Paper */
+  --surface-raised: 255 254 250;
+  --surface-sunken: 237 233 224;
+  --border: 214 208 196;          /* #D6D0C4 — Warm Stone */
   --border-strong: 193 188 176;
-  --text: 37 45 40;               /* #252D28 — ink */
-  --text-muted: 98 108 101;       /* #626C65 — quiet ink */
-  --text-faint: 95 99 90;       /* #5F635A — faint ink, AA on paper */
+  --text: 20 22 24;               /* #141618 — Deep Carbon Ink */
+  --text-muted: 98 108 101;
+  --text-faint: 105 111 105;      /* #696F69 — ≈4.7:1 on Raw Paper (WCAG AA 4.5:1 at 11–13 px) */
 
-  /* Pine is the primary action and navigation color. */
-  --accent: 40 92 74;             /* #285C4A */
-  --accent-ink: 30 77 61;
-  --accent-wash: 229 238 232;     /* #E5EEE8 */
-  --copper: 166 83 55;            /* #A65337 — citation references */
+  /* §6 Motion / atmosphere tokens */
+  --atmos-grid-pitch: 24px;
+  --atmos-cross-period: 96px;
+  --atmos-hairline: 1px;
+  --atmos-border-alpha: 0.35;
+  --atmos-grain-frequency: 0.75;
+  --atmos-grain-opacity: 0.035;
+  --atmos-particle-count: 100;
+  --atmos-particle-alpha-min: 0.15;
+  --atmos-particle-alpha-max: 0.22;
+  --atmos-influence-radius: 64px;
+  --atmos-viscous-decay: 0.92;
+  --membrane-bleed: 32px;
+  --membrane-a1: 2.5px;
+  --membrane-a2: 1.2px;
+  --membrane-magnet-radius: 64px;
+  --ripple-tau: 350ms;
+
+  /* Cobalt Flow is the primary action and navigation color. */
+  --accent: 37 99 235;            /* #2563EB — Cobalt Flow */
+  --accent-ink: 30 77 190;
+  --accent-wash: 229 238 252;
 
   /* Status — real state only, never decorative */
   --ok: 31 122 77;                /* #1F7A4D */
@@ -95,6 +112,49 @@
   --fail-wash: 249 236 235;       /* #F9ECEB */
 }
 
+/* Theme palettes switched instantly via dataset.theme. Raw Paper (default)
+   lives in :root above; each preset overrides the same channel tokens. */
+[data-theme='ceramic-concrete'] {
+  --surface: 240 238 234;
+  --surface-raised: 250 249 247;
+  --surface-sunken: 230 228 224;
+  --border: 190 186 180;
+  --border-strong: 150 146 140;
+  --text: 45 42 38;
+  --text-muted: 110 105 100;
+  --text-faint: 160 155 150;
+  --accent: 120 120 120;
+  --accent-ink: 80 80 80;
+  --accent-wash: 232 230 227;
+}
+[data-theme='cold-titanium'] {
+  --surface: 236 240 243;
+  --surface-raised: 248 251 253;
+  --surface-sunken: 226 231 234;
+  --border: 185 193 198;
+  --border-strong: 140 150 156;
+  --text: 28 36 42;
+  --text-muted: 90 100 108;
+  --text-faint: 145 155 162;
+  --accent: 37 99 235;
+  --accent-ink: 30 77 190;
+  --accent-wash: 224 235 250;
+}
+[data-theme='analog-soot'] {
+  color-scheme: dark;
+  --surface: 14 16 18;
+  --surface-raised: 20 22 24;
+  --surface-sunken: 24 27 30;
+  --border: 70 72 74;
+  --border-strong: 110 112 114;
+  --text: 247 245 240;
+  --text-muted: 190 185 180;
+  --text-faint: 115 112 110;
+  --accent: 37 99 235;
+  --accent-ink: 100 150 240;
+  --accent-wash: 30 35 40;
+}
+
 body {
   margin: 0;
   background-color: rgb(var(--surface));
@@ -102,6 +162,14 @@ body {
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Atmospheric layer: grid under, grain over. Decorative — never focusable. */
+.atmos-layers {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
 }
 
 /* Keep custom scrollbars easy to see and grab. */
@@ -130,6 +198,41 @@ body {
   border: 1px solid rgb(var(--border));
 }
 
+/* §3.1 Atmospheric grid: 24 px pitch, hairline every cell, crosses every 96 px
+   (every 4th cell), rgba(var(--border) / 0.35), both axes. */
+.atmos-grid {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent calc(var(--atmos-grid-pitch) - var(--atmos-hairline)),
+      rgba(var(--border) / var(--atmos-border-alpha)) var(--atmos-grid-pitch)
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent calc(var(--atmos-grid-pitch) - var(--atmos-hairline)),
+      rgba(var(--border) / var(--atmos-border-alpha)) var(--atmos-grid-pitch)
+    );
+  background-size: var(--atmos-grid-pitch) var(--atmos-grid-pitch);
+}
+
+/* §3.2 Procedural SVG noise grain: feTurbulence fractalNoise 0.75 / 3 octaves,
+   opacity 0.035, mix-blend-mode overlay. Self-contained via data-URL background. */
+.atmos-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--atmos-grain-opacity);
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgNTEyIDUxMiI+PGZpbHRlciBpZD0iZ3JhaW4iIHg9IjAiIHk9IjAiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxmZVR1cmJ1bGVuY2UgdHlwZT0iZnJhY3RhbE5vaXNlIiBiYXNlRnJlcXVlbmN5PSIwLjc1IiBudW1PY3RhdmVzPSIzIiBzdGl0Y2hUaWxlcz0ic3RpdGNoIiByZXN1bHQ9Im4iLz48ZmVDb21wb25lbnRUcmFuc2ZlciBpbj0ibiIgcmVzdWx0PSJhIj48ZmVGdW5jQSB0eXBlPSJ0YWJsZSIgdGFibGVWYWx1ZXM9IjAgMC4wMzUiLz48L2ZlQ29tcG9uZW50VHJhbnNmZXI+PGZlRmxvb2QgZmxvb2QtY29sb3I9IiMwMDAwMDAiIHJlc3VsdD0iZiIvPjxmZUNvbXBvc2l0ZSBpbj0iZiIgaW4yPSJhIiBvcGVyYXRvcj0iaW4iIHJlc3VsdD0iZyIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNncmFpbikiLz48L3N2Zz4=");
+}
+
 @layer components {
   /* Shared section labels stay readable and sentence case by default. */
   .label-section {
@@ -147,7 +250,7 @@ body {
     @apply font-mono text-[12px] font-medium;
   }
 
-  /* §9 every number, id, score, timestamp, count, port, endpoint. No exceptions. */
+  /* §6 every number, id, score, timestamp, count, port, endpoint. No exceptions. */
   .num {
     @apply font-mono;
     font-variant-numeric: tabular-nums;
@@ -158,6 +261,23 @@ body {
   .answer-prose {
     @apply text-[14px] leading-[1.65] text-ink;
     max-width: 68ch;
+  }
+
+  /* LLMOps Cockpit — §2 tokenless, hairline-only. */
+  .cockpit-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.5rem;
+  }
+  @media (max-width: 767px) {
+    .cockpit-strip { grid-template-columns: 1fr; }
+  }
+  .cockpit-stat {
+    border: 1px solid rgb(var(--border));
+    background: rgb(var(--surface-raised));
+  }
+  .cockpit-chip {
+    user-select: none;
   }
 }
 

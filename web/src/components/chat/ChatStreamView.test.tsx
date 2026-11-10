@@ -66,11 +66,13 @@ describe('ChatStreamView', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders the cockpit welcome panel when there are no turns', () => {
+  it('renders an empty transcript shell with no turns', () => {
     render(<ChatStreamView turns={[]} />);
 
-    expect(screen.getByRole('heading', { name: /meridian dual-memory rag cockpit/i })).toBeInTheDocument();
-    expect(screen.getByText(/verified, grounded answers/i)).toBeInTheDocument();
+    expect(screen.getByTestId('chat-stream-view')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /meridian dual-memory rag cockpit/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/verified, grounded answers/i)).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId(/^chat-turn-/)).toHaveLength(0);
   });
 
   it('renders the user query and the assistant answer', () => {

@@ -3,8 +3,10 @@ import { Bot, Crosshair, Database, ShieldAlert, Settings, Zap } from 'lucide-rea
 import { LazySurface } from './LazySurface';
 import { StatusChip, type StatusChipVariant } from './StatusChip';
 import { api } from '../services/api';
-import type { BackendHealth } from '../App';
 import type { LLMSettings } from '../types/api';
+
+// Backend health triplet, kept local so this module is independent of the shell.
+export type BackendHealth = 'online' | 'degraded' | 'offline' | 'unknown';
 
 // The settings studio is a 900-line dialog behind one gear. It is a lazy chunk
 // so the first paint does not carry it.
