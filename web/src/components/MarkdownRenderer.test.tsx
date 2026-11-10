@@ -1,5 +1,6 @@
 import React from 'react';
-import { render } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { vi } from 'vitest';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 const CODE = ['# Heading', '', 'Some prose with `inline` code.', '', '```python', 'print("hello")', '```'].join('\n');
@@ -33,4 +34,36 @@ describe('MarkdownRenderer: token layer, no literal colour', () => {
     expect(container.querySelector('script')).toBeNull();
     expect(container.textContent).toContain('before');
   });
+
+  it('renders inline [^1] as a clickable citation button', () => {
+    const onCitationClick = vi.fn();
+    render(
+      <MarkdownRenderer
+        content="Grounding evidence is here [^1] and in section [^2]."
+        onCitationClick={onCitationClick}
+      />,
+    );
+
+    const badge1 = screen.getByRole('button', { name: 'Citation 1' });
+    expect(badge1).toBeInTheDocument();
+    expect(badge1).toHaveAttribute('data-citation-index', '1');
+    expect(badge1).toHaveTextContent('[^1]');
+
+    const badge2 = screen.getByRole('button', { name: 'Citation 2' });
+    expect(badge2).toBeInTheDocument();
+
+    fireEvent.click(badge1);
+    expect(onCitationClick).toHaveBeenCalledWith(1);
+  });
+
+  it('strips non-citation rogue buttons from embedded HTML', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'<button onclick="steal()">Click me</button>\n\nValid [^1]'} />,
+    );
+
+    expect(screen.queryByText('Click me')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Citation 1' })).toBeInTheDocument();
+    expect(container.querySelector('button.citation-badge')).not.toBeNull();
+  });
 });
+

@@ -486,4 +486,27 @@ describe('ChatStreamView', () => {
       expect(screen.getByText('[KV:REDIS 35ms]')).toBeInTheDocument();
     });
   });
+
+  describe('Inline citation badges', () => {
+    it('calls onSelectChunk when inline citation badge is clicked', async () => {
+      const onSelectChunk = vi.fn();
+      const turn = makeTurn({
+        answer: 'Verified claim from document [^1].',
+        sources: SOURCES,
+      });
+
+      render(
+        <ChatStreamView
+          turns={[turn]}
+          onSelectChunk={onSelectChunk}
+        />,
+      );
+
+      const citationButton = await screen.findByRole('button', { name: 'Citation 1' });
+      expect(citationButton).toBeInTheDocument();
+
+      fireEvent.click(citationButton);
+      expect(onSelectChunk).toHaveBeenCalledWith(SOURCES[0]);
+    });
+  });
 });

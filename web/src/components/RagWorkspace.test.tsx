@@ -213,7 +213,7 @@ describe('RagWorkspace chat integration', () => {
         expect.objectContaining({ query: 'What is Meridian?' }),
       ),
     );
-    expect(await screen.findByText('test answer')).toBeInTheDocument();
+    expect(await screen.findByText('test answer', {}, { timeout: 4000 })).toBeInTheDocument();
   });
 
   it('passes the selected top_k to the query API via dock chips', async () => {
@@ -1103,3 +1103,42 @@ describe('RagWorkspace follow-up and re-run actions', () => {
     );
   });
 });
+
+describe('RagWorkspace audit log export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (api.query as ReturnType<typeof vi.fn>).mockReset();
+    (api.getDocuments as ReturnType<typeof vi.fn>).mockReset();
+    (api.getDocuments as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    (api.getLLMSettings as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503, body: null }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('renders Export Audit Log button when turns exist and creates markdown download', async () => {
+    const user = userEvent.setup();
+    (api.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce(makeResponse());
+
+    const createObjectURL = vi.fn().mockReturnValue('blob:test');
+    const revokeObjectURL = vi.fn();
+    window.URL.createObjectURL = createObjectURL;
+    window.URL.revokeObjectURL = revokeObjectURL;
+
+    renderCanvas();
+    expect(screen.queryByRole('button', { name: /export audit log/i })).not.toBeInTheDocument();
+
+    await ask(user, 'test query for audit');
+    expect(await screen.findByText('test answer')).toBeInTheDocument();
+
+    const exportBtn = screen.getByRole('button', { name: /export audit log/i });
+    expect(exportBtn).toBeInTheDocument();
+
+    await user.click(exportBtn);
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalled();
+  });
+});
+

@@ -8,6 +8,7 @@ import { CitationInspectorDrawer } from './chat/CitationInspectorDrawer';
 import { CommandDock } from './chat/CommandDock';
 import { useRagChat } from './chat/useRagChat';
 import type { ChatTurn } from './chat/useRagChat';
+import { generateAuditLogMarkdown } from './ragFormat';
 
 interface RagWorkspaceProps {
   tenantId: string;
@@ -76,6 +77,18 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
     setFollowUpContext(null);
     setQuery('');
   }, []);
+
+  const handleExportAuditLog = useCallback(() => {
+    if (chat.turns.length === 0) return;
+    const md = generateAuditLogMarkdown(tenantId, chat.turns);
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `meridian-audit-${tenantId}-${Date.now()}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [chat.turns, tenantId]);
 
   const openInspector = (chunk: SearchResult) => {
     setActiveChunk(chunk);
@@ -173,6 +186,19 @@ export const RagWorkspace: React.FC<RagWorkspaceProps> = ({ tenantId }) => {
                 : error.message}
             </p>
           </div>
+        </div>
+      )}
+
+      {chat.turns.length > 0 && (
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            onClick={handleExportAuditLog}
+            aria-label="Export audit log in markdown format"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-hairline bg-surface px-2.5 py-1 text-label text-ink transition-colors hover:bg-surface-sunken focus-machined"
+          >
+            <span>Export Audit Log (.md)</span>
+          </button>
         </div>
       )}
 

@@ -239,8 +239,8 @@ body {
   }
 }
 
-@utility focus-machined {
-  &:focus-visible {
+@layer utilities {
+  .focus-machined:focus-visible {
     outline: 2px solid transparent;
     outline-offset: 2px;
     box-shadow:
@@ -248,10 +248,8 @@ body {
       0 0 0 2px var(--focus-ring-inner),
       0 0 0 4px var(--focus-ring-outer);
   }
-}
 
-@utility focus-machined-accent {
-  &:focus-visible {
+  .focus-machined-accent:focus-visible {
     outline: 2px solid transparent;
     outline-offset: 2px;
     box-shadow:

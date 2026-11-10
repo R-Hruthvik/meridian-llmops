@@ -423,7 +423,15 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
                           </p>
                         }
                       >
-                        <MarkdownRenderer content={turn.answer} />
+                        <MarkdownRenderer
+                          content={turn.answer}
+                          onCitationClick={(citationNumber) => {
+                            const chunk = turn.sources[citationNumber - 1];
+                            if (chunk && onSelectChunk) {
+                              onSelectChunk(chunk);
+                            }
+                          }}
+                        />
                       </Suspense>
                     ) : activeStage ? (
                       <AnswerSkeleton />
