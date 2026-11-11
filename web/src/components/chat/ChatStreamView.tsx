@@ -429,13 +429,13 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
               data-testid={`chat-turn-${turn.id}`}
               className="flex flex-col gap-3"
             >
-              <div className="max-w-[85%] self-end rounded-lg border border-hairline bg-surface-sunken px-4 py-2.5 text-ink">
+              <div className="max-w-[85%] self-end rounded-sm border border-hairline bg-surface-sunken px-4 py-2.5 text-ink">
                 <p className="whitespace-pre-wrap break-words text-body">{turn.query}</p>
               </div>
 
               <DoubleBezelCard
-                className="border border-hairline bg-surface rounded-2xl p-1.5"
-                innerClassName="rounded-xl bg-surface-raised p-4 border-t border-white/[80] dark:border-white/[8] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                className="border border-hairline bg-surface rounded p-1.5"
+                innerClassName="rounded-sm bg-surface-raised p-4 border-t border-white/[80] dark:border-white/[8] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
               >
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="label-verdict text-muted">Meridian</span>

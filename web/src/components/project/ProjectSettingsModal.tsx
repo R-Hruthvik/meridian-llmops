@@ -115,7 +115,7 @@ const SliderReadout = ({
           step={step}
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="flex-1 accent-accent h-2 w-full rounded-lg bg-hairline cursor-pointer"
+          className="flex-1 accent-accent h-2 w-full rounded-sm bg-hairline cursor-pointer"
           role="slider"
           aria-valuenow={value}
           aria-valuemin={min}
@@ -184,13 +184,13 @@ const PasswordInput = ({
 
 const DoubleBezelCard = ({ children, variant = 'default' }: { children: React.ReactNode; variant?: 'default' | 'danger' }) => (
   <section
-    className={`rounded-xl border p-4 shadow-sm ${
+    className={`rounded border p-4 ${
       variant === 'danger'
         ? 'border-hairline bg-surface hover:border-fail-wash'
         : 'border-hairline bg-surface-raised hover:bg-surface-sunken'
     }`}
   >
-    <div className="rounded-lg border border-hairline p-3 bg-surface">{children}</div>
+    <div className="rounded-sm border border-hairline p-3 bg-surface">{children}</div>
   </section>
 );
 
@@ -239,14 +239,14 @@ const ThemeSwatchGrid = ({
           type="button"
           onClick={() => onSelect(t.id)}
           aria-pressed={active}
-          className={`relative flex flex-col items-center gap-2 rounded-xl border p-3 text-left transition-colors ${
+          className={`relative flex flex-col items-center gap-2 rounded-sm border p-3 text-left transition-colors ${
             active
               ? 'border-accent bg-surface-raised'
               : 'border-hairline bg-surface hover:bg-surface-sunken'
           }`}
         >
           <div
-            className={`w-10 h-10 rounded-lg border border-hairline shrink-0 ${active ? 'ring-2 ring-accent' : ''}`}
+            className={`w-10 h-10 rounded-sm border border-hairline shrink-0 ${active ? 'ring-2 ring-accent' : ''}`}
             style={{ backgroundColor: t.swatch, borderColor: t.accent }}
             aria-hidden="true"
           />
@@ -338,7 +338,7 @@ const MaintenanceConfirm = ({
         aria-modal="true"
         aria-labelledby="maintenance-confirm-title"
         tabIndex={-1}
-        className="relative z-50 w-full max-w-md rounded-2xl border border-hairline bg-surface-raised p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="relative z-50 w-full max-w-md rounded-sm border border-hairline bg-surface-raised p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <h3 id="maintenance-confirm-title" className="text-readout font-bold text-ink mb-1">
           Confirm {ACTION_LABEL[action]}
@@ -736,7 +736,7 @@ export function ProjectSettingsModal({
         aria-modal="true"
         aria-labelledby="project-settings-title"
         tabIndex={-1}
-        className="relative z-50 w-full max-w-2xl rounded-2xl border border-hairline bg-surface-raised p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="relative z-50 w-full max-w-2xl rounded-sm border border-hairline bg-surface-raised p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <div className="flex items-center justify-between border-b border-hairline pb-4 mb-6">
           <div>
@@ -1083,20 +1083,20 @@ export function ProjectSettingsModal({
           <section id="panel-storage" role="tabpanel" aria-labelledby="tab-storage" className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-3">
               {[ { label: 'Vector collections', value: storage.vector_collections }, { label: 'Disk chunks', value: storage.disk_chunks }, { label: 'DB tables', value: storage.db_tables.length } ].map((s) => (
-                <div key={s.label} className="rounded-xl border border-hairline bg-surface-raised p-4">
+                <div key={s.label} className="rounded border border-hairline bg-surface-raised p-4">
                   <span className="text-micro text-muted block">{s.label}</span>
                   <span className="text-2xl font-bold text-ink">{s.value}</span>
                 </div>
               ))}
               {storage.db_tables.map((t) => (
-                <div key={t.name} className="rounded-xl border border-hairline bg-surface-raised p-4">
+                <div key={t.name} className="rounded border border-hairline bg-surface-raised p-4">
                   <span className="text-micro text-muted block truncate">{t.name}</span>
                   <span className="text-2xl font-bold text-ink">{t.row_count}</span>
                 </div>
               ))}
             </div>
 
-            <div className="rounded-xl border border-hairline bg-surface p-4">
+            <div className="rounded border border-hairline bg-surface p-4">
               <h3 className="label-section mb-3 text-fail">Danger zone</h3>
               {['clear_vector', 'clear_disk_chunks', 'database_reset'].map((action) => (
                 <DoubleBezelCard key={action} variant="danger">

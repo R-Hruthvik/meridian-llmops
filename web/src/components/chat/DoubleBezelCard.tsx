@@ -18,13 +18,13 @@ export function DoubleBezelCard({
 }: DoubleBezelCardProps) {
   return (
     <div
-      className={`relative p-1.5 rounded-2xl border transition-colors bg-white/[0.03] dark:bg-zinc-950/40 ${
-        active ? 'border-sky-400/50' : 'border-white/10'
+      className={`relative p-1.5 rounded border border-hairline transition-colors bg-surface-raised ${
+        active ? 'border-sky-400/50' : 'border-hairline'
       } ${className}`}
       {...props}
     >
       <div
-        className={`rounded-xl bg-zinc-900/90 dark:bg-zinc-900/90 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${innerClassName}`}
+        className={`rounded-sm bg-surface-raised p-4 border-t border-white/[80] dark:border-white/[8] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${innerClassName}`}
       >
         {children}
       </div>

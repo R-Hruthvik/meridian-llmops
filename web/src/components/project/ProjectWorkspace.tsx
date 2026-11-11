@@ -200,7 +200,7 @@ function ConfirmationDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirmation-dialog-title"
-        className="relative z-10 w-full max-w-md rounded-xl border border-hairline bg-surface-raised p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="relative z-10 w-full max-w-md rounded-sm border border-hairline bg-surface-raised p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="confirmation-dialog-title" className="text-readout font-bold text-ink">
@@ -525,7 +525,7 @@ export function ProjectWorkspace() {
                               selectSession(session.id);
                             }
                           }}
-                          className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                          className={`flex items-center gap-2.5 rounded-sm border px-3 py-2.5 text-left transition-colors ${
                             active
                               ? 'border-accent bg-surface-raised text-accent-ink'
                               : 'border-transparent text-ink hover:bg-surface-sunken hover:text-accent-ink'
@@ -625,7 +625,7 @@ export function ProjectWorkspace() {
         <div className="fixed inset-0 z-40" onClick={closeProjectPicker} aria-hidden="true" />
       )}
       {projectPickerOpen && (
-        <div className="absolute left-0 top-16 z-50 w-56 rounded-xl border border-hairline bg-surface-raised p-2 animate-[overlay-slide-in_180ms_cubic-bezier(0.2,0,0,1)_both]">
+        <div className="absolute left-0 top-16 z-50 w-56 rounded-sm border border-hairline bg-surface-raised p-2 animate-[overlay-slide-in_180ms_cubic-bezier(0.2,0,0,1)_both]">
           {projects.map((p) => (
             <button
               key={p.id}

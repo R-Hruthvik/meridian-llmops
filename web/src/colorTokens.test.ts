@@ -119,13 +119,10 @@ const VARIANTS = [
 const CHAT_SURFACE = [
   'bg-black/10',
   'bg-emerald-400/10',
-  'bg-zinc-900/90',
   'border-emerald-400/50',
   'border-sky-400/50',
   'border-white/10',
   'dark:bg-white/10',
-  'dark:bg-zinc-900/90',
-  'dark:bg-zinc-950/40',
   'hover:bg-white/5',
   'bg-surface/80',
 ]
