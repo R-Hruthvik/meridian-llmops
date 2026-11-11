@@ -301,6 +301,49 @@ body {
   }
 }
 
+/* §4.3 Kinetic turn entrance — critically damped spring feel (MERIDIAN_SPRING ζ=1.0).
+   Runs once per turn mount; not re-triggered by content growth. */
+@keyframes turn-entrance {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes turn-entrance-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.turn-wrapper {
+  display: grid;
+  animation: turn-entrance 350ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: grid-template-rows 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-wrapper {
+    animation: turn-entrance-fade 100ms linear both;
+  }
+}
+
+.turn-footer {
+  visibility: hidden;
+  height: 0;
+  overflow: hidden;
+}
+.turn-wrapper.complete .turn-footer {
+  visibility: visible;
+}
+
 @keyframes overlay-slide-in {
   from {
     transform: translateX(24px);

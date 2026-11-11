@@ -127,43 +127,94 @@ const AnswerSkeleton: React.FC = () => (
 const EvidenceRecoverySurface: React.FC<{
   turn: ChatTurn;
   onSelectChunk?: (chunk: SearchResult) => void;
-}> = ({ turn, onSelectChunk }) => (
-  <div
-    data-testid="evidence-recovery-surface"
-    className="mt-3 rounded border border-warn bg-warn-wash p-3"
-  >
-    <p className="text-label font-bold text-warn">
-      Meridian could not verify a grounded answer, but recovered {turn.sources.length} relevant
-      chunks from your index
-    </p>
+  onRetryQuery?: (query: string) => void;
+}> = ({ turn, onSelectChunk, onRetryQuery }) => {
+  const [passStatus, setPassStatus] = useState<'idle' | 'running' | 'complete' | 'failed'>('idle');
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef<number>(0);
 
-    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-      {turn.sources.map((chunk, index) => (
-        <div
-          key={chunk.chunk_id || `${chunk.document_id}-${index}`}
-          className="flex min-w-0 flex-col rounded border border-hairline bg-surface-raised p-2.5"
-        >
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="min-w-0 truncate text-label font-semibold text-ink">
-              {chunkTitle(chunk)}
-            </span>
-            <span className="num shrink-0 text-micro text-muted">{formatScore(chunk.score)}</span>
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    },
+    [],
+  );
+
+  const handleGroundingPass = () => {
+    // Re-submit via the existing submit flow; the failed turn is never mutated.
+    onRetryQuery?.(turn.query);
+    setPassStatus('running');
+    setElapsedMs(0);
+    startTimeRef.current = Date.now();
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => setElapsedMs(Date.now() - startTimeRef.current), 100);
+  };
+
+  const passLabel =
+    passStatus === 'running'
+      ? 'Grounding pass running'
+      : passStatus === 'complete'
+        ? 'Pass complete'
+        : 'Pass failed';
+
+  return (
+    <div
+      data-testid="evidence-recovery-surface"
+      className="mt-3 rounded border border-warn bg-warn-wash p-3"
+    >
+      <p className="text-label font-bold text-warn">
+        Meridian could not verify a grounded answer, but recovered {turn.sources.length} relevant
+        chunks from your index
+      </p>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {turn.sources.map((chunk, index) => (
+          <div
+            key={chunk.chunk_id || `${chunk.document_id}-${index}`}
+            className="flex min-w-0 flex-col rounded border border-hairline bg-surface-raised p-2.5"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="min-w-0 truncate text-label font-semibold text-ink">
+                {chunkTitle(chunk)}
+              </span>
+              <span className="num shrink-0 text-micro text-muted">{formatScore(chunk.score)}</span>
+            </div>
+            <p className="mt-1 max-h-12 overflow-hidden text-micro leading-[1.5] text-muted">
+              {chunk.text}
+            </p>
+            <button
+              type="button"
+              onClick={() => onSelectChunk?.(chunk)}
+              className="mt-2 self-start rounded-sm border border-hairline px-2 py-0.5 text-micro font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Inspect
+            </button>
           </div>
-          <p className="mt-1 max-h-12 overflow-hidden text-micro leading-[1.5] text-muted">
-            {chunk.text}
-          </p>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center gap-3">
+        {passStatus === 'idle' && onRetryQuery ? (
           <button
             type="button"
-            onClick={() => onSelectChunk?.(chunk)}
-            className="mt-2 self-start rounded-sm border border-hairline px-2 py-0.5 text-micro font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            onClick={handleGroundingPass}
+            className="inline-flex items-center gap-1.5 rounded-sm border border-hairline bg-surface-raised px-2.5 py-1 text-label font-semibold text-ink transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Inspect
+            <RotateCcw className="size-3.5 text-muted" aria-hidden="true" />
+            <span>Autonomous Grounding Pass</span>
           </button>
-        </div>
-      ))}
+        ) : null}
+        {passStatus !== 'idle' ? (
+          <div className="flex items-center gap-2">
+            <span className="text-micro text-muted">{passLabel}</span>
+            <span className="num text-micro text-muted">{`${(elapsedMs / 1000).toFixed(1)}s`}</span>
+          </div>
+        ) : null}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 interface TurnFooterProps {
   turn: ChatTurn;
@@ -369,6 +420,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
             turn.status === 'verifying'
               ? turn.activeStage?.name ?? turn.status
               : null;
+          const isComplete = turn.status === 'complete';
 
           return (
             <li
@@ -381,7 +433,9 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
               </div>
 
               <div className="relative w-full rounded-2xl border border-hairline bg-surface p-1.5">
-                <div className="rounded-xl border border-hairline bg-surface-raised p-4">
+                <div
+                  className="rounded-xl border border-hairline bg-surface-raised p-4 border-t border-white/[80] dark:border-white/[8] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                >
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="label-verdict text-muted">Meridian</span>
                     {activeStage ? <ActiveStage stage={activeStage} /> : null}
@@ -429,17 +483,26 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
                   )}
 
                   {(turn.refusal || Boolean(turn.degraded_reason)) && turn.sources.length > 0 ? (
-                    <EvidenceRecoverySurface turn={turn} onSelectChunk={onSelectChunk} />
-                  ) : null}
-
-                  {turn.status === 'complete' ? (
-                    <TurnFooter
+                    <EvidenceRecoverySurface
                       turn={turn}
                       onSelectChunk={onSelectChunk}
-                      onFollowUp={onFollowUp}
-                      onRerun={onRerun}
+                      onRetryQuery={onRetryQuery}
                     />
                   ) : null}
+
+                  <div
+                    className={`turn-wrapper grid${isComplete ? ' complete' : ''}`}
+                    style={{ gridTemplateRows: isComplete ? '1fr 1fr' : '0fr 1fr' }}
+                  >
+                    <div className="turn-footer">
+                      <TurnFooter
+                        turn={turn}
+                        onSelectChunk={onSelectChunk}
+                        onFollowUp={onFollowUp}
+                        onRerun={onRerun}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </li>
