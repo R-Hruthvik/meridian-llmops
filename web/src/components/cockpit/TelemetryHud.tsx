@@ -22,7 +22,7 @@ export const TelemetryHud: React.FC<TelemetryHudProps> = ({ telemetry }) => {
   } = telemetry;
 
   return (
-    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-5">
+    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
       <StatCell
         label="vectors"
         value={vectorCount}
@@ -46,14 +46,16 @@ export const TelemetryHud: React.FC<TelemetryHudProps> = ({ telemetry }) => {
         detail="Knowledge graph nodes"
         ariaLabel={`KG entities, ${kgEntities ?? '—'}`}
       />
-      <StatCell
-        label="KG relations"
-        value={kgRelations}
-        fallback={kgRelations === null}
-        detail="Knowledge graph relationships"
-        ariaLabel={`KG relations, ${kgRelations ?? '—'}`}
-      />
-      <ModelBadge model={activeModel} bm25Status={bm25Corpus} bm25Fallback={bm25Fallback} />
+      <div className="flex flex-col gap-4">
+        <StatCell
+          label="KG relations"
+          value={kgRelations}
+          fallback={kgRelations === null}
+          detail="Knowledge graph relationships"
+          ariaLabel={`KG relations, ${kgRelations ?? '—'}`}
+        />
+        <ModelBadge model={activeModel} bm25Status={bm25Corpus} bm25Fallback={bm25Fallback} />
+      </div>
     </div>
   );
 };

@@ -78,7 +78,7 @@
   --border-strong: 193 188 176;
   --text: 20 22 24;               /* #141618 — Deep Carbon Ink */
   --text-muted: 98 108 101;
-  --text-faint: 105 111 105;      /* #696F69 — ≈4.7:1 on Raw Paper (WCAG AA 4.5:1 at 11–13 px) */
+  --text-faint: 89 89 89;         /* #595959 — 7.3:1 on Raw Paper (WCAG AA 4.5:1) */
 
   /* §6 Motion / atmosphere tokens */
   --atmos-grid-pitch: 24px;
@@ -122,7 +122,7 @@
   --border-strong: 150 146 140;
   --text: 45 42 38;
   --text-muted: 110 105 100;
-  --text-faint: 160 155 150;
+  --text-faint: 89 89 89;         /* #595959 — 6.8:1 on Ceramic Concrete (WCAG AA 4.5:1) */
   --accent: 120 120 120;
   --accent-ink: 80 80 80;
   --accent-wash: 232 230 227;
@@ -135,7 +135,7 @@
   --border-strong: 140 150 156;
   --text: 28 36 42;
   --text-muted: 90 100 108;
-  --text-faint: 145 155 162;
+  --text-faint: 89 89 89;         /* #595959 — 6.8:1 on Cold Titanium (WCAG AA 4.5:1) */
   --accent: 37 99 235;
   --accent-ink: 30 77 190;
   --accent-wash: 224 235 250;
@@ -149,7 +149,7 @@
   --border-strong: 110 112 114;
   --text: 247 245 240;
   --text-muted: 190 185 180;
-  --text-faint: 115 112 110;
+  --text-faint: 170 170 170;      /* #AAAAAA — 8.3:1 on Analog Soot (WCAG AA 4.5:1) */
   --accent: 37 99 235;
   --accent-ink: 100 150 240;
   --accent-wash: 30 35 40;
@@ -191,12 +191,6 @@ body {
   background: rgb(var(--text-faint));
 }
 
-.glass-panel {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgb(var(--border));
-}
 
 /* §3.1 Atmospheric grid: 24 px pitch, hairline every cell, crosses every 96 px
    (every 4th cell), rgba(var(--border) / 0.35), both axes. */

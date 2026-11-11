@@ -193,14 +193,14 @@ function ConfirmationDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="confirmation-dialog-title">
-      <div className="fixed inset-0 bg-[rgba(15,15,12,0.40)] backdrop-blur-sm" aria-hidden="true" onClick={onClose} />
+      <div className="fixed inset-0 bg-[rgba(15,15,12,0.40)]" aria-hidden="true" onClick={onClose} />
       <div
         ref={panelRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirmation-dialog-title"
-        className="relative z-10 w-full max-w-md rounded-xl border border-hairline bg-surface-raised shadow-overlay p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="relative z-10 w-full max-w-md rounded-xl border border-hairline bg-surface-raised p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="confirmation-dialog-title" className="text-readout font-bold text-ink">
@@ -405,7 +405,7 @@ export function ProjectWorkspace() {
       <FluidPointerCanvas className="fixed inset-0 z-0 w-full h-full pointer-events-none" />
 
       {/* ---------- Header ---------- */}
-      <header className="fixed inset-x-0 top-0 z-20 border-b border-hairline bg-surface/80 backdrop-blur-md px-6 py-3 flex items-center justify-between">
+      <header className="fixed inset-x-0 top-0 z-20 border-b border-hairline bg-surface/80 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3 shrink-0">
           <span className="font-mono text-[11px] font-bold text-muted tracking-widest uppercase">
             MERIDIAN
@@ -465,11 +465,11 @@ export function ProjectWorkspace() {
       {railOpen && (
         <>
           <div
-            className="fixed inset-0 z-30 bg-[rgba(15,15,12,0.40)] backdrop-blur-sm"
+            className="fixed inset-0 z-30 bg-[rgba(15,15,12,0.40)]"
             onClick={toggleRail}
             aria-hidden="true"
           />
-          <div className="fixed inset-y-0 left-0 z-40 w-[280px] border-r border-hairline bg-surface-raised shadow-overlay flex flex-col transition-transform duration-300 ease-out transform translate-x-0">
+          <div className="fixed inset-y-0 left-0 z-40 w-[280px] border-r border-hairline bg-surface-raised flex flex-col transition-transform duration-300 ease-out transform translate-x-0">
             <div className="border-b border-hairline bg-surface-raised px-4 py-3 flex items-center justify-between shrink-0">
               <h2 className="text-readout font-bold text-ink">Project & Chats</h2>
               <button
@@ -625,7 +625,7 @@ export function ProjectWorkspace() {
         <div className="fixed inset-0 z-40" onClick={closeProjectPicker} aria-hidden="true" />
       )}
       {projectPickerOpen && (
-        <div className="absolute left-0 top-16 z-50 w-56 rounded-xl border border-hairline bg-surface-raised shadow-overlay p-2 animate-[overlay-slide-in_180ms_cubic-bezier(0.2,0,0,1)_both]">
+        <div className="absolute left-0 top-16 z-50 w-56 rounded-xl border border-hairline bg-surface-raised p-2 animate-[overlay-slide-in_180ms_cubic-bezier(0.2,0,0,1)_both]">
           {projects.map((p) => (
             <button
               key={p.id}
@@ -740,7 +740,7 @@ interface FloatingDrawerProps {
 function ProjectFilesDrawer({ open, onClose, documents, documentsLoaded, onUpload, onDelete, uploading }: FloatingDrawerProps) {
   if (!open) return null;
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex w-[420px] max-w-full flex-col border-l border-hairline bg-surface-raised shadow-overlay animate-[overlay-slide-in_180ms_cubic-bezier(0.2,0,0,1)_both]">
+    <div className="fixed inset-y-0 right-0 z-50 flex w-[420px] max-w-full flex-col border-l border-hairline bg-surface-raised animate-[overlay-slide-in_180ms_cubic-bezier(0.2,0,0,1)_both]">
       <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
         <h2 className="text-body font-bold text-ink">Project files</h2>
         <button type="button" onClick={onClose} className="flex size-8 items-center justify-center rounded text-muted hover:bg-surface-sunken hover:text-ink">

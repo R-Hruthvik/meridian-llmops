@@ -427,7 +427,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const modalContent = (
     <div className={presentation === 'page' ? 'w-full' : 'fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden p-3 sm:p-4'}>
       {/* Scrim — token-backed, same layer as the shared overlay shell. */}
-      {presentation === 'modal' && <div data-testid="overlay-scrim" className="overlay-scrim backdrop-blur-sm" onClick={onClose} aria-hidden="true" />}
+      {presentation === 'modal' && <div data-testid="overlay-scrim" className="overlay-scrim" onClick={onClose} aria-hidden="true" />}
 
       {/* Centered modal surface */}
       <div
@@ -439,7 +439,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         tabIndex={presentation === 'modal' ? -1 : undefined}
         className={presentation === 'page'
           ? 'flex w-full flex-col overflow-hidden rounded border border-hairline bg-surface-raised'
-          : 'relative z-50 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded border border-hairline bg-surface-raised shadow-overlay'}
+          : 'relative z-50 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded border border-hairline bg-surface-raised'}
       >
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-hairline bg-surface-raised px-5 py-3.5">

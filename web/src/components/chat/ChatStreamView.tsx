@@ -2,6 +2,7 @@ import React, { Suspense, useEffect, useRef, useState, useCallback, useMemo } fr
 import { Check, Copy, FileText, RefreshCw, ArrowLeft, RotateCcw } from 'lucide-react';
 
 import { StatusChip, type StatusChipVariant } from '../StatusChip';
+import { DoubleBezelCard } from './DoubleBezelCard';
 import type { SearchResult } from '../../types/api';
 import type { ChatTurn } from './useRagChat';
 
@@ -432,10 +433,10 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
                 <p className="whitespace-pre-wrap break-words text-body">{turn.query}</p>
               </div>
 
-              <div className="relative w-full rounded-2xl border border-hairline bg-surface p-1.5">
-                <div
-                  className="rounded-xl border border-hairline bg-surface-raised p-4 border-t border-white/[80] dark:border-white/[8] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-                >
+              <DoubleBezelCard
+                className="border border-hairline bg-surface rounded-2xl p-1.5"
+                innerClassName="rounded-xl bg-surface-raised p-4 border-t border-white/[80] dark:border-white/[8] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              >
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="label-verdict text-muted">Meridian</span>
                     {activeStage ? <ActiveStage stage={activeStage} /> : null}
@@ -503,8 +504,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
                       />
                     </div>
                   </div>
-                </div>
-              </div>
+              </DoubleBezelCard>
             </li>
           );
         })}
@@ -521,7 +521,7 @@ export const ChatStreamView: React.FC<ChatStreamViewProps> = ({
             }
           }}
           data-testid="resume-stream-pill"
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-4 py-2 text-label font-semibold text-ink shadow-lg transition-opacity duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-4 py-2 text-label font-semibold text-ink transition-opacity duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           aria-label="Resume live stream"
         >
           <span aria-hidden="true">↓</span>

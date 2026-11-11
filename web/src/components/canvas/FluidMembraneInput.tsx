@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { Search, ArrowUpRight } from 'lucide-react';
+import { MERIDIAN_SPRING } from '../../constants/springs';
 import { parseColorRgb } from './colorRgb';
 
 export interface FluidMembraneInputProps {
@@ -48,6 +49,13 @@ export function FluidMembraneInput({
   // Capsule vertical position state.
   const y = useRef(0);
   const targetY = useRef(0);
+  const vy = useRef(0); // capsule vertical velocity, px/s — preserved across target changes
+
+  // Critically-damped spring (§MERIDIAN_SPRING: k=100, c=20, m=1, ζ=1.0).
+  const SPRING_K = MERIDIAN_SPRING.stiffness;
+  const SPRING_C = MERIDIAN_SPRING.damping;
+  const SPRING_M = MERIDIAN_SPRING.mass;
+  const SPRING_DT = 1 / 60; // fixed semi-implicit Euler step
 
   // Membrane sample points around the capsule perimeter, plus cursor/ripple state.
   const points = useRef<Array<{
@@ -287,8 +295,14 @@ export function FluidMembraneInput({
     const wrap = wrapRef.current;
     if (wrap) {
       const dy = targetY.current - y.current;
-      y.current += dy * 0.16;
-      if (Math.abs(dy) < 0.2) y.current = targetY.current;
+      // Semi-implicit Euler: v += a·dt, y += v·dt; velocity survives target
+      // changes so interrupts glide smoothly without restart-from-zero jank.
+      vy.current += ((-SPRING_C * vy.current - SPRING_K * (y.current - targetY.current)) / SPRING_M) * SPRING_DT;
+      y.current += vy.current * SPRING_DT;
+      if (Math.abs(dy) < EPSILON && Math.abs(vy.current) < EPSILON) {
+        y.current = targetY.current;
+        vy.current = 0;
+      }
       const capH = 54;
       const minY = 20;
       const maxY = Math.max(minY, window.innerHeight - 76 - capH / 2);

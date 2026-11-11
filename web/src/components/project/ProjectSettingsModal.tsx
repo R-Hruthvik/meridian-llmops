@@ -329,7 +329,7 @@ const MaintenanceConfirm = ({
       tabIndex={-1}
     >
       <div
-        className="fixed inset-0 bg-[rgba(15,15,12,0.40)] backdrop-blur-sm"
+        className="fixed inset-0 bg-[rgba(15,15,12,0.40)]"
         onClick={onCancel}
         aria-hidden="true"
       />
@@ -338,7 +338,7 @@ const MaintenanceConfirm = ({
         aria-modal="true"
         aria-labelledby="maintenance-confirm-title"
         tabIndex={-1}
-        className="relative z-50 w-full max-w-md rounded-2xl border border-hairline bg-surface-raised shadow-overlay p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="relative z-50 w-full max-w-md rounded-2xl border border-hairline bg-surface-raised p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <h3 id="maintenance-confirm-title" className="text-readout font-bold text-ink mb-1">
           Confirm {ACTION_LABEL[action]}
@@ -727,7 +727,7 @@ export function ProjectSettingsModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       {/* backdrop — no aria-hidden */}
       <div
-        className="fixed inset-0 bg-[rgba(15,15,12,0.40)] backdrop-blur-sm"
+        className="fixed inset-0 bg-[rgba(15,15,12,0.40)]"
         onClick={onClose}
       />
       <div
@@ -736,7 +736,7 @@ export function ProjectSettingsModal({
         aria-modal="true"
         aria-labelledby="project-settings-title"
         tabIndex={-1}
-        className="relative z-50 w-full max-w-2xl rounded-2xl border border-hairline bg-surface-raised shadow-overlay p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="relative z-50 w-full max-w-2xl rounded-2xl border border-hairline bg-surface-raised p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <div className="flex items-center justify-between border-b border-hairline pb-4 mb-6">
           <div>

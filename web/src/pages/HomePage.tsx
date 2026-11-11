@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import { useCockpitTelemetry } from '../hooks/useCockpitTelemetry';
 import { FluidMembraneInput } from '../components/canvas/FluidMembraneInput';
+import { FluidPointerCanvas } from '../components/canvas/FluidPointerCanvas';
 import { EditorialMasthead } from '../components/cockpit/EditorialMasthead';
 import { TelemetryHud } from '../components/cockpit/TelemetryHud';
 import { PromptStarterBento } from '../components/cockpit/PromptStarterBento';
@@ -36,7 +37,11 @@ export function HomePage(): React.JSX.Element {
 
   return (
     <>
+      <a href="#main-content" className="skip-to-main">
+        Skip to main content
+      </a>
       <main id="main-content" className="relative min-h-screen bg-surface pb-32">
+        <FluidPointerCanvas />
         <EditorialMasthead />
 
         <div className="mx-auto max-w-[1200px] px-6">
