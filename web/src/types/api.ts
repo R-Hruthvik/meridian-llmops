@@ -435,3 +435,78 @@ export interface IndexStatusResponse {
   relational: RelationalIndexStatus;
   backends: Record<string, IndexBackendHealth>;
 }
+
+export type ThemeName = 'raw-paper' | 'ceramic-concrete' | 'cold-titanium' | 'analog-soot';
+
+export interface GeneralSettings {
+  workspace_name: string;
+  tenant_id: string;
+  default_language: string;
+  session_timeout_minutes: number;
+}
+
+export interface LLMProviderSettings {
+  active_provider: string;
+  default_model: string;
+  openai_api_key?: MaskedKeyStatus;
+  anthropic_api_key?: MaskedKeyStatus;
+  groq_api_key?: MaskedKeyStatus;
+  openrouter_api_key?: MaskedKeyStatus;
+  deepseek_api_key?: MaskedKeyStatus;
+  custom_api_key?: MaskedKeyStatus;
+  providers_configured: Record<string, boolean>;
+}
+
+export interface RAGSettings {
+  top_k: number;
+  temperature: number;
+  top_p: number;
+  rerank: boolean;
+  reranker_model: string | null;
+  bm25_weight: number;
+  dense_weight: number;
+  embedding_model: string | null;
+  min_dense_score: number;
+}
+
+export interface GuardrailSettings {
+  enable_input_guardrails: boolean;
+  enable_output_guardrails: boolean;
+  pii_redaction: boolean;
+  hallucination_threshold: number;
+  refusal_behavior: 'refuse' | 'redact' | 'allow';
+}
+
+export interface AppearanceSettings {
+  theme: ThemeName;
+  display_scale: number;
+}
+
+export interface StorageStatus {
+  vector_collections: number;
+  disk_chunks: number;
+  db_tables: Array<{ name: string; row_count: number }>;
+}
+
+export interface MaintenanceChallenge {
+  action: 'clear_vector' | 'clear_disk_chunks' | 'database_reset';
+  token: string;
+  expires_at: string;
+  message: string;
+}
+
+export interface MaintenanceResult {
+  action: string;
+  status: 'accepted' | 'rejected';
+  message: string;
+}
+
+export interface SettingsAggregate {
+  workspace: GeneralSettings;
+  appearance: AppearanceSettings;
+  llm: LLMProviderSettings;
+  rag: RAGSettings;
+  guardrails: GuardrailSettings;
+  storage: StorageStatus;
+  providers: ProviderInfo[];
+}

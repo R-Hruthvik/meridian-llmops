@@ -20,6 +20,13 @@ import type {
   RetrieveResponse,
   ReviewItem,
   ReviewItemActionPayload,
+  AppearanceSettings,
+  GeneralSettings,
+  GuardrailSettings,
+  MaintenanceChallenge,
+  MaintenanceResult,
+  RAGSettings,
+  StorageStatus,
   TenantMetrics,
   UpdateLLMSettingsPayload,
 } from '../types/api';
@@ -337,6 +344,123 @@ class MeridianApiClient {
       `${this.baseUrl}/v1/settings/llm/test`,
       { method: 'POST', headers: this.getHeaders() },
       'LLM connection test failed',
+    );
+  }
+
+  async getGeneralSettings(tenantId: string = 'default'): Promise<GeneralSettings> {
+    return this.requestJSON<GeneralSettings>(
+      `${this.baseUrl}/v1/settings/general`,
+      { method: 'GET', headers: this.getHeaders(tenantId) },
+      'General settings fetch failed',
+    );
+  }
+
+  async patchGeneralSettings(tenantId: string = 'default', patch: Partial<GeneralSettings>): Promise<GeneralSettings> {
+    return this.requestJSON<GeneralSettings>(
+      `${this.baseUrl}/v1/settings/general`,
+      {
+        method: 'PATCH',
+        headers: this.getHeaders(tenantId),
+        body: JSON.stringify(patch),
+      },
+      'General settings update failed',
+    );
+  }
+
+  async getRAGSettings(tenantId: string = 'default'): Promise<RAGSettings> {
+    return this.requestJSON<RAGSettings>(
+      `${this.baseUrl}/v1/settings/rag`,
+      { method: 'GET', headers: this.getHeaders(tenantId) },
+      'RAG settings fetch failed',
+    );
+  }
+
+  async patchRAGSettings(tenantId: string = 'default', patch: Partial<RAGSettings>): Promise<RAGSettings> {
+    return this.requestJSON<RAGSettings>(
+      `${this.baseUrl}/v1/settings/rag`,
+      {
+        method: 'PATCH',
+        headers: this.getHeaders(tenantId),
+        body: JSON.stringify(patch),
+      },
+      'RAG settings update failed',
+    );
+  }
+
+  async getGuardrailSettings(tenantId: string = 'default'): Promise<GuardrailSettings> {
+    return this.requestJSON<GuardrailSettings>(
+      `${this.baseUrl}/v1/settings/guardrails`,
+      { method: 'GET', headers: this.getHeaders(tenantId) },
+      'Guardrail settings fetch failed',
+    );
+  }
+
+  async patchGuardrailSettings(tenantId: string = 'default', patch: Partial<GuardrailSettings>): Promise<GuardrailSettings> {
+    return this.requestJSON<GuardrailSettings>(
+      `${this.baseUrl}/v1/settings/guardrails`,
+      {
+        method: 'PATCH',
+        headers: this.getHeaders(tenantId),
+        body: JSON.stringify(patch),
+      },
+      'Guardrail settings update failed',
+    );
+  }
+
+  async getAppearanceSettings(tenantId: string = 'default'): Promise<AppearanceSettings> {
+    return this.requestJSON<AppearanceSettings>(
+      `${this.baseUrl}/v1/settings/appearance`,
+      { method: 'GET', headers: this.getHeaders(tenantId) },
+      'Appearance settings fetch failed',
+    );
+  }
+
+  async patchAppearanceSettings(tenantId: string = 'default', patch: Partial<AppearanceSettings>): Promise<AppearanceSettings> {
+    return this.requestJSON<AppearanceSettings>(
+      `${this.baseUrl}/v1/settings/appearance`,
+      {
+        method: 'PATCH',
+        headers: this.getHeaders(tenantId),
+        body: JSON.stringify(patch),
+      },
+      'Appearance settings update failed',
+    );
+  }
+
+  async getStorageStatus(tenantId: string = 'default'): Promise<StorageStatus> {
+    return this.requestJSON<StorageStatus>(
+      `${this.baseUrl}/v1/settings/storage/status`,
+      { method: 'GET', headers: this.getHeaders(tenantId) },
+      'Storage status fetch failed',
+    );
+  }
+
+  async postMaintenanceChallenge(tenantId: string = 'default', action: string): Promise<MaintenanceChallenge> {
+    const url = `${this.baseUrl}/v1/settings/storage/maintenance/challenge?${new URLSearchParams({ action })}`;
+    return this.requestJSON<MaintenanceChallenge>(
+      url,
+      { method: 'GET', headers: this.getHeaders(tenantId) },
+      'Maintenance challenge failed',
+    );
+  }
+
+  async postMaintenanceExecute(tenantId: string = 'default', action: string, token: string): Promise<MaintenanceResult> {
+    return this.requestJSON<MaintenanceResult>(
+      `${this.baseUrl}/v1/settings/storage/maintenance/confirm`,
+      {
+        method: 'POST',
+        headers: this.getHeaders(tenantId),
+        body: JSON.stringify({ action, token }),
+      },
+      'Maintenance execute failed',
+    );
+  }
+
+  async testConnection(tenantId: string = 'default'): Promise<LLMPingResponse> {
+    return this.requestJSON<LLMPingResponse>(
+      `${this.baseUrl}/v1/settings/test-connection`,
+      { method: 'POST', headers: this.getHeaders(tenantId) },
+      'Connection test failed',
     );
   }
 

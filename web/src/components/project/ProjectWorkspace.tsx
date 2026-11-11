@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronRight,
   FileText,
@@ -37,6 +37,8 @@ const SESSIONS_KEY = 'meridian:sessions';
 const PROJECTS_KEY = 'meridian:projects';
 const THEME_KEY = 'meridian:theme';
 
+const STORE_NAMES = [SESSIONS_KEY, PROJECTS_KEY, THEME_KEY] as const;
+
 const createSession = (projectId: string): ChatSession => ({
   id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   projectId,
@@ -46,56 +48,217 @@ const createSession = (projectId: string): ChatSession => ({
   updatedAt: Date.now(),
 });
 
-const loadProjects = (): Project[] => {
-  try {
-    const raw = localStorage.getItem(PROJECTS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed as Project[];
-    }
-  } catch {
-    // fall through to default
-  }
-  return [DEFAULT_PROJECT];
-};
-
-const loadSessions = (projectId: string): ChatSession[] => {
-  try {
-    const raw = localStorage.getItem(SESSIONS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const sessions = (parsed as ChatSession[]).filter((s) => s.projectId === projectId);
-        if (sessions.length > 0) return sessions;
-      }
-    }
-  } catch {
-    // fall through to default
-  }
-  return [createSession(projectId)];
-};
-
 const formatTime = (ts: number): string => {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+/* ---------------- IndexedDB store ---------------- */
+
+class IndexedDBStore {
+  private readonly db: Promise<IDBDatabase>;
+
+  constructor() {
+    this.db = new Promise((resolve, reject) => {
+      const open = indexedDB.open('meridian', 1);
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => resolve(open.result);
+      open.onupgradeneeded = () => {
+        const db = open.result;
+        for (const name of STORE_NAMES) {
+          if (!db.objectStoreNames.contains(name)) {
+            db.createObjectStore(name);
+          }
+        }
+      };
+    });
+  }
+
+  async get<T>(key: string): Promise<T | undefined> {
+    const db = await this.db;
+    const tx = db.transaction(key, 'readonly');
+    const store = tx.objectStore(key);
+    return new Promise((resolve, reject) => {
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result as T | undefined);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async set<T>(key: string, value: T): Promise<void> {
+    const db = await this.db;
+    const tx = db.transaction(key, 'readwrite');
+    const store = tx.objectStore(key);
+    return new Promise((resolve, reject) => {
+      const req = store.put(value, key);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async remove(key: string): Promise<void> {
+    const db = await this.db;
+    const tx = db.transaction(key, 'readwrite');
+    const store = tx.objectStore(key);
+    return new Promise((resolve, reject) => {
+      const req = store.delete(key);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+}
+
+const store = new IndexedDBStore();
+
+/* ---------------- shared confirmation dialog ---------------- */
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function ConfirmationDialog({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  description,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  destructive = false,
+  input = false,
+  inputValue = '',
+  onInputChange,
+  inputPlaceholder,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (value: string) => void;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  destructive?: boolean;
+  input?: boolean;
+  inputValue?: string;
+  onInputChange?: (value: string) => void;
+  inputPlaceholder?: string;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  const onKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const panel = panelRef.current;
+        if (!panel) return;
+        const focusables = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && (active === first || active === panel)) {
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          first.focus();
+        } else {
+          first.focus();
+        }
+      }
+    },
+    [onClose],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      previouslyFocused.current?.focus?.();
+    };
+  }, [open, onKeyDown]);
+
+  useEffect(() => {
+    if (!open) return;
+    (input ? inputRef.current : confirmRef.current)?.focus();
+  }, [open, input]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="confirmation-dialog-title">
+      <div className="fixed inset-0 bg-[rgba(15,15,12,0.40)] backdrop-blur-sm" aria-hidden="true" onClick={onClose} />
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmation-dialog-title"
+        className="relative z-10 w-full max-w-md rounded-xl border border-hairline bg-surface-raised shadow-overlay p-6 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="confirmation-dialog-title" className="text-readout font-bold text-ink">
+          {title}
+        </h3>
+        {description && <p className="mt-1 text-micro text-muted">{description}</p>}
+        {input && (
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={(e) => onInputChange?.(e.target.value)}
+            placeholder={inputPlaceholder}
+            className="mt-3 block w-full rounded border border-hairline bg-surface px-3 py-2 text-ink outline-none transition-colors focus:border-accent focus-visible:ring-1 focus-visible:ring-accent"
+          />
+        )}
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-sm border border-hairline bg-surface px-4 py-1.5 text-sm font-semibold text-ink hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            ref={confirmRef}
+            type="button"
+            onClick={() => onConfirm(inputValue)}
+            className={`rounded-sm px-4 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+              destructive ? 'text-fail hover:bg-fail-wash' : 'text-accent-ink hover:bg-accent-wash'
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProjectWorkspace() {
-  const [projects, setProjects] = useState<Project[]>(loadProjects);
-  const [activeProject, setActiveProject] = useState<Project>(() => projects[0] ?? DEFAULT_PROJECT);
+  const [projects, setProjects] = useState<Project[]>([DEFAULT_PROJECT]);
+  const [activeProject, setActiveProject] = useState<Project>(DEFAULT_PROJECT);
   const [theme, setTheme] = useState<ThemeName>('default');
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [documentsLoaded, setDocumentsLoaded] = useState(false);
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>(() =>
-    loadSessions(activeProject.id),
-  );
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(() =>
-    chatSessions[0]?.id ?? null,
-  );
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  const [dialog, setDialog] = useState<{
+    kind: 'delete-document' | 'delete-session' | 'create-project';
+    id?: string;
+    inputValue: string;
+  } | null>(null);
 
   const tenantId = activeProject.id;
 
@@ -104,25 +267,65 @@ export function ProjectWorkspace() {
     [chatSessions, activeSessionId],
   );
 
+  // Load projects, theme, and sessions from IndexedDB on mount.
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      const storedProjects = (await store.get(PROJECTS_KEY)) as Project[] | undefined;
+      const nextProjects = storedProjects ?? [DEFAULT_PROJECT];
+      if (active) {
+        setProjects(nextProjects);
+        setActiveProject(nextProjects[0]);
+      }
+      const storedTheme = await store.get(THEME_KEY);
+      if (active && typeof storedTheme === 'string') {
+        setTheme(storedTheme as ThemeName);
+      }
+      const projectId = nextProjects[0].id;
+      const storedSessions = (await store.get(SESSIONS_KEY)) as ChatSession[] | undefined;
+      const sessions = storedSessions
+        ? storedSessions.filter((s) => s.projectId === projectId)
+        : [createSession(projectId)];
+      if (active) {
+        setChatSessions(sessions);
+        setActiveSessionId(sessions[0]?.id ?? null);
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Persist theme.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem(THEME_KEY, theme);
+    void store.set(THEME_KEY, theme);
   }, [theme]);
 
   // Reload sessions when the project changes.
   useEffect(() => {
-    const sessions = loadSessions(tenantId);
-    setChatSessions(sessions);
-    setActiveSessionId((prev) => {
-      const stillExists = sessions.some((s) => s.id === prev);
-      return stillExists ? prev : (sessions[0]?.id ?? null);
-    });
+    let active = true;
+    const load = async () => {
+      const stored = (await store.get(SESSIONS_KEY)) as ChatSession[] | undefined;
+      const sessions = stored ? stored.filter((s) => s.projectId === tenantId) : [createSession(tenantId)];
+      if (active) {
+        setChatSessions(sessions);
+        setActiveSessionId((prev) => {
+          const stillExists = sessions.some((s) => s.id === prev);
+          return stillExists ? prev : (sessions[0]?.id ?? null);
+        });
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+    };
   }, [tenantId]);
 
   // Persist sessions whenever they change.
   useEffect(() => {
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(chatSessions));
+    void store.set(SESSIONS_KEY, chatSessions);
   }, [chatSessions]);
 
   useEffect(() => {
@@ -148,30 +351,18 @@ export function ProjectWorkspace() {
   }, [tenantId]);
 
   const handleDeleteDocument = useCallback((docId: string) => {
-    if (!confirm('Delete this document from the project?')) return;
-    void api.deleteDocument(docId, tenantId).then(() => {
-      setDocuments((prev) => prev.filter((d) => d.id !== docId));
-    });
-  }, [tenantId]);
+    setDialog({ kind: 'delete-document', id: docId, inputValue: '' });
+  }, []);
 
   const handleDeleteSession = useCallback((id: string) => {
-    if (!confirm('Delete this chat session?')) return;
-    setChatSessions((prev) => {
-      const next = prev.filter((s) => s.id !== id);
-      if (next.length === 0) {
-        const fresh = createSession(tenantId);
-        setActiveSessionId(fresh.id);
-        return [fresh];
-      }
-      if (activeSessionId === id) setActiveSessionId(next[0].id);
-      return next;
-    });
-  }, [tenantId, activeSessionId]);
+    setDialog({ kind: 'delete-session', id, inputValue: '' });
+  }, []);
 
   const createNewSession = useCallback(() => {
     const fresh = createSession(tenantId);
     setChatSessions((prev) => [fresh, ...prev]);
     setActiveSessionId(fresh.id);
+    document.dispatchEvent(new CustomEvent('meridian:new-chat', { bubbles: true, detail: { tenantId } }));
   }, [tenantId]);
 
   const selectSession = useCallback((id: string) => {
@@ -204,17 +395,8 @@ export function ProjectWorkspace() {
   }, [closeProjectPicker]);
 
   const createProject = useCallback(() => {
-    const name = prompt('Project name');
-    if (!name || !name.trim()) return;
-    const project: Project = { id: `project-${Date.now()}`, name: name.trim() };
-    setProjects((prev) => {
-      const next = [...prev, project];
-      localStorage.setItem(PROJECTS_KEY, JSON.stringify(next));
-      return next;
-    });
-    selectProject(project);
-    closeProjectPicker();
-  }, [selectProject, closeProjectPicker]);
+    setDialog({ kind: 'create-project', id: undefined, inputValue: '' });
+  }, []);
 
   if (!activeSessionId) return null;
 
@@ -331,13 +513,18 @@ export function ProjectWorkspace() {
                   {chatSessions.map((session) => {
                     const active = session.id === activeSessionId;
                     return (
-                      <div
-                        key={session.id}
-                        className="relative group"
-                      >
-                        <button
-                          type="button"
+                      <div key={session.id} className="relative group">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-current={active ? 'page' : undefined}
                           onClick={() => selectSession(session.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              selectSession(session.id);
+                            }
+                          }}
                           className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors ${
                             active
                               ? 'border-accent bg-surface-raised text-accent-ink'
@@ -356,14 +543,14 @@ export function ProjectWorkspace() {
                               <span className="text-micro text-muted">{session.turns.length} message{session.turns.length !== 1 ? 's' : ''}</span>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}
-                            aria-label={`Delete ${session.title}`}
-                            className="shrink-0 rounded p-1.5 text-muted transition-colors opacity-0 group-hover:opacity-100 hover:bg-surface-sunken hover:text-fail"
-                          >
-                            <Trash2 className="size-3.5" aria-hidden="true" />
-                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}
+                          aria-label={`Delete ${session.title}`}
+                          className="shrink-0 rounded p-1.5 text-muted transition-colors opacity-0 group-hover:opacity-100 hover:bg-surface-sunken hover:text-fail focus-visible:ring-2 focus-visible:ring-accent"
+                        >
+                          <Trash2 className="size-3.5" aria-hidden="true" />
                         </button>
                       </div>
                     );
@@ -465,6 +652,76 @@ export function ProjectWorkspace() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* ---------- Inline confirmation dialogs ---------- */}
+      {dialog?.kind === 'delete-document' && (
+        <ConfirmationDialog
+          open
+          onClose={() => setDialog(null)}
+          onConfirm={() => {
+            if (dialog.id) {
+              void api.deleteDocument(dialog.id, tenantId).then(() => {
+                setDocuments((prev) => prev.filter((d) => d.id !== dialog.id));
+              });
+            }
+            setDialog(null);
+          }}
+          title="Delete document?"
+          description="Remove this document from the project?"
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          destructive
+        />
+      )}
+      {dialog?.kind === 'delete-session' && (
+        <ConfirmationDialog
+          open
+          onClose={() => setDialog(null)}
+          onConfirm={() => {
+            if (!dialog.id) return;
+            setChatSessions((prev) => {
+              const next = prev.filter((s) => s.id !== dialog.id);
+              if (next.length === 0) {
+                const fresh = createSession(tenantId);
+                setActiveSessionId(fresh.id);
+                return [fresh];
+              }
+              if (activeSessionId === dialog.id) setActiveSessionId(next[0].id);
+              return next;
+            });
+            setDialog(null);
+          }}
+          title="Delete chat session?"
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          destructive
+        />
+      )}
+      {dialog?.kind === 'create-project' && (
+        <ConfirmationDialog
+          open
+          onClose={() => setDialog(null)}
+          onConfirm={(value) => {
+            const name = value.trim();
+            if (!name) return;
+            const project: Project = { id: `project-${Date.now()}`, name };
+            const next = [...projects, project];
+            setProjects(next);
+            void store.set(PROJECTS_KEY, next);
+            selectProject(project);
+            closeProjectPicker();
+            setDialog(null);
+          }}
+          title="New project"
+          description="Enter a project name"
+          confirmLabel="Create"
+          cancelLabel="Cancel"
+          input
+          inputValue={dialog.inputValue}
+          onInputChange={(value) => setDialog((d) => (d ? { ...d, inputValue: value } : null))}
+          inputPlaceholder="Project name"
+        />
       )}
     </div>
   );
