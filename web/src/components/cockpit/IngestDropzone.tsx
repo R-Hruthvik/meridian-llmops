@@ -139,9 +139,9 @@ export const IngestDropzone: React.FC<{ tenantId?: string }> = ({ tenantId = 'de
           }
         }}
         className={[
-          'cockpit-chip flex flex-col items-center justify-center gap-2 rounded-sm border-2 border-dashed px-8 py-6 text-center transition-colors duration-200',
+          'cockpit-chip flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-10 py-8 text-center transition-colors duration-300 hover:border-accent hover:bg-surface-raised hover:shadow-[0_0_24px_rgba(37,99,235,0.12)] hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
           dragOver
-            ? 'border-accent bg-accent-wash'
+            ? 'border-accent bg-accent-wash hover:border-accent hover:bg-accent-wash hover:shadow-[0_0_28px_rgba(37,99,235,0.25)]'
             : 'border-hair-strong bg-surface hover:border-accent hover:bg-surface-sunken',
         ].join(' ')}
       >

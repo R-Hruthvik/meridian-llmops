@@ -40,20 +40,23 @@ export function HomePage(): React.JSX.Element {
       <a href="#main-content" className="skip-to-main">
         Skip to main content
       </a>
-      <main id="main-content" className="relative min-h-screen bg-surface pb-32">
+      <main id="main-content" className="relative min-h-screen bg-surface text-ink selection:bg-accent-wash overflow-x-hidden">
+        {/* Living atmosphere: grain + grid + particle field */}
         <FluidPointerCanvas />
+
         <EditorialMasthead />
 
-        <div className="mx-auto max-w-[1200px] px-6 border-t border-hairline">
-          <div className="rounded-sm border border-hairline bg-surface-raised p-4">
+        {/* Telemetry HUD as a physical hairline panel */}
+        <div className="mx-auto max-w-[1200px] px-6">
+          <div className="rounded-sm border border-hairline bg-surface-raised p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
             <TelemetryHud telemetry={telemetry} />
           </div>
         </div>
 
+        {/* Hero capsule at center — the living membrane */}
         <section
           aria-label="Input"
-          className="mx-auto mt-2 max-w-[1200px] px-6 border-t border-hairline"
-          style={{ minHeight: 'calc(52vh - 140px)' }}
+          className="mx-auto w-full max-w-[1200px] px-6 pt-16 pb-32 border-t border-hairline"
         >
           <FluidMembraneInput
             inputRef={inputRef}
@@ -67,8 +70,10 @@ export function HomePage(): React.JSX.Element {
           />
         </section>
 
+        {/* Prompt starters */}
         <PromptStarterBento onChipFill={handleChipFill} />
 
+        {/* Ingest dropzone */}
         <IngestDropzone tenantId={TENANT_ID} />
       </main>
     </>

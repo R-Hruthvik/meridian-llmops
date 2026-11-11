@@ -39,7 +39,7 @@ export const PromptChip: React.FC<PromptChipProps> = ({ title, caption, onClick 
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       className={[
-        'cockpit-chip group flex min-h-[4rem] flex-col items-start justify-between gap-2 rounded-sm border border-hairline bg-surface px-3 py-3 text-left transition-colors duration-200 hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+        'cockpit-chip group flex min-h-[4rem] flex-col items-start justify-between gap-2 rounded-sm border border-hairline bg-surface px-3 py-3 text-left transition-colors duration-300 hover:border-accent hover:bg-surface-raised hover:shadow-[0_0_20px_rgba(37,99,235,0.15)] hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         selected ? 'border-accent bg-accent-wash' : '',
       ].join(' ')}
     >

@@ -65,28 +65,27 @@
 }
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
   /* Surfaces and text — rgb channel triplets, NOT hex. Tailwind's opacity
      modifier expands to `<color>/<alpha-value>`; a bare `var(--fail)` yields
-     the invalid `var(--fail)/0.3` and the whole rule is silently dropped. The
-     config reads these as `rgb(var(--x) / <alpha-value>)` so `/30` works. */
-  --surface: 247 245 240;         /* #F7F5F0 — Raw Paper */
-  --surface-raised: 255 254 250;
-  --surface-sunken: 237 233 224;
-  --border: 214 208 196;          /* #D6D0C4 — Warm Stone */
-  --border-strong: 193 188 176;
-  --text: 20 22 24;               /* #141618 — Deep Carbon Ink */
-  --text-muted: 98 108 101;
-  --text-faint: 89 89 89;         /* #595959 — 7.3:1 on Raw Paper (WCAG AA 4.5:1) */
+     the invalid `var(--fail)/0.3` and the whole rule is silently dropped. */
+  --surface: 13 17 22;           /* #0D1116 — Deep Slate, atmospheric ground */
+  --surface-raised: 19 23 28;    /* #13171C */
+  --surface-sunken: 9 13 17;     /* #090D11 */
+  --border: 46 54 64;            /* #2E3640 — muted slate hairline */
+  --border-strong: 74 85 99;     /* #4A5563 */
+  --text: 240 244 248;           /* #F0F4F8 — near-white ink on dark */
+  --text-muted: 148 163 184;     /* #94A3B8 */
+  --text-faint: 89 102 116;      /* #596674 — 7.3:1 on Deep Slate (WCAG AA 4.5:1) */
 
   /* §6 Motion / atmosphere tokens */
   --atmos-grid-pitch: 24px;
   --atmos-cross-period: 96px;
   --atmos-hairline: 1px;
-  --atmos-border-alpha: 0.25;
+  --atmos-border-alpha: 0.35;
   --atmos-grain-frequency: 0.75;
-  --atmos-grain-opacity: 0.06;
+  --atmos-grain-opacity: 0.12;
   --atmos-particle-count: 100;
   --atmos-particle-alpha-min: 0.15;
   --atmos-particle-alpha-max: 0.22;
@@ -99,46 +98,48 @@
   --ripple-tau: 350ms;
 
   /* Cobalt Flow is the primary action and navigation color. */
-  --accent: 37 99 235;            /* #2563EB — Cobalt Flow */
+  --accent: 37 99 235;           /* #2563EB — Cobalt Flow */
   --accent-ink: 30 77 190;
-  --accent-wash: 229 238 252;
+  --accent-wash: 59 130 246;     /* #3B82F6, usable on dark */
 
   /* Status — real state only, never decorative */
-  --ok: 31 122 77;                /* #1F7A4D */
-  --warn: 150 90 0;               /* #965A00 — warn, AA on paper */
-  --fail: 179 38 30;              /* #B3261E */
-  --ok-wash: 234 244 238;         /* #EAF4EE */
-  --warn-wash: 251 242 226;       /* #FBF2E2 */
-  --fail-wash: 249 236 235;       /* #F9ECEB */
+  --ok: 74 222 128;              /* #4ADE80 */
+  --warn: 251 191 36;            /* #FBF224 */
+  --fail: 248 113 113;           /* #F87171 */
+  --ok-wash: 34 197 94;          /* #22C55E */
+  --warn-wash: 253 224 71;       /* #FDE047 */
+  --fail-wash: 239 68 68;        /* #EF4444 */
 }
 
 /* Theme palettes switched instantly via dataset.theme. Raw Paper (default)
    lives in :root above; each preset overrides the same channel tokens. */
 [data-theme='ceramic-concrete'] {
-  --surface: 240 238 234;
-  --surface-raised: 250 249 247;
-  --surface-sunken: 230 228 224;
-  --border: 190 186 180;
-  --border-strong: 150 146 140;
-  --text: 45 42 38;
-  --text-muted: 110 105 100;
-  --text-faint: 89 89 89;         /* #595959 — 6.8:1 on Ceramic Concrete (WCAG AA 4.5:1) */
-  --accent: 120 120 120;
-  --accent-ink: 80 80 80;
-  --accent-wash: 232 230 227;
-}
-[data-theme='cold-titanium'] {
-  --surface: 236 240 243;
-  --surface-raised: 248 251 253;
-  --surface-sunken: 226 231 234;
-  --border: 185 193 198;
-  --border-strong: 140 150 156;
-  --text: 28 36 42;
-  --text-muted: 90 100 108;
-  --text-faint: 89 89 89;         /* #595959 — 6.8:1 on Cold Titanium (WCAG AA 4.5:1) */
+  color-scheme: dark;
+  --surface: 16 20 24;           /* #101418 */
+  --surface-raised: 22 26 30;    /* #161A1E */
+  --surface-sunken: 10 13 16;    /* #0A0D10 */
+  --border: 52 60 70;            /* #343C46 */
+  --border-strong: 82 92 104;    /* #525C68 */
+  --text: 240 244 248;
+  --text-muted: 148 163 184;
+  --text-faint: 89 102 116;
   --accent: 37 99 235;
   --accent-ink: 30 77 190;
-  --accent-wash: 224 235 250;
+  --accent-wash: 59 130 246;
+}
+[data-theme='cold-titanium'] {
+  color-scheme: dark;
+  --surface: 15 20 25;           /* #0F1419 */
+  --surface-raised: 21 25 30;    /* #15191E */
+  --surface-sunken: 10 14 18;    /* #0A0E12 */
+  --border: 50 58 68;            /* #323A44 */
+  --border-strong: 80 90 102;    /* #505A66 */
+  --text: 240 244 248;
+  --text-muted: 148 163 184;
+  --text-faint: 89 102 116;
+  --accent: 37 99 235;
+  --accent-ink: 30 77 190;
+  --accent-wash: 59 130 246;
 }
 [data-theme='analog-soot'] {
   color-scheme: dark;
@@ -149,7 +150,7 @@
   --border-strong: 110 112 114;
   --text: 247 245 240;
   --text-muted: 190 185 180;
-  --text-faint: 170 170 170;      /* #AAAAAA — 8.3:1 on Analog Soot (WCAG AA 4.5:1) */
+  --text-faint: 170 170 170;
   --accent: 37 99 235;
   --accent-ink: 100 150 240;
   --accent-wash: 30 35 40;
