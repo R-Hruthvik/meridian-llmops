@@ -44,13 +44,15 @@ export function HomePage(): React.JSX.Element {
         <FluidPointerCanvas />
         <EditorialMasthead />
 
-        <div className="mx-auto max-w-[1200px] px-6">
-          <TelemetryHud telemetry={telemetry} />
+        <div className="mx-auto max-w-[1200px] px-6 border-t border-hairline">
+          <div className="rounded-sm border border-hairline bg-surface-raised p-4">
+            <TelemetryHud telemetry={telemetry} />
+          </div>
         </div>
 
         <section
           aria-label="Input"
-          className="mx-auto mt-2 max-w-[1200px] px-6"
+          className="mx-auto mt-2 max-w-[1200px] px-6 border-t border-hairline"
           style={{ minHeight: 'calc(52vh - 140px)' }}
         >
           <FluidMembraneInput

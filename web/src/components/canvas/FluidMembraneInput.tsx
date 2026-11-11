@@ -484,22 +484,28 @@ export function FluidMembraneInput({
         display: 'block',
       }}
     >
-      <canvas
-        ref={canvasRef}
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          left: -BLEED,
-          top: -BLEED,
-          width: 'calc(100% + 64px)',
-          height: 'calc(100% + 64px)',
-          display: 'block',
-          pointerEvents: 'none',
-        }}
-      />
-      {/* Capsule dock container — fills the wrapper so the canvas frames it. */}
       <div
-        ref={capsuleRef}
+        className={[
+          'relative w-full h-full min-h-[300px] flex items-center justify-center',
+          'bg-[radial-gradient(ellipse_600px_300px_at_50%_40%,rgba(var(--accent)/0.06),transparent)]',
+        ].join(' ')}
+      >
+        <canvas
+          ref={canvasRef}
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: -BLEED,
+            top: -BLEED,
+            width: 'calc(100% + 64px)',
+            height: 'calc(100% + 64px)',
+            display: 'block',
+            pointerEvents: 'none',
+          }}
+        />
+        {/* Capsule dock container — fills the wrapper so the canvas frames it. */}
+        <div
+          ref={capsuleRef}
         className={[
           'flex w-full h-full items-center gap-1.5 rounded-full border border-hairline bg-surface-raised px-3 py-1.5 transition-colors duration-200',
           hasText ? 'border-accent' : '',
@@ -545,6 +551,7 @@ export function FluidMembraneInput({
             <ArrowUpRight className="size-3 text-accent-ink" aria-hidden="true" />
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

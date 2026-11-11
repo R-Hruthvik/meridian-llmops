@@ -84,9 +84,9 @@
   --atmos-grid-pitch: 24px;
   --atmos-cross-period: 96px;
   --atmos-hairline: 1px;
-  --atmos-border-alpha: 0.35;
+  --atmos-border-alpha: 0.25;
   --atmos-grain-frequency: 0.75;
-  --atmos-grain-opacity: 0.035;
+  --atmos-grain-opacity: 0.06;
   --atmos-particle-count: 100;
   --atmos-particle-alpha-min: 0.15;
   --atmos-particle-alpha-max: 0.22;
@@ -192,8 +192,8 @@ body {
 }
 
 
-/* §3.1 Atmospheric grid: 24 px pitch, hairline every cell, crosses every 96 px
-   (every 4th cell), rgba(var(--border) / 0.35), both axes. */
+/* §3.1 Atmospheric grid: 24 px pitch hairlines at alpha 0.25, plus a faint
+   crosshair at the 96 px period so the grid reads as a coordinate system. */
 .atmos-grid {
   position: fixed;
   inset: 0;
@@ -211,8 +211,24 @@ body {
       transparent,
       transparent calc(var(--atmos-grid-pitch) - var(--atmos-hairline)),
       rgba(var(--border) / var(--atmos-border-alpha)) var(--atmos-grid-pitch)
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent calc(var(--atmos-cross-period) - var(--atmos-hairline)),
+      rgba(var(--border) / 0.10) var(--atmos-cross-period)
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent calc(var(--atmos-cross-period) - var(--atmos-hairline)),
+      rgba(var(--border) / 0.10) var(--atmos-cross-period)
     );
-  background-size: var(--atmos-grid-pitch) var(--atmos-grid-pitch);
+  background-size:
+    var(--atmos-grid-pitch) var(--atmos-grid-pitch),
+    var(--atmos-grid-pitch) var(--atmos-grid-pitch),
+    var(--atmos-cross-period) var(--atmos-cross-period),
+    var(--atmos-cross-period) var(--atmos-cross-period);
 }
 
 /* §3.2 Procedural SVG noise grain: feTurbulence fractalNoise 0.75 / 3 octaves,
