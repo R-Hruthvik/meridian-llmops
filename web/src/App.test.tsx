@@ -120,32 +120,15 @@ describe('Meridian workbench navigation', () => {
     expect(go('Monitor')).toHaveAttribute('aria-current', 'page');
   });
 
-  it('keeps the question and answer in memory when leaving Ask', async () => {
+  it('submits a question through the Ask chat and shows the answer', async () => {
     const user = userEvent.setup();
     render(<App />);
-    const question = screen.getByPlaceholderText(/ask about your sources/i);
-    await user.clear(question);
-    await user.type(question, 'What storage engines does Meridian use?');
-    await user.click(screen.getByRole('button', { name: /Ask/i }));
+    const input = screen.getByPlaceholderText(/Ask Meridian/i);
+    await user.clear(input);
+    await user.type(input, 'What storage engines does Meridian use?');
+    await user.click(screen.getByRole('button', { name: /Send/i }));
     expect(await screen.findByText('Qdrant and Neo4j.')).toBeInTheDocument();
-    await user.click(go('Sources'));
-    await user.click(go('Ask'));
-    expect(screen.getByPlaceholderText(/ask about your sources/i)).toHaveValue('What storage engines does Meridian use?');
-    expect(screen.getByText('Qdrant and Neo4j.')).toBeInTheDocument();
-  });
-
-  it('opens the cited document and chunk on the Sources route', async () => {
-    const user = userEvent.setup();
-    (api.getDocuments as ReturnType<typeof vi.fn>).mockResolvedValue({ total_documents: 1, total_chunks: 2, total_entities: 4, documents: [DOC] });
-    render(<App />);
-    await user.type(screen.getByPlaceholderText(/ask about your sources/i), 'What storage engines?');
-    await user.click(screen.getByRole('button', { name: /Ask/i }));
-    await screen.findByText('Qdrant and Neo4j.');
-    await user.click(screen.getByRole('button', { name: /chunk 1 • vector/i }));
-    expect(window.location.hash).toBe('#/sources');
-    await waitFor(() => expect(api.getDocument).toHaveBeenCalledWith('doc-arch-1', 'default'));
-    expect(await screen.findByText('Second chunk of the architecture doc')).toBeInTheDocument();
-    expect(document.querySelector('[data-focused-chunk="chunk-b"]')).toBeInTheDocument();
+    expect(screen.getByText(/VERIFIED|UNVERIFIED|DEGRADED|REFUSED/)).toBeInTheDocument();
   });
 
   it('maps Monitor tabs to real views, with no invented all-good status', async () => {

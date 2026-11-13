@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, LibraryBig, MessageSquareText, PanelLeftClose, PanelLeftOpen, Settings2 } from 'lucide-react';
-import { RagWorkspace } from './components/RagWorkspace';
+import { Chat } from './components/chat/Chat';
 import { SurfaceErrorBoundary } from './components/SurfaceErrorBoundary';
 import { LazySurface } from './components/LazySurface';
 import { WorkbenchContext, type OpenOverlayOptions, type OverlayTarget } from './WorkbenchContext';
@@ -131,7 +131,7 @@ export const App: React.FC = () => {
             {[['Catalog', '/sources'], ['Index & storage', '/sources/index']].map(([label, path]) => <a key={path} href={`#${path}`} aria-current={route === path ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate(path as Route); }}>{label}</a>)}
           </nav>}
           <main id="main-content" tabIndex={-1} className="workbench-content">
-            <div className="route-view" hidden={route !== '/ask'}><RagWorkspace tenantId={tenantId}/></div>
+            <div className="route-view" hidden={route !== '/ask'}><Chat tenantId={tenantId}/></div>
             {route === '/sources' && <LazySurface label="Sources"><IngestionStudio tenantId={tenantId} focusedDocumentId={focus.documentId ?? null} focusedChunkId={focus.chunkId ?? null} onDismissFocus={() => setFocus({})}/></LazySurface>}
             {route === '/sources/index' && <LazySurface label="Index and storage"><IndexStorageStudio tenantId={tenantId}/></LazySurface>}
             {route === '/operations/rules' && <LazySurface label="Safety checks"><GuardrailsStudio tenantId={tenantId}/></LazySurface>}

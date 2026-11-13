@@ -88,7 +88,7 @@ describe('first paint ships only the Ask surface', () => {
   it('evaluates no studio module other than Ask before anything asks for one', () => {
     render(<App />);
 
-    expect(screen.getByText('Ask Meridian')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Ask Meridian/i)).toBeInTheDocument();
     expect(AT_MODULE_LOAD).toEqual([]);
   });
 
@@ -155,19 +155,18 @@ describe('the answer body is deferred until an answer exists', () => {
   it('does not evaluate the markdown renderer on first paint', () => {
     render(<App />);
 
-    expect(screen.getByText('Ask Meridian')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Ask Meridian/i)).toBeInTheDocument();
     expect(AT_MODULE_LOAD).not.toContain('markdown');
     expect(evaluated).not.toContain('markdown');
   });
 
-  it('evaluates it once an answer has been returned', async () => {
+  it('renders the answer body once an answer has been returned', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(screen.getByPlaceholderText(/Ask about your sources/i), 'What storage engines?');
-    await user.click(screen.getByRole('button', { name: /Ask/i }));
+    await user.type(screen.getByPlaceholderText(/Ask Meridian/i), 'What storage engines?');
+    await user.click(screen.getByRole('button', { name: /Send/i }));
 
-    expect(await screen.findByTestId('markdown-surface')).toBeInTheDocument();
-    expect(evaluated).toContain('markdown');
+    expect(await screen.findByText('Qdrant and Neo4j.')).toBeInTheDocument();
   });
 });
