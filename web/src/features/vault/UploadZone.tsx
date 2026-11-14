@@ -185,7 +185,7 @@ export function UploadZone({ onIngested, onError, className }: UploadZoneProps) 
       patchQueueItem(itemId, { status: 'uploading' });
       try {
         const form = new FormData();
-        form.append('file', file, file.name);
+        form.append('files', file, file.name);
         await apiFetch<unknown>('/v1/documents', { method: 'POST', body: form });
         patchQueueItem(itemId, { status: 'done' });
         return true;

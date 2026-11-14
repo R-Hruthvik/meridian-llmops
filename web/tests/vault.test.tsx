@@ -351,8 +351,8 @@ describe('UploadZone', () => {
     expect(call).toBeDefined();
     const body = call?.init?.body;
     expect(body).toBeInstanceOf(FormData);
-    expect((body as FormData).get('file')).toBeInstanceOf(File);
-    expect(((body as FormData).get('file') as File).name).toBe('policy.md');
+    expect((body as FormData).getAll('files')[0]).toBeInstanceOf(File);
+    expect(((body as FormData).getAll('files')[0] as File).name).toBe('policy.md');
 
     expect(onIngested).toHaveBeenCalledWith(1);
     expect(document.body.textContent).toContain('policy.md');
