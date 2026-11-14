@@ -491,6 +491,13 @@ function FilterChip({
           : 'border-hairline bg-elevated/60 text-ink-muted hover:text-ink',
       )}
     >
+      {active ? (
+        <motion.span
+          layoutId="vault-filter-pill"
+          transition={SPRING_SNAPPY}
+          className="absolute inset-0 -z-10 rounded-pill border border-accent/30 bg-accent-soft/60"
+        />
+      ) : null}
       {label}
       <span className={cx('tabular', active ? 'text-accent/70' : 'text-ink-faint')}>{count}</span>
     </button>

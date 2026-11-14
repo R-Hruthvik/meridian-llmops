@@ -366,12 +366,15 @@ body:not([data-meridian-view='ask']) > div:not(#root):has(form) {
   }
 }
 
-.animate-drift-a {
-  animation: meridian-drift-a 22s var(--ease-out-quint) infinite;
-}
+/* shortcut: ambient drift gated on no-preference per R-23; reduce block kept for the rest of the UI. */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-drift-a {
+    animation: meridian-drift-a 22s var(--ease-out-quint) infinite;
+  }
 
-.animate-drift-b {
-  animation: meridian-drift-b 28s var(--ease-out-quint) infinite;
+  .animate-drift-b {
+    animation: meridian-drift-b 28s var(--ease-out-quint) infinite;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

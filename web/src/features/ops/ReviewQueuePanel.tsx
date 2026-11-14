@@ -864,6 +864,13 @@ export function ReviewQueuePanel({ className, onStats, onExported }: ReviewQueue
                   : 'border-hairline bg-elevated/60 text-ink-muted hover:text-ink',
               )}
             >
+              {active ? (
+                <motion.span
+                  layoutId="review-filter-pill"
+                  transition={SPRING_SNAPPY}
+                  className="absolute inset-0 -z-10 rounded-pill border border-accent/30 bg-accent-soft/60"
+                />
+              ) : null}
               {key === 'all' ? 'all' : STATUS_META[key].label}
               <span className={cx('tabular', active ? 'text-accent/70' : 'text-ink-faint')}>
                 {count}
@@ -953,12 +960,12 @@ export function ReviewQueuePanel({ className, onStats, onExported }: ReviewQueue
         </div>
       ) : (
         <motion.ul
-          key={filter}
           variants={STAGGER_CONTAINER}
           initial={false}
           animate="animate"
           className="flex flex-col gap-2"
         >
+          {/* no key: filter changes reuse the list so ReviewCard's `layout` reflows instead of remounting. */}
           {visible.map((item) => (
             <ReviewCard
               key={item.id}
