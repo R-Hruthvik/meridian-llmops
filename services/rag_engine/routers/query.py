@@ -397,6 +397,7 @@ async def _stream_query_response(
     async def run_graph() -> None:
         final_state: dict[str, Any] = {}
         try:
+            await events.put(_sse_event("stage", {"name": "retrieving", "status": "started"}))
             async for update in agent_graph.astream(
                 initial_state,
                 config={"configurable": {"top_k": req.top_k, "token_sink": token_sink}},
@@ -417,6 +418,42 @@ async def _stream_query_response(
                                 },
                             )
                         )
+                        await events.put(
+                            _sse_event(
+                                "stage",
+                                {
+                                    "name": "retrieving",
+                                    "status": "complete",
+                                    "timings_ms": (node_update or {}).get("timings_ms", {}),
+                                },
+                            )
+                        )
+                        await events.put(_sse_event("stage", {"name": "generating", "status": "started"}))
+                    elif node_name == "generate":
+                        await events.put(
+                            _sse_event(
+                                "stage",
+                                {
+                                    "name": "generating",
+                                    "status": "complete",
+                                    "timings_ms": (node_update or {}).get("timings_ms", {}),
+                                },
+                            )
+                        )
+                        await events.put(_sse_event("stage", {"name": "verifying", "status": "started"}))
+                    elif node_name == "verify":
+                        await events.put(
+                            _sse_event(
+                                "stage",
+                                {
+                                    "name": "verifying",
+                                    "status": "complete",
+                                    "timings_ms": (node_update or {}).get("timings_ms", {}),
+                                },
+                            )
+                        )
+        except Exception as exc:  # noqa: BLE001 - surfaced to the client as an error frame
+            outcome["error"] = exc
         except Exception as exc:  # noqa: BLE001 - surfaced to the client as an error frame
             outcome["error"] = exc
         finally:

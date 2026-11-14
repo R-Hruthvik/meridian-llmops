@@ -1,0 +1,18 @@
+gate_mode: strict
+max_findings: 7
+test_command: "uv run pytest tests/ -q"
+typecheck_command: "uv run mypy services/ --ignore-missing-imports"
+lint_command: "uv run ruff check services/"
+sections:
+  rag:
+    paths:
+      - services/rag_engine
+      - services/ingestion/graph_store.py
+      - services/ingestion/vector_store.py
+      - services/ingestion/pipeline.py
+      - web/src/components/RagWorkspace.tsx
+      - web/src/components/IndexStorageStudio.tsx
+      - web/src/services/api.ts
+protected_paths: []
+commit_per_step: false
+commit_artifacts: true

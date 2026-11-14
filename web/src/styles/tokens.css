@@ -1,0 +1,391 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   Meridian — Design Tokens
+   "Spatial Studio" aesthetic. Light-first, hairline precision, one accent.
+   All runtime colors resolve through these custom properties so a single
+   `.dark` class on <html> repaints the entire shell.
+   ========================================================================== */
+
+@layer base {
+  :root {
+    color-scheme: light;
+
+    /* Surfaces */
+    --bg-canvas: #fafafa;
+    --bg-elevated: #ffffff;
+    --bg-subtle: #f4f4f5;
+    --bg-inset: #efeff1;
+
+    /* Lines */
+    --border-hairline: #e4e4e7;
+    --border-strong: #d4d4d8;
+
+    /* Ink */
+    --text-primary: #09090b;
+    --text-muted: #71717a;
+    --text-faint: #6b6b74;
+    --text-inverted: #fafafa;
+
+    /* Accent — Electric Indigo */
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --accent-soft: #eef2ff;
+    --accent-contrast: #ffffff;
+
+    /* Semantics */
+    --ok: #10b981;
+    --ok-soft: #ecfdf5;
+    --ok-ink: #047857;
+    --warn: #f59e0b;
+    --warn-soft: #fffbeb;
+    --warn-ink: #b45309;
+    --fail: #f43f5e;
+    --fail-soft: #fff1f2;
+    --fail-ink: #be123c;
+    --neutral: #a1a1aa;
+    --neutral-soft: #f4f4f5;
+    --neutral-ink: #52525b;
+
+
+    /* RGB triplets — lets Tailwind apply opacity modifiers (`bg-accent/10`) */
+    --bg-canvas-rgb: 250 250 250;
+    --bg-elevated-rgb: 255 255 255;
+    --bg-subtle-rgb: 244 244 245;
+    --border-hairline-rgb: 228 228 231;
+    --text-primary-rgb: 9 9 11;
+    --text-muted-rgb: 113 113 122;
+    --accent-rgb: 79 70 229;
+    --ok-rgb: 16 185 129;
+    --warn-rgb: 245 158 11;
+    --fail-rgb: 244 63 94;
+    --neutral-rgb: 161 161 170;
+    --ok-ink-rgb: 4 120 87;
+    --warn-ink-rgb: 180 83 9;
+    --fail-ink-rgb: 190 18 60;
+    --neutral-ink-rgb: 82 82 91;
+
+    /* Elevation */
+    --shadow-hairline: 0 1px 2px 0 rgb(9 9 11 / 0.04);
+    --shadow-card: 0 1px 3px 0 rgb(9 9 11 / 0.06), 0 12px 32px -12px rgb(9 9 11 / 0.1);
+    --shadow-dock: 0 1px 1px 0 rgb(9 9 11 / 0.04), 0 8px 24px -6px rgb(9 9 11 / 0.12),
+      0 24px 60px -18px rgb(9 9 11 / 0.18);
+    --shadow-palette: 0 24px 80px -20px rgb(9 9 11 / 0.32), 0 2px 8px 0 rgb(9 9 11 / 0.06);
+
+    /* Glass */
+    --glass-bg: rgb(255 255 255 / 0.72);
+    --glass-bg-strong: rgb(255 255 255 / 0.86);
+    --glass-border: rgb(9 9 11 / 0.07);
+    --glass-sheen: rgb(255 255 255 / 0.6);
+
+    /* Ambient studio light */
+    --ambient-1: rgb(79 70 229 / 0.1);
+    --ambient-2: rgb(16 185 129 / 0.07);
+    --ambient-3: rgb(244 63 94 / 0.05);
+    --grid-line: rgb(9 9 11 / 0.035);
+
+    /* Motion */
+    --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+
+    /* Layout rhythm */
+    --dock-height: 68px;
+    --dock-clearance: 10rem;
+    --dock-fade-height: 8rem;
+    --shell-max-width: 1400px;
+    /* Shell height — dvh keeps fixed chrome inside the mobile visual viewport. */
+    --shell-min-height: 100vh;
+
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 22px;
+    --radius-pill: 999px;
+  }
+
+  .dark {
+    color-scheme: dark;
+
+    --bg-canvas: #09090b;
+    --bg-elevated: #111114;
+    --bg-subtle: #18181b;
+    --bg-inset: #0d0d10;
+
+    --border-hairline: #27272a;
+    --border-strong: #3f3f46;
+
+    --text-primary: #fafafa;
+    --text-muted: #a1a1aa;
+    --text-faint: #8b8b96;
+    --text-inverted: #09090b;
+
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --accent-soft: rgb(99 102 241 / 0.16);
+    --accent-contrast: #ffffff;
+
+    --ok: #10b981;
+    --ok-soft: rgb(16 185 129 / 0.14);
+    --ok-ink: #34d399;
+    --warn: #f59e0b;
+    --warn-soft: rgb(245 158 11 / 0.14);
+    --warn-ink: #fbbf24;
+    --fail: #f43f5e;
+    --fail-soft: rgb(244 63 94 / 0.14);
+    --fail-ink: #fb7185;
+    --neutral: #71717a;
+    --neutral-soft: rgb(113 113 122 / 0.16);
+    --neutral-ink: #a1a1aa;
+
+
+    --bg-canvas-rgb: 9 9 11;
+    --bg-elevated-rgb: 17 17 20;
+    --bg-subtle-rgb: 24 24 27;
+    --border-hairline-rgb: 39 39 42;
+    --text-primary-rgb: 250 250 250;
+    --text-muted-rgb: 161 161 170;
+    --accent-rgb: 99 102 241;
+    --ok-rgb: 16 185 129;
+    --warn-rgb: 245 158 11;
+    --fail-rgb: 244 63 94;
+    --neutral-rgb: 113 113 122;
+    --ok-ink-rgb: 52 211 153;
+    --warn-ink-rgb: 251 191 36;
+    --fail-ink-rgb: 251 113 133;
+    --neutral-ink-rgb: 161 161 170;
+
+    --shadow-hairline: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+    --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.6), 0 16px 40px -16px rgb(0 0 0 / 0.8);
+    --shadow-dock: 0 1px 1px 0 rgb(0 0 0 / 0.5), 0 10px 30px -8px rgb(0 0 0 / 0.7),
+      0 30px 70px -20px rgb(0 0 0 / 0.9);
+    --shadow-palette: 0 32px 90px -24px rgb(0 0 0 / 0.9), 0 2px 8px 0 rgb(0 0 0 / 0.6);
+
+    --glass-bg: rgb(17 17 20 / 0.66);
+    --glass-bg-strong: rgb(17 17 20 / 0.88);
+    --glass-border: rgb(255 255 255 / 0.08);
+    --glass-sheen: rgb(255 255 255 / 0.06);
+
+    --ambient-1: rgb(99 102 241 / 0.18);
+    --ambient-2: rgb(16 185 129 / 0.1);
+    --ambient-3: rgb(244 63 94 / 0.07);
+    --grid-line: rgb(255 255 255 / 0.035);
+  }
+
+  * {
+    border-color: var(--border-hairline);
+  }
+
+  @supports (height: 100dvh) {
+    :root {
+      --shell-min-height: 100dvh;
+    }
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+    /* Reserve the scrollbar gutter so locking the scroll (command palette,
+       drawers) does not shift the layout sideways. */
+    scrollbar-gutter: stable;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family:
+      'Inter var',
+      'Inter',
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    transition:
+      background-color 220ms var(--ease-out-quint),
+      color 220ms var(--ease-out-quint);
+  }
+
+  /* Numerals in metrics/timings stay column-aligned */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: var(--accent);
+    color: var(--accent-contrast);
+    text-shadow: none;
+  }
+
+  /* ---- Scrollbars -------------------------------------------------------- */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--border-hairline);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+    transition: background-color 160ms ease;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--border-strong);
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Kill native number-input spinners — studio controls are custom */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* ==========================================================================
+   Component-level utilities
+   ========================================================================== */
+@layer components {
+  .glass-panel {
+    background-color: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+  }
+
+  .hairline {
+    border: 1px solid var(--border-hairline);
+  }
+
+  .card-elevated {
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Ambient studio backdrop — soft light pools + faint drafting grid */
+  .studio-backdrop {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .studio-backdrop__grid {
+    position: absolute;
+    inset: -1px;
+    background-image:
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 0%, transparent 78%);
+    -webkit-mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 0%, transparent 78%);
+  }
+
+  .studio-backdrop__blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(72px);
+    will-change: transform;
+  }
+}
+
+/* ==========================================================================
+   Active view
+   The Ask conversation stays mounted while another view is active, and its
+   composer is portalled to <body> where the parked Ask surface cannot reach
+   it. `data-meridian-view` is written by App.tsx; only portalled overlays are
+   matched (the app root is excluded).
+   ========================================================================== */
+body:not([data-meridian-view='ask']) > div:not(#root):has(form) {
+  display: none;
+}
+
+/* ==========================================================================
+   Keyframes (ambient drift + status pulse fallback)
+   ========================================================================== */
+@keyframes meridian-drift-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(3%, 4%, 0) scale(1.08);
+  }
+}
+
+@keyframes meridian-drift-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.04);
+  }
+  50% {
+    transform: translate3d(-4%, -3%, 0) scale(0.96);
+  }
+}
+
+@keyframes meridian-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-drift-a {
+  animation: meridian-drift-a 22s var(--ease-out-quint) infinite;
+}
+
+.animate-drift-b {
+  animation: meridian-drift-b 28s var(--ease-out-quint) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .animate-drift-a,
+  .animate-drift-b,
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

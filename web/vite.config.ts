@@ -52,6 +52,7 @@ export default (defineConfig as (
 
   return {
     plugins: [react()],
+    esbuild: { jsx: 'automatic' },
     server: {
       port: 5173,
       proxy: {
@@ -77,6 +78,7 @@ export default (defineConfig as (
       css: true,
       isolate: true,
       pool: 'forks',
+      restoreMocks: true,
       retry: 2,
       coverage: {
         provider: 'v8',

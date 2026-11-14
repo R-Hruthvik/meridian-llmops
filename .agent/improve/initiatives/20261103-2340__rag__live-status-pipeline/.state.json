@@ -1,0 +1,25 @@
+{
+  "locks": {
+    "3-plan.v2.md": "119bfd4cec322ea8d717a7876ebf5088144629eb79f821f2a62bf106cae609ed"
+  },
+  "gate": {
+    "name": "B",
+    "presented_at": "2026-11-03T23:56:37.694367",
+    "approved_at": "2026-11-03T23:56:41.231273"
+  },
+  "last_user_msg": {
+    "at": "2026-11-05T15:29:01.659301",
+    "text": "first del  the gostty terminal as i dont ses any diff between the built in one dn that, and it takes more ram. and then use /improve-section  to improve the rag , qdrant to accept almost all types of files to injest , and to correclty chunk the data, not jsut a simple space finding and cutting off, do more. use web research browser tool and more"
+  },
+  "baseline_dirty": [
+    " D MERIDIAN_FIX_AND_IMPLEMENTATION_PLAN.md",
+    " M services/rag_engine/routers/query.py",
+    " M web/src/services/api.ts",
+    "?? .agent/",
+    "?? evals/reports/"
+  ],
+  "override": null,
+  "needs_regate": false,
+  "phase": "executing",
+  "stop_block_count": 2
+}

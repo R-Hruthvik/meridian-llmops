@@ -1,0 +1,129 @@
+{
+  "summary": {
+    "total_cases": 8,
+    "top_k": 5,
+    "max_cycles": 2,
+    "answer_status_answered_rate": 0.75,
+    "verified_rate": 0.0,
+    "avg_cycle_count": 1.375,
+    "error_count": 0,
+    "verification_statuses": {
+      "citations_failed": 2,
+      "citations_ok": 6
+    }
+  },
+  "cases": [
+    {
+      "id": "q-001",
+      "question": "What is the simplest FastAPI example described?",
+      "answerable": true,
+      "query_status": 200,
+      "answer_status": "unverified",
+      "verified": false,
+      "cycle_count": 2,
+      "verification_status": "citations_failed",
+      "refusal": false,
+      "source_count": 10,
+      "elapsed_ms": 6425.7,
+      "answer_preview": "The simplest FastAPI example described is a file `main.py` containing:\n\n```python\nfrom fastapi import FastAPI\napp = Fast"
+    },
+    {
+      "id": "q-002",
+      "question": "Which filename does the guide say to use for the copied example?",
+      "answerable": true,
+      "query_status": 200,
+      "answer_status": "answered",
+      "verified": false,
+      "cycle_count": 1,
+      "verification_status": "citations_ok",
+      "refusal": false,
+      "source_count": 5,
+      "elapsed_ms": 2049.5,
+      "answer_preview": "The guide says to use `main.py` [1]."
+    },
+    {
+      "id": "q-003",
+      "question": "Which command starts the FastAPI development server?",
+      "answerable": true,
+      "query_status": 200,
+      "answer_status": "answered",
+      "verified": false,
+      "cycle_count": 1,
+      "verification_status": "citations_ok",
+      "refusal": false,
+      "source_count": 5,
+      "elapsed_ms": 1926.3,
+      "answer_preview": "The command is `uv run fastapi dev` (also referred to as `fastapi dev`). [1][3][4]"
+    },
+    {
+      "id": "q-004",
+      "question": "Where does the example server expose its interactive API docs?",
+      "answerable": true,
+      "query_status": 200,
+      "answer_status": "answered",
+      "verified": false,
+      "cycle_count": 1,
+      "verification_status": "citations_ok",
+      "refusal": false,
+      "source_count": 5,
+      "elapsed_ms": 2570.3,
+      "answer_preview": "The example server exposes interactive API docs at `http://127.0.0.1:8000/docs` (Swagger UI) and `http://127.0.0.1:8000/"
+    },
+    {
+      "id": "q-005",
+      "question": "What alternative documentation page does FastAPI serve?",
+      "answerable": true,
+      "query_status": 200,
+      "answer_status": "answered",
+      "verified": false,
+      "cycle_count": 1,
+      "verification_status": "citations_ok",
+      "refusal": false,
+      "source_count": 5,
+      "elapsed_ms": 1297.6,
+      "answer_preview": "FastAPI serves an alternative automatic documentation page at `http://127.0.0.1:8000/redoc`, provided by ReDoc. [3]"
+    },
+    {
+      "id": "q-006",
+      "question": "What specification does FastAPI use for its API schema?",
+      "answerable": true,
+      "query_status": 200,
+      "answer_status": "answered",
+      "verified": false,
+      "cycle_count": 1,
+      "verification_status": "citations_ok",
+      "refusal": false,
+      "source_count": 5,
+      "elapsed_ms": 1731.2,
+      "answer_preview": "FastAPI uses the **OpenAPI** standard for its API schema [2][1], and that schema includes data definitions using **JSON "
+    },
+    {
+      "id": "q-007",
+      "question": "How is a path operation commonly described in the guide?",
+      "answerable": true,
+      "query_status": 200,
+      "answer_status": "unverified",
+      "verified": false,
+      "cycle_count": 2,
+      "verification_status": "citations_failed",
+      "refusal": false,
+      "source_count": 10,
+      "elapsed_ms": 9922.5,
+      "answer_preview": "The user asks: \"How is a path operation commonly described in the guide?\" Need answer using sources. Need identify phras"
+    },
+    {
+      "id": "q-008",
+      "question": "What does the GET decorator attach to a path?",
+      "answerable": true,
+      "query_status": 200,
+      "answer_status": "answered",
+      "verified": false,
+      "cycle_count": 2,
+      "verification_status": "citations_ok",
+      "refusal": false,
+      "source_count": 10,
+      "elapsed_ms": 6961.5,
+      "answer_preview": "The GET decorator attaches the function below to the path with the `get` operation [1][2]."
+    }
+  ]
+}

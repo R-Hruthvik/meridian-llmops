@@ -1,129 +1,85 @@
 /** @type {import('tailwindcss').Config} */
 
 /**
- * Wrap an instrument token so Tailwind's opacity modifier works.
- * `<alpha-value>` is substituted with the `/NN` value, producing
- * `rgb(var(--fail) / 0.3)`. The tokens in index.css are channel triplets for
- * exactly this reason — a bare `var(--fail)` would expand to the invalid
- * `var(--fail)/0.3` and the rule would be dropped without warning.
+ * Meridian — Tailwind theme.
+ *
+ * Every color resolves to a CSS custom property declared in
+ * `src/styles/tokens.css`, so `.dark` on <html> repaints without a rebuild.
+ * RGB triplets + `<alpha-value>` enable opacity modifiers (`bg-accent/10`).
  */
-const token = (name) => `rgb(var(--${name}) / <alpha-value>)`
-
-// Keep retired hue utilities neutral and map the product palette through shared tokens.
-const DE_VIOLET = {
-  50: token('surface-sunken'),
-  100: token('surface-sunken'),
-  200: token('border'),
-  300: token('border-strong'),
-  400: token('text-faint'),
-  500: token('text-muted'),
-  600: token('text-muted'),
-  700: token('text'),
-  800: token('text'),
-  900: token('text'),
-  950: token('text'),
-}
-
 export default {
-  content: [
-    './index.html',
-    './src/**/*.{js,ts,jsx,tsx}',
-  ],
+  darkMode: 'class',
+  content: ['./index.html', './src/**/*.{ts,tsx}', './tests/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // Shared Meridian palette
-        surface: {
-          DEFAULT: token('surface'),
-          raised: token('surface-raised'),
-          sunken: token('surface-sunken'),
+        canvas: 'rgb(var(--bg-canvas-rgb) / <alpha-value>)',
+        elevated: 'rgb(var(--bg-elevated-rgb) / <alpha-value>)',
+        subtle: 'rgb(var(--bg-subtle-rgb) / <alpha-value>)',
+        hairline: 'rgb(var(--border-hairline-rgb) / <alpha-value>)',
+        ink: {
+          DEFAULT: 'rgb(var(--text-primary-rgb) / <alpha-value>)',
+          muted: 'rgb(var(--text-muted-rgb) / <alpha-value>)',
+          faint: 'var(--text-faint)',
         },
-        hairline: {
-          DEFAULT: token('border'),
-          strong: token('border-strong'),
-        },
-        ink: token('text'),
-        muted: token('text-muted'),
-        faint: token('text-faint'),
         accent: {
-          DEFAULT: token('accent'),
-          ink: token('accent-ink'),
-          wash: token('accent-wash'),
+          DEFAULT: 'rgb(var(--accent-rgb) / <alpha-value>)',
+          soft: 'var(--accent-soft)',
+          hover: 'var(--accent-hover)',
+          contrast: 'var(--accent-contrast)',
         },
-        ok: { DEFAULT: token('ok'), wash: token('ok-wash') },
-        warn: { DEFAULT: token('warn'), wash: token('warn-wash') },
-        fail: { DEFAULT: token('fail'), wash: token('fail-wash') },
-
-        // §6 width band for the shared overlay shell (520–680px).
-        'overlay-w': '600px',
-
-        // Bridge for older components, mapped to the shared palette.
-        meridian: {
-          primary: token('accent-ink'),
-          primaryHover: token('accent'),
-          secondary: token('border-strong'),
-          lavender: token('border-strong'),
-          lavenderLight: token('surface-sunken'),
-          blossom: token('accent-wash'),
-          blossomLight: token('accent-wash'),
-          bg: token('surface'),
-          canvas: token('surface-sunken'),
-          card: token('surface-raised'),
-          cardHover: token('surface-sunken'),
-          border: token('border'),
-          borderLight: token('border'),
-          text: token('text'),
-          textMuted: token('text-muted'),
+        ok: {
+          DEFAULT: 'rgb(var(--ok-rgb) / <alpha-value>)',
+          soft: 'var(--ok-soft)',
+          ink: 'rgb(var(--ok-ink-rgb) / <alpha-value>)',
         },
-
-        // Retired hue scales — flattened to the shared neutrals.
-        purple: DE_VIOLET,
-        indigo: DE_VIOLET,
-        rose: DE_VIOLET,
-        violet: DE_VIOLET,
-        fuchsia: DE_VIOLET,
-        lavender: DE_VIOLET,
-        blossom: DE_VIOLET,
+        warn: {
+          DEFAULT: 'rgb(var(--warn-rgb) / <alpha-value>)',
+          soft: 'var(--warn-soft)',
+          ink: 'rgb(var(--warn-ink-rgb) / <alpha-value>)',
+        },
+        fail: {
+          DEFAULT: 'rgb(var(--fail-rgb) / <alpha-value>)',
+          soft: 'var(--fail-soft)',
+          ink: 'rgb(var(--fail-ink-rgb) / <alpha-value>)',
+        },
+        neutral: {
+          DEFAULT: 'rgb(var(--neutral-rgb) / <alpha-value>)',
+          soft: 'var(--neutral-soft)',
+          ink: 'rgb(var(--neutral-ink-rgb) / <alpha-value>)',
+        },
+      },
+      borderRadius: {
+        sm: 'var(--radius-sm)',
+        md: 'var(--radius-md)',
+        lg: 'var(--radius-lg)',
+        xl: 'var(--radius-xl)',
+        pill: 'var(--radius-pill)',
+      },
+      boxShadow: {
+        hairline: 'var(--shadow-hairline)',
+        card: 'var(--shadow-card)',
+        dock: 'var(--shadow-dock)',
+        palette: 'var(--shadow-palette)',
+      },
+      maxWidth: {
+        shell: 'var(--shell-max-width)',
       },
       fontFamily: {
         sans: [
-          'Geist',
+          'Inter var',
+          'Inter',
+          'ui-sans-serif',
+          'system-ui',
           '-apple-system',
-          'BlinkMacSystemFont',
           'Segoe UI',
-          'Roboto',
-          'Helvetica',
-          'Arial',
           'sans-serif',
         ],
-        mono: [
-          'Geist Mono',
-          'ui-monospace',
-          'SFMono-Regular',
-          'Menlo',
-          'Consolas',
-          'monospace',
-        ],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'JetBrains Mono', 'monospace'],
       },
-      fontSize: {
-        // Product type scale
-        micro: ['11px', { lineHeight: '1.45' }],
-        label: ['13px', { lineHeight: '1.4' }],
-        id: ['12px', { lineHeight: '1.5' }],
-        body: ['15px', { lineHeight: '1.65' }],
-        verdict: ['13px', { lineHeight: '1.3' }],
-        readout: ['15px', { lineHeight: '1.4' }],
-        display: ['32px', { lineHeight: '1.12' }],
-      },
-      borderRadius: {
-        // §9 6px flat, 4px for inputs and wells, full-pill for status chips.
-        DEFAULT: '6px',
-        sm: '4px',
-        pill: '9999px',
-      },
-      boxShadow: {
-        // §9 shadows removed except overlays.
-        overlay: '0 12px 32px rgba(22,21,15,.10)',
+      backgroundImage: {
+        'sheen-line':
+          'linear-gradient(180deg, var(--glass-sheen) 0%, transparent 100%)',
       },
     },
   },
