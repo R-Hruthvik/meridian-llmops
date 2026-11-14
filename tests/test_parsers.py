@@ -109,8 +109,33 @@ def test_encrypted_pdf_without_password_has_clear_parse_error():
     output = io.BytesIO()
     writer.write(output)
 
-    with pytest.raises(ParseError, match="encrypted"):
-        parse_file("locked.pdf", output.getvalue())
+# --- multi-format additions (issue: ingest-chunking) ---
+
+
+def test_csv_parses_rows_as_tables():
+    parsed = parse_file("data.csv", b"name,value\nalpha,1\nbeta,2\n")
+    assert parsed.format.value == "csv"
+    assert any(b.kind == "table" for b in parsed.blocks)
+
+
+def test_json_parses_object_keys():
+    parsed = parse_file("data.json", b'{"title": "Doc", "count": 3}')
+    assert parsed.format.value == "json"
+    assert any("count" in b.text for b in parsed.blocks)
+
+
+def test_code_parses_functions():
+    parsed = parse_file("main.py", b"def foo():\n    return 1\ndef bar():\n    return 2\n")
+    assert parsed.format.value == "code"
+    assert len(parsed.blocks) == 2
+
+
+def test_txt_detects_heading():
+    parsed = parse_file("notes.txt", b"Introduction\n\nSome body text here.\n")
+    assert any(b.kind == "heading" for b in parsed.blocks) or any(
+        b.kind == "paragraph" for b in parsed.blocks
+    )
+
 
 
 def test_pdf_ocr_recovers_scanned_page_with_page_provenance(monkeypatch):

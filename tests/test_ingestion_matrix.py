@@ -58,3 +58,18 @@ def test_parse_file_format_detection():
         assert parsed.format == expected_fmt, (
             f"{fname}: expected {expected_fmt}, got {parsed.format}"
         )
+    content = b"name,value\nalpha,1\n"
+    parsed = parse_file("test.csv", content)
+    assert parsed.format.value == "csv"
+
+
+def test_parse_json_file():
+    content = b'{"a": 1}'
+    parsed = parse_file("test.json", content)
+    assert parsed.format.value == "json"
+
+
+def test_parse_code_file():
+    content = b"def f():\n    return 1\n"
+    parsed = parse_file("test.py", content)
+    assert parsed.format.value == "code"
