@@ -437,8 +437,9 @@ describe('VaultView catalog', () => {
     expect(text).toContain('Master Services Agreement');
     expect(text).toContain('Incident Response Policy');
     expect(text).toContain('Chunking Strategy Notes');
-    expect(text).toContain('3 documents');
-    expect(text).toContain('18 chunks');
+    expect(text).toContain('12 chunks');
+    expect(text).toContain('4 chunks');
+    expect(text).toContain('2 chunks');
     expect(harness.calls[0]?.path).toBe('/v1/documents');
   });
 

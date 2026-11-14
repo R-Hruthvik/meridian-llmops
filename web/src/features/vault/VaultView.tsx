@@ -674,15 +674,6 @@ export function VaultView() {
         className="flex flex-wrap items-end justify-between gap-3"
       >
         <div className="flex min-w-0 flex-col gap-1">
-          <p className="flex flex-wrap items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.16em] text-ink-faint">
-            Knowledge vault
-            <span className="opacity-40">·</span>
-            <span className="tabular">{documents.length} documents</span>
-            <span className="opacity-40">·</span>
-            <span className="tabular">{totalChunks.toLocaleString()} chunks</span>
-            <span className="opacity-40">·</span>
-            <span className="normal-case tracking-normal text-ink-muted">tenant {tenantId}</span>
-          </p>
           <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.035em] text-ink">
             Corpus
           </h1>

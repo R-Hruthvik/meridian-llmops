@@ -52,7 +52,9 @@ export default (defineConfig as (
 
   return {
     plugins: [react()],
-    esbuild: { jsx: 'automatic' },
+    // Vitest transforms TSX with esbuild, which defaults to the classic JSX
+    // runtime; dev/build go through the React plugin (oxc) and ignore this.
+    ...(mode === 'test' ? { esbuild: { jsx: 'automatic' as const } } : {}),
     server: {
       port: 5173,
       proxy: {
