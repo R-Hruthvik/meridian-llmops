@@ -1,6 +1,0 @@
-/* Meridian LLMOps App Specific Styles */
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-}
