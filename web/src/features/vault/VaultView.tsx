@@ -164,7 +164,7 @@ function DocumentCard({
       variants={STAGGER_ITEM}
       whileHover={{ y: -2 }}
       transition={SPRING_SNAPPY}
-      className="group relative flex flex-col gap-2.5 rounded-lg border border-hairline bg-elevated/80 p-3.5 shadow-hairline backdrop-blur-xl transition-colors hover:border-accent/30"
+      className="group relative flex flex-col gap-2.5 rounded-lg border border-hairline bg-elevated/80 p-3.5 shadow-hairline backdrop-blur-xl transition-colors hover:border-accent/30 transition-opacity duration-200 group-hover:opacity-60 hover:!opacity-100"
     >
       <div className="flex items-start justify-between gap-2">
         <FormatBadge format={document.format} />
@@ -869,13 +869,13 @@ export function VaultView() {
             Clear filters
           </button>
         </div>
-      ) : (
+      ) : ( /* container-query candidate deferred: grids live in fixed main region (max-w-shell), so viewport ≈ container; needs @tailwindcss/container-queries plugin to do properly. */
         <motion.div
           key={`${query}|${formatFilter}`}
           variants={STAGGER_CONTAINER}
           initial="initial"
           animate="animate"
-          className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3"
+          className="group grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3"
         >
           {filtered.map((document) => (
             <DocumentCard

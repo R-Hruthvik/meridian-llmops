@@ -132,16 +132,15 @@ export function App() {
     <MotionConfig reducedMotion="user">
       <StudioShell activeView={activeView} onNavigate={setActiveView}>
         <div ref={attachAskHost} data-view="ask" />
-        <AnimatePresence mode="wait" initial={false}>
+<AnimatePresence mode="wait" initial={false}>
           {activeView !== 'ask' ? (
             <motion.div
               key={activeView}
               data-view={activeView}
-              variants={FADE_UP}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              transition={SPRING_SNAPPY}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
             >
               <Suspense fallback={<ViewFallback label={VIEW_LABELS[activeView]} />}>
                 <ActiveView />

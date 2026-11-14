@@ -558,7 +558,7 @@ function BackendCard({
       whileHover={{ y: -2 }}
       transition={SPRING_SNAPPY}
       className={cx(
-        'group relative flex flex-col gap-2.5 overflow-hidden rounded-lg border bg-elevated/80 p-3.5 shadow-hairline backdrop-blur-xl transition-colors',
+        'group relative flex flex-col gap-2.5 overflow-hidden rounded-lg border bg-elevated/80 p-3.5 shadow-hairline backdrop-blur-xl transition-colors transition-opacity duration-200 group-hover:opacity-60 hover:!opacity-100',
         reach.tone === 'fail'
           ? 'border-fail/30'
           : reach.tone === 'warn'
@@ -933,7 +933,7 @@ export function IndexTelemetryPanel({ className, onRebuilt }: IndexTelemetryPane
             initial="initial"
             animate="animate"
             exit="exit"
-            className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4"
+            className="group grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4"
           >
             {!index
               ? [0, 1, 2, 3].map((key) => (

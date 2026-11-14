@@ -42,7 +42,6 @@ import {
 import { ApiError, apiFetch } from '../../core/api';
 import { useAuth } from '../../core/auth';
 import {
-  DIALOG_POP,
   SCRIM_FADE,
   SPRING_GENTLE,
   SPRING_SNAPPY,
@@ -771,14 +770,15 @@ export function CommandPalette({
           transition={SPRING_GENTLE}
           className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[10vh] sm:pt-[14vh]"
         >
-          {/* scrim */}
+{/* scrim */}
+          {/* high-frequency surface: opacity-only, 100ms (distilled/04_motion.md §11). */}
           <motion.div
             aria-hidden="true"
             onClick={onClose}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            transition={{ duration: 0.1 }}
             className="absolute inset-0 bg-ink/25 backdrop-blur-[6px] dark:bg-black/55"
           />
 
@@ -788,10 +788,10 @@ export function CommandPalette({
             aria-modal="true"
             aria-label="Command palette"
             onKeyDown={onDialogKeyDown}
-            variants={DIALOG_POP}
-            initial="initial"
-            animate="animate"
-            exit="exit"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.1 }}
             className="relative w-full max-w-[560px] overflow-hidden rounded-xl border border-hairline bg-elevated/95 shadow-palette backdrop-blur-2xl"
           >
             <span

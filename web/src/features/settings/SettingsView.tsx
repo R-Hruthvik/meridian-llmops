@@ -1075,7 +1075,7 @@ export function SettingsView() {
           ))}
           <span className="sr-only">Loading providers…</span>
         </div>
-      ) : (
+      ) : ( /* container-query candidate deferred: grids live in fixed main region (max-w-shell), so viewport ≈ container; needs @tailwindcss/container-queries plugin to do properly. */
         <motion.div
           variants={STAGGER_CONTAINER}
           initial="initial"
