@@ -147,7 +147,6 @@ def main():
         )
 
     answerable = [r for r in rows if r.get("answerable")]
-    unanswerable = [r for r in rows if not r.get("answerable")]
 
     def rate(items, key, expected=True):
         if not items:
@@ -182,9 +181,9 @@ def main():
     print(f"{'id':8} {'answer_status':18} {'verified':8} {'cycles':7} {'verification':16}")
     for row in answerable:
         print(
-            f"{row['id']:8} {str(row.get('answer_status')):18} "
-            f"{str(row.get('verified')):8} {str(row.get('cycle_count')):7} "
-            f"{str(row.get('verification_status')):16}"
+            f"{row['id']:8} {row.get('answer_status')!s:18} "
+            f"{row.get('verified')!s:8} {row.get('cycle_count')!s:7} "
+            f"{row.get('verification_status')!s:16}"
         )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -197,4 +196,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-PY

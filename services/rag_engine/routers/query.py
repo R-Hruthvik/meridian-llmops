@@ -34,7 +34,6 @@ from services.rag_engine.routers._state import (
     index_gate_ref,
     input_guardrails,
     logger,
-    output_guardrails,
     retriever_ref,
     tracer_ref,
 )
@@ -134,6 +133,11 @@ async def _review_flags(db: AsyncSession, tenant_id: str) -> set[str]:
 
 class _FinalizedQueryResult(tuple):
     """Carrier for :func:`_finalize_query_result` output."""
+
+    final_answer: Any
+    answer: Any
+    verification: Any
+    final_state: dict[str, Any]
 
     def __new__(
         cls, final_answer: Any, verification: Any, final_state: dict[str, Any] | None = None
@@ -452,8 +456,6 @@ async def _stream_query_response(
                                 },
                             )
                         )
-        except Exception as exc:  # noqa: BLE001 - surfaced to the client as an error frame
-            outcome["error"] = exc
         except Exception as exc:  # noqa: BLE001 - surfaced to the client as an error frame
             outcome["error"] = exc
         finally:

@@ -66,7 +66,7 @@ def _request(base_url: str, path: str, api_key: str, payload: dict, timeout: flo
             return error.code, json.loads(body), elapsed
         except json.JSONDecodeError:
             return error.code, body, elapsed
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - any transport failure is reported as a structured error result
         elapsed = (time.perf_counter() - started) * 1000
         return 0, {"error": str(error)}, elapsed
 
@@ -99,7 +99,7 @@ def run_case(base_url, api_key, case, top_k, max_cycles, timeout):
     expected_phrases = case.get("expected_phrases", [])
     answerable = bool(case.get("answerable", True))
 
-    retrieve_status, retrieve_body, retrieve_elapsed = _request(
+    retrieve_status, retrieve_body, _retrieve_elapsed = _request(
         base_url, "/v1/retrieve", api_key, {"query": question, "top_k": top_k}, timeout
     )
     retrieve_chunks = retrieve_body.get("chunks", []) if isinstance(retrieve_body, dict) else []
@@ -109,7 +109,7 @@ def run_case(base_url, api_key, case, top_k, max_cycles, timeout):
         else False
     )
 
-    query_status, query_body, query_elapsed = _request(
+    query_status, query_body, _query_elapsed = _request(
         base_url,
         "/v1/query",
         api_key,

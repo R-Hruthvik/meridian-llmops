@@ -26,7 +26,7 @@ def seeded_golden_client(monkeypatch):
     app_module.retriever.embedder = embedder
     app_module.llm_client = llm
     app_module.vector_store.ensure_collection()
-    doc_path = Path("storage/originals/default/doc-bae64cd6e192/01_fastapi_guide.md")
+    doc_path = Path(__file__).resolve().parent / "data" / "01_fastapi_guide.md"
     app_module.ingestion_pipeline.ingest_text(
         title="FastAPI Guide",
         text=doc_path.read_text(encoding="utf-8"),
@@ -46,9 +46,8 @@ def seeded_golden_client(monkeypatch):
 
 
 def test_golden_queries_exercise_full_query_path(seeded_golden_client):
-    client, llm = seeded_golden_client
+    client, _llm = seeded_golden_client
     cases = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
-    calls_before = len(llm.calls)
     for case in cases:
         resp = client.post(
             "/v1/query",

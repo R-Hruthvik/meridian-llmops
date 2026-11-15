@@ -87,8 +87,9 @@ def test_retrieval_path_context_restores_state():
 
 
 def test_measure_retrieval_paths_returns_all_paths():
-    from services.ingestion.vector_store import QdrantChunkStore
     from qdrant_client import QdrantClient
+
+    from services.ingestion.vector_store import QdrantChunkStore
     from services.rag_engine.retrieval.bm25 import BM25Index
     from services.rag_engine.retrieval.hybrid import HybridRetriever
 
@@ -118,8 +119,9 @@ def test_measure_retrieval_paths_returns_all_paths():
 
 def test_measure_full_query_skips_without_provider(monkeypatch):
     monkeypatch.setattr("scripts.bench_baseline.resolve_provider_config", lambda **kwargs: None)
-    from services.ingestion.vector_store import QdrantChunkStore
     from qdrant_client import QdrantClient
+
+    from services.ingestion.vector_store import QdrantChunkStore
     from services.rag_engine.retrieval.bm25 import BM25Index
     from services.rag_engine.retrieval.hybrid import HybridRetriever
 
@@ -147,8 +149,9 @@ def test_measure_full_query_completes_with_fake_provider(monkeypatch):
     from tests.fakes import FakeLLM
 
     monkeypatch.setattr("services.gateway.client.LiteLLMClient", lambda: FakeLLM(content="Qdrant is a vector database [1]."))
-    from services.ingestion.vector_store import QdrantChunkStore
     from qdrant_client import QdrantClient
+
+    from services.ingestion.vector_store import QdrantChunkStore
     from services.rag_engine.retrieval.bm25 import BM25Index
     from services.rag_engine.retrieval.hybrid import HybridRetriever
 
@@ -183,8 +186,9 @@ def test_measure_full_query_completes_with_fake_provider(monkeypatch):
 
 
 def test_run_benchmark_skip_full_query(tmp_path: Path):
-    from services.ingestion.vector_store import QdrantChunkStore
     from qdrant_client import QdrantClient
+
+    from services.ingestion.vector_store import QdrantChunkStore
 
     # Use a tiny in-memory engine by monkeypatching build_golden_engine.
     from services.rag_engine.retrieval.bm25 import BM25Index
@@ -213,7 +217,7 @@ def test_run_benchmark_skip_full_query(tmp_path: Path):
     monkeypatch.setattr("scripts.bench_baseline.build_golden_engine", fake_build)
     golden = tmp_path / "golden.json"
     golden.write_text(json.dumps([{"id": "q1", "question": "What is Qdrant?"}]))
-    report = run_benchmark(
+    run_benchmark(
         golden_path=golden,
         tenant_id="t",
         top_k=2,

@@ -2,9 +2,6 @@
 
 import io
 
-import pytest
-
-from packages.core.errors import ParseError
 from services.ingestion.parsers import parse_file
 from services.ingestion.parsers.pdf import parse_pdf
 from services.ingestion.parsers.txt import decode_text, parse_txt

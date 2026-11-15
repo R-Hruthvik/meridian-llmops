@@ -89,9 +89,16 @@ def test_stream_route_emits_retrieval_tokens_and_done(monkeypatch):
             json={"query": "How does Meridian stream answers?", "top_k": 3},
         )
     assert response.status_code == 200
-    names = [name for name, _ in _frames(response)]
-    assert names[0] == "retrieval_complete"
+    frames = _frames(response)
+    names = [name for name, _ in frames]
+    # The stream opens with the retrieval stage, not with its completion frame.
+    assert names[0] == "stage"
+    assert frames[0][1]["name"] == "retrieving"
+    assert frames[0][1]["status"] == "started"
+    assert "retrieval_complete" in names
     assert "token" in names
+    assert names.index("retrieval_complete") < names.index("token") < names.index("done")
+    assert names.count("done") == 1
     assert names[-1] == "done"
 
 
@@ -119,7 +126,18 @@ def test_stream_frame_schema_matches_contract(monkeypatch):
     for name, data in _frames(response):
         by_event.setdefault(name, []).append(data)
 
-    assert set(by_event) == {"retrieval_complete", "token", "verification_complete", "done"}
+    assert set(by_event) == {
+        "stage",
+        "retrieval_complete",
+        "token",
+        "verification_complete",
+        "done",
+    }
+    stages = [(frame["name"], frame["status"]) for frame in by_event["stage"]]
+    assert {name for name, _ in stages} <= {"retrieving", "generating", "verifying"}
+    assert stages[0] == ("retrieving", "started")
+    assert ("retrieving", "complete") in stages
+    assert ("generating", "started") in stages
     retrieval = by_event["retrieval_complete"][0]
     assert retrieval["chunk_ids"] == ["chunk-stream"]
     assert isinstance(retrieval["timings_ms"], dict)
@@ -144,7 +162,11 @@ def test_stream_terminates_and_closes_after_done_frame(monkeypatch):
         assert response.is_closed
 
     # The iterator exhausted (the generator returned), and ``done`` is the last frame.
-    assert lines[0] == "event: retrieval_complete"
+    assert lines[0] == "event: stage"
+    assert "event: retrieval_complete" in lines
+    assert "event: token" in lines
+    assert lines.index("event: retrieval_complete") < lines.index("event: token")
+    assert lines.count("event: done") == 1
     assert lines.index("event: done") == len(lines) - 2
 
 
@@ -224,12 +246,18 @@ async def test_token_frames_stream_before_generation_completes(monkeypatch):
             gate.set()
 
     events = _event_names(frames)
+    first = json.loads(frames[0].split("data: ", 1)[1].split("\n", 1)[0])
     # The provider only yields its second delta after this test releases the gate,
     # which only happens once the first token frame has already been delivered.
     assert llm.stream_calls
     assert llm.unary_calls == []
-    assert events[0] == "retrieval_complete"
+    assert events[0] == "stage"
+    assert (first["name"], first["status"]) == ("retrieving", "started")
+    assert "retrieval_complete" in events
+    assert events.index("retrieval_complete") < events.index("token")
+    assert events.index("token") < events.index("verification_complete")
     assert "error" not in events
+    assert events.count("done") == 1
     assert events[-1] == "done"
     assert _token_text(frames) == "Hello world"
 

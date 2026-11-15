@@ -23,15 +23,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import numpy as np
-
 from services.ingestion.vector_store import QdrantChunkStore
 
 try:
     from scripts.bench_retrieval import percentile as _bench_percentile
     from scripts.retrieval_check import SUPPORTED_SUFFIXES as _SUPPORTED_SUFFIXES
     from scripts.retrieval_check import build_engine as _retrieval_check_build_engine
-except Exception:  # pragma: no cover - fallback for direct script execution
+except Exception:  # pragma: no cover - fallback for direct script execution  # noqa: BLE001
     from bench_retrieval import percentile as _bench_percentile  # type: ignore
     from retrieval_check import SUPPORTED_SUFFIXES as _SUPPORTED_SUFFIXES  # type: ignore
     from retrieval_check import build_engine as _retrieval_check_build_engine  # type: ignore
@@ -77,7 +75,7 @@ def load_golden_dataset(path: str | Path | None = None) -> list[dict[str, Any]]:
     dataset_path = Path(path)
     data = json.loads(dataset_path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
-        raise ValueError("golden dataset must be a JSON array")
+        raise TypeError("golden dataset must be a JSON array")
     return data
 
 
@@ -99,7 +97,7 @@ def resolve_provider_config(
             config = _resolve_active_llm_config_with_secrets()
             if _provider_config_usable(config):
                 return dict(config)
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - optional provider probe; fall back to explicit env config
             pass
 
     provider = (env.get("PROVIDER") or env.get("LLM_PROVIDER") or "").strip().lower()
@@ -153,13 +151,9 @@ def _provider_config_usable(config: Any) -> bool:
     if provider in {"ollama"}:
         return not (base_url and _is_placeholder(base_url))
     if provider in {"custom"}:
-        if base_url and _is_placeholder(base_url):
-            return False
-        return True
+        return not (base_url and _is_placeholder(base_url))
     if api_key and not _is_placeholder(api_key):
-        if base_url and _is_placeholder(base_url):
-            return False
-        return True
+        return not (base_url and _is_placeholder(base_url))
     return False
 
 
@@ -397,8 +391,8 @@ async def measure_full_query(
         }
 
     from packages.core.settings import get_settings
-    from services.ingestion.graph_store import KnowledgeGraphStore
     from services.gateway.client import LiteLLMClient
+    from services.ingestion.graph_store import KnowledgeGraphStore
     from services.rag_engine.agent.graph import build_rag_agent_graph
 
     if graph_store is None:

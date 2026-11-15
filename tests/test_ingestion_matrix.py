@@ -3,7 +3,8 @@
 import io
 
 from docx import Document as DocxDocument
-from packages.core.models import Document, DocumentFormat
+
+from packages.core.models import DocumentFormat
 from services.ingestion.parsers import parse_file
 
 

@@ -52,7 +52,7 @@ def _secret_value(settings: Any, attribute: str) -> str:
     if callable(getter):
         try:
             return str(getter())
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # noqa: BLE001 - defensive: a secret getter must never break auth setup  # pragma: no cover - defensive
             return str(value)
     return "" if value is None else str(value)
 

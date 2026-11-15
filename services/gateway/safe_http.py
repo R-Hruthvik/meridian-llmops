@@ -74,20 +74,19 @@ def validate_provider_url(
             parsed.scheme == "http"
             and provider in {"ollama", "custom", "openai_compatible", "litellm"}
             and is_loopback_host
-        ):  # noqa: SIM102
-            if not all(
-                address.is_global
-                and not (
-                    address.is_private
-                    or address.is_loopback
-                    or address.is_link_local
-                    or address.is_unspecified
-                    or address.is_multicast
-                    or address.is_reserved
-                )
-                for address in parsed_addresses
-            ):
-                raise ValueError
+        ) and not all(
+            address.is_global
+            and not (
+                address.is_private
+                or address.is_loopback
+                or address.is_link_local
+                or address.is_unspecified
+                or address.is_multicast
+                or address.is_reserved
+            )
+            for address in parsed_addresses
+        ):
+            raise ValueError
         if (
             parsed.scheme == "http"
             and provider != "litellm"

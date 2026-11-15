@@ -244,7 +244,7 @@ class HybridRetriever:
         seen_groups = self.session_groups(session_id)
         seen = set(self.session_chunks(session_id))
         return sorted(
-            list(chunks or []),
+            chunks or [],
             key=lambda chunk: (
                 0 if (chunk.id in seen or self.group_key(chunk) in seen_groups) else 1,
             ),
